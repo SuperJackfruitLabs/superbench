@@ -67,6 +67,12 @@ reviewing and explicitly approving its complete file manifest. See
 [archive and reap](docs/archive.md) for retained artifacts, retry rules and managed
 quota retirement. Archive/reap are local administrative commands in this checkpoint.
 
+## History and log retention
+
+Supervised runs retain private history and sealed output evidence. Use reviewed
+[log collection](docs/retention.md) to free released output; held, open or unknown
+logs remain protected. Collection can resume after a crash without rerunning work.
+
 ## Recovery
 
 On a replacement host with empty state/data directories:
@@ -115,7 +121,8 @@ atomic transaction.
   while conflicting files require review and a pushed checkpoint may need retrying
   if saving state failed.
   No automatic deletion/reset is attempted.
-- Automatic retention, remote authentication, UI and suite
+- Automatic retention policies, shared-cache/journal collection, remote
+  authentication, UI and suite
   integrations are not implemented. The local API authenticates Unix peer uids.
 - Only trusted repositories are suitable. Local git configuration and hooks apply.
   Verification should use a separate clean checkout of the pushed checkpoint.

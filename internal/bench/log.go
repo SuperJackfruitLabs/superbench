@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 )
 
 const logMarker = "\n[SuperBench: log output truncated at configured limit]\n"
@@ -23,6 +24,25 @@ func openLog(path string, limit uint64) (*logCapture, error) {
 	}
 	f, e := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if e != nil {
+		return nil, e
+	}
+	if e = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); e != nil {
+		f.Close()
+		return nil, e
+	}
+	if e = f.Sync(); e != nil {
+		f.Close()
+		return nil, e
+	}
+	dir, e := os.Open(filepath.Dir(path))
+	if e != nil {
+		f.Close()
+		return nil, e
+	}
+	e = dir.Sync()
+	dir.Close()
+	if e != nil {
+		f.Close()
 		return nil, e
 	}
 	r, w, e := os.Pipe()

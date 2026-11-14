@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 )
 
 func main() {
@@ -26,7 +27,7 @@ func main() {
 }
 func run(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: bench <archive|plan-reap|reap|create|recover|lease|checkpoint|release|status|run|stop|migrate|configure-host|host-status|setup> [flags] [key]; flags precede key")
+		return fmt.Errorf("usage: bench <inspect-log|adopt-log|history|reconcile-log|plan-collect|collect|resume-collect|cancel-collect|collections|archive|plan-reap|reap|create|recover|lease|checkpoint|release|status|run|stop|migrate|configure-host|host-status|setup> [flags] [key]; flags precede key")
 	}
 	config, err := os.UserConfigDir()
 	if err != nil {
@@ -37,8 +38,12 @@ func run(args []string) error {
 		return err
 	}
 	f := flag.NewFlagSet(args[0], flag.ContinueOnError)
-	planFile := f.String("plan", "", "private reviewed reap plan JSON")
-	approval := f.String("approve", "", "exact Digest of the reviewed reap plan")
+	limit := f.Int("limit", 100, "history/collection result limit")
+	logAge := f.Duration("older-than", 168*time.Hour, "minimum time since release and log seal")
+	metadataAge := f.Duration("metadata-older-than", 720*time.Hour, "minimum time since prior log collection")
+	planFile := f.String("plan", "", "private reviewed administrative plan JSON")
+	ackWriters := f.Bool("acknowledge-stopped-writers", false, "operator confirms legacy log writers were stopped")
+	approval := f.String("approve", "", "exact Digest of the reviewed plan")
 	socket := f.String("socket", "", "local benchd Unix socket (operation output uses the versioned API shape)")
 	requestID := f.String("request-id", "", "stable id for replaying an accepted service request")
 	state := f.String("state", filepath.Join(config, "superbench", "state"), "authoritative state, outside bench data")
@@ -66,8 +71,14 @@ func run(args []string) error {
 		return fmt.Errorf("expected one key; flags must precede it")
 	}
 	key := f.Arg(0)
-	if key == "" && args[0] != "status" && args[0] != "migrate" && args[0] != "configure-host" && args[0] != "host-status" {
+	if key == "" && args[0] != "status" && args[0] != "migrate" && args[0] != "configure-host" && args[0] != "host-status" && args[0] != "history" && args[0] != "plan-collect" && args[0] != "collect" && args[0] != "collections" && args[0] != "adopt-log" {
 		return fmt.Errorf("key required")
+	}
+	switch args[0] {
+	case "plan-collect", "collect", "collections", "adopt-log":
+		if key != "" {
+			return fmt.Errorf("this operation does not accept a key")
+		}
 	}
 	if *socket != "" {
 		r := protocol.Request{Operation: args[0], Key: key, RequestID: *requestID}
@@ -111,6 +122,25 @@ func run(args []string) error {
 	s := bench.Store{State: *state, Data: *data, CgroupRoot: *cgroupRoot}
 	var out any
 	switch args[0] {
+	case "inspect-log":
+		out, err = s.InspectLog(key)
+	case "adopt-log":
+		out, err = approvedAdoption(s, *planFile, *approval, *ackWriters)
+	case "history":
+		out, err = s.History(key, *limit)
+	case "reconcile-log":
+		out, err = s.ReconcileLog(key)
+	case "plan-collect":
+		out, err = s.PlanCollection(*logAge, *metadataAge, *limit)
+	case "collect":
+		out, err = approvedCollection(s, *planFile, *approval)
+	case "resume-collect", "cancel-collect":
+		if *approval != key {
+			return fmt.Errorf("approval must match the collection digest")
+		}
+		out, err = s.ResumeCollection(key, args[0] == "cancel-collect")
+	case "collections":
+		out, err = s.Collections()
 	case "archive":
 		out, err = s.Archive(key)
 	case "plan-reap":

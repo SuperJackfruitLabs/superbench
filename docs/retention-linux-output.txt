@@ -1,0 +1,5 @@
+PASS: real run history is sealed/released; open writer, wrong approval and changed file refuse; approved collection replays safely
+PASS: failed command evidence remains protected until explicit checkpoint/release
+PASS: unregistered log is preserved until separate ownership approval; adoption invents no outcome or lease transition
+PASS: daemon SIGKILL retains held/unsealed history; fence/release/reconcile permit collection; pruning history never reexecutes an old request
+DONE: run history and reviewed log retention integration passed
