@@ -105,11 +105,28 @@ print("PASS: both shared stores and mirrors enforce independent inode hard caps"
 candidate=root/"overcommit.json";write_policy({**settings,"ReserveInodes":1<<40},candidate)
 before=json.loads(ledger.read_text())
 failed=run([helper,"--policy",candidate,"apply","bench","blocked"])
-assert failed.returncode!=0 and "inode budget exhausted" in failed.stderr,failed.stderr
+assert failed.returncode!=0 and "pinned ledger" in failed.stderr,failed.stderr
 assert json.loads(ledger.read_text())==before
+# Capacity exhaustion is a separate check from policy drift. A fresh ledger
+# cannot have a pinned policy yet and must reject the impossible reservation.
+fresh_ledger=root/"overcommit-ledger";fresh_data=root/"overcommit-data";fresh_image=root/"overcommit.img"
+fresh_data.mkdir()
+good(["fallocate","-l","512M",fresh_image]);good(["mkfs.xfs","-q","-m","reflink=1",fresh_image])
+good(["mount","-o","loop,prjquota,nodev,nosuid",fresh_image,fresh_data])
+try:
+ write_policy({**settings,"Root":str(fresh_data),"ReserveInodes":1<<40,"Ledger":str(fresh_ledger)},candidate)
+ failed=run([helper,"--policy",candidate,"apply","bench","blocked"])
+ assert failed.returncode!=0 and "inode budget exhausted" in failed.stderr,failed.stderr
+ rejected=json.loads((fresh_ledger/"assignments.json").read_text())
+ assert rejected["Assignments"]=={} and rejected["Next"]==10000
+ assert not (fresh_data/"benches/blocked").exists()
+finally:
+ good(["umount",fresh_data]);fresh_image.unlink()
+assert json.loads(ledger.read_text())==before
+assert not (data/"benches/blocked").exists()
 print("PASS: total inode reservation overcommit refuses before assigning a new project",flush=True)
 
-cli("archive","task");plan=cli("plan-reap","task");planfile=root/"reap.json";planfile.write_text(json.dumps(plan))
+cli("archive","--archive-grace","0s","task");plan=cli("plan-reap","task");planfile=root/"reap.json";planfile.write_text(json.dumps(plan))
 assert cli("reap","--plan",planfile,"--approve",plan["Digest"],"task")["ReapedAt"]
 retired=json.loads(ledger.read_text())["Assignments"]["bench:task"]
 assert retired["Bytes"]==0 and retired["Inodes"]==0

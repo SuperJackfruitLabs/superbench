@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/archivepolicy"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/history"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotapolicy"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/setup"
 	"net/url"
 	"os"
@@ -15,7 +16,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const schemaVersion = 10
+const schemaVersion = 11
 
 type reader interface {
 	Query(string, ...any) (*sql.Rows, error)
@@ -70,6 +71,9 @@ func validRecords(records database) error {
 	}
 	for key, b := range records {
 		if b != nil {
+			if !quotapolicy.ValidBytes(b.RequestedQuotaBytes) || b.ProjectID != 0 && b.RequestedQuotaBytes != 0 && b.RequestedQuotaBytes != b.QuotaBytes {
+				return errors.New("invalid pinned quota request")
+			}
 			if e := archivepolicy.ValidateArchive(b); e != nil {
 				return e
 			}
@@ -121,7 +125,7 @@ func (s Store) migrate(tx *sql.Tx) error {
 	if version == schemaVersion {
 		return nil
 	}
-	if version == 1 || version == 2 || version == 3 || version == 4 || version == 5 || version == 6 || version == 7 || version == 8 || version == 9 {
+	if version == 1 || version == 2 || version == 3 || version == 4 || version == 5 || version == 6 || version == 7 || version == 8 || version == 9 || version == 10 {
 		records, err := loadRecords(tx)
 		if err != nil {
 			return err
@@ -157,7 +161,7 @@ func (s Store) migrate(tx *sql.Tx) error {
 		if err = setup.Schema(tx); err != nil {
 			return err
 		}
-		_, err = tx.Exec("PRAGMA user_version=10")
+		_, err = tx.Exec("PRAGMA user_version=11")
 		return err
 	}
 	if version != 0 {
@@ -191,7 +195,7 @@ func (s Store) migrate(tx *sql.Tx) error {
 	if err = setup.Schema(tx); err != nil {
 		return err
 	}
-	_, err = tx.Exec("PRAGMA user_version=10")
+	_, err = tx.Exec("PRAGMA user_version=11")
 	return err
 }
 func loadRecords(r reader) (database, error) {

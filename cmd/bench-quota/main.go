@@ -26,8 +26,8 @@ func run(args []string) error {
 		return fmt.Errorf("policy override requires a direct root caller")
 	}
 	migrating := f.NArg() == 1 && f.Arg(0) == "migrate-inodes"
-	if !migrating && (f.NArg() != 3 || f.Arg(0) != "apply") && (f.NArg() != 4 || f.Arg(0) != "release" || f.Arg(1) != "bench") {
-		return fmt.Errorf("usage: bench-quota [--policy ROOT_POLICY] apply <bench|shared> KEY | release bench KEY PROJECT_ID | migrate-inodes")
+	if !migrating && ((f.NArg() != 3 && f.NArg() != 4) || f.Arg(0) != "apply") && (f.NArg() != 4 || f.Arg(0) != "release" || f.Arg(1) != "bench") {
+		return fmt.Errorf("usage: bench-quota [--policy ROOT_POLICY] apply <bench|shared> KEY [BENCH_BYTES] | release bench KEY PROJECT_ID | migrate-inodes")
 	}
 	p, e := hoststorage.Load(*policy)
 	if e != nil {
@@ -48,7 +48,17 @@ func run(args []string) error {
 		}
 		assignment, e = p.Release(f.Arg(2), uint32(id))
 	} else {
-		assignment, e = p.Apply(f.Arg(1), f.Arg(2))
+		requested := uint64(0)
+		if f.NArg() == 4 {
+			if f.Arg(1) != "bench" {
+				return fmt.Errorf("only bench allocations accept a size request")
+			}
+			requested, e = strconv.ParseUint(f.Arg(3), 10, 64)
+			if e != nil || requested == 0 {
+				return fmt.Errorf("invalid requested bench bytes")
+			}
+		}
+		assignment, e = p.ApplyRequested(f.Arg(1), f.Arg(2), requested)
 	}
 	if e != nil {
 		return e

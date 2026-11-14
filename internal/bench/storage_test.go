@@ -24,7 +24,7 @@ func managedFixture(t *testing.T) (Store, string, *int) {
 	s, r := fixture(t)
 	fakeSpace(&s)
 	calls := 0
-	s.quotaApply = func(_ HostConfig, kind, key string) (hoststorage.Assignment, error) {
+	s.quotaApply = func(_ HostConfig, kind, key string, requested uint64) (hoststorage.Assignment, error) {
 		path := filepath.Join(s.Data, key)
 		id := uint32(100)
 		if kind == "bench" {
@@ -47,8 +47,8 @@ func TestManagedCreateRecordsQuotaAndResumesEmptyAllocation(t *testing.T) {
 	s, r, calls := managedFixture(t)
 	original := s.quotaApply
 	failed := false
-	s.quotaApply = func(c HostConfig, kind, key string) (hoststorage.Assignment, error) {
-		a, e := original(c, kind, key)
+	s.quotaApply = func(c HostConfig, kind, key string, requested uint64) (hoststorage.Assignment, error) {
+		a, e := original(c, kind, key, requested)
 		if e == nil && kind == "bench" && !failed {
 			failed = true
 			return a, errors.New("lost reply after privileged allocation")
@@ -186,8 +186,8 @@ func TestManagedAcquisitionRechecksPinnedInodeCap(t *testing.T) {
 		t.Fatal(e)
 	}
 	original := s.quotaApply
-	s.quotaApply = func(c HostConfig, kind, key string) (hoststorage.Assignment, error) {
-		a, e := original(c, kind, key)
+	s.quotaApply = func(c HostConfig, kind, key string, requested uint64) (hoststorage.Assignment, error) {
+		a, e := original(c, kind, key, requested)
 		if kind == "bench" {
 			a.Inodes++
 		}
@@ -220,8 +220,8 @@ func TestStateUpgradePinsInodesAndRefusesChangedAllocation(t *testing.T) {
 			}
 			db.Close()
 			original := s.quotaApply
-			s.quotaApply = func(c HostConfig, kind, key string) (hoststorage.Assignment, error) {
-				a, e := original(c, kind, key)
+			s.quotaApply = func(c HostConfig, kind, key string, requested uint64) (hoststorage.Assignment, error) {
+				a, e := original(c, kind, key, requested)
 				if conflict && kind == "bench" {
 					a.ProjectID++
 				}
@@ -268,11 +268,11 @@ func TestStateUpgradePreservesReapIntentWithoutReallocatingRetiredProject(t *tes
 	}
 	db.Close()
 	original := s.quotaApply
-	s.quotaApply = func(c HostConfig, kind, key string) (hoststorage.Assignment, error) {
+	s.quotaApply = func(c HostConfig, kind, key string, requested uint64) (hoststorage.Assignment, error) {
 		if kind == "bench" {
 			return hoststorage.Assignment{}, errors.New("retired project")
 		}
-		return original(c, kind, key)
+		return original(c, kind, key, requested)
 	}
 	if e = s.Migrate(); e != nil {
 		t.Fatal("retained reap intent could not upgrade", e)

@@ -102,7 +102,7 @@ def main():
         assert result["ReapedAt"]
         assert cli(args.bench, "reap", "--plan", old_file, "--approve", old_plan["Digest"], "legacy")["ReapedAt"] == result["ReapedAt"]
         assert run(command(args.old_bench, "status")).returncode != 0
-        print(f"PASS: schema-{old_version} SIGKILL leaves a genuine {old_plan['Version']} intent; schema-10 migration resumes exact approval and preserves replay/downgrade guards", flush=True)
+        print(f"PASS: schema-{old_version} SIGKILL leaves a genuine {old_plan['Version']} intent; schema-11 migration resumes exact approval and preserves replay/downgrade guards", flush=True)
 
         b = prepare(args.bench, "retained")
         for duration in ("-1s", "8760h1s"):
@@ -131,8 +131,8 @@ def main():
         assert plan["Version"] == "superbench.reap.v3" and plan["ReapAfter"]
         assert cli(args.bench, "reap", "--plan", file, "--approve", plan["Digest"], "explicit-zero")["ReapedAt"]
         with sqlite3.connect(state / "bench.db") as db:
-            assert db.execute("PRAGMA user_version").fetchone()[0] == 10
-        print("PASS: explicit zero grace still requires an exact reviewed v3 manifest; schema 10 is persisted", flush=True)
+            assert db.execute("PRAGMA user_version").fetchone()[0] == 11
+        print("PASS: explicit zero grace still requires an exact reviewed v3 manifest; schema 11 is persisted", flush=True)
     finally:
         if process is not None and process.poll() is None:
             os.killpg(process.pid, signal.SIGKILL)

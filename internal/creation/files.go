@@ -16,10 +16,11 @@ type Files struct {
 	Write       func(string, string, []byte) error
 }
 type Intent struct {
-	Bench      model.Bench
-	Source     string
-	Base       string
-	Recovering bool
+	Bench              model.Bench
+	Source             string
+	Base               string
+	Recovering         bool
+	QuotaRequestPinned bool `json:",omitempty"`
 }
 
 func (s Files) JournalPath(key string) string { return filepath.Join(s.State, "create-"+key+".json") }

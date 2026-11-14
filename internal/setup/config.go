@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/cachepolicy"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotapolicy"
 	"io"
 	"os"
 	"strings"
@@ -19,12 +20,29 @@ import (
 const MaxConfig = 64 << 10
 
 type Config struct {
+	Quota  quotapolicy.Request  `toml:"quota"`
 	Caches cachepolicy.Settings `toml:"caches"`
 	Setup  struct {
 		Once string `toml:"once"`
 		Each string `toml:"each"`
 	} `toml:"setup"`
 	Digest string `toml:"-"`
+}
+
+// Other unsupported fields remain strict errors during setup. They must not
+// hide a valid quota request from allocation at the pinned source commit.
+func quotaFromConfig(raw []byte) uint64 {
+	var c struct {
+		Quota quotapolicy.Request `toml:"quota"`
+	}
+	if toml.NewDecoder(bytes.NewReader(raw)).Decode(&c) != nil {
+		return 0
+	}
+	n, e := c.Quota.Bytes()
+	if e != nil {
+		return 0
+	}
+	return n
 }
 
 func (c *Config) CacheSettings() cachepolicy.Settings {
@@ -88,6 +106,9 @@ func Read(path string) (*Config, error) {
 		if len(command) > 16<<10 || strings.ContainsRune(command, 0) {
 			return nil, errors.New("setup commands must be at most 16 KiB without NUL")
 		}
+	}
+	if _, e = c.Quota.Bytes(); e != nil {
+		return nil, e
 	}
 	sum := sha256.Sum256(raw)
 	c.Digest = hex.EncodeToString(sum[:])

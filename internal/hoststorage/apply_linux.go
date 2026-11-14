@@ -15,11 +15,17 @@ import (
 )
 
 func (p Policy) Apply(kind, key string) (Assignment, error) {
+	return p.ApplyRequested(kind, key, 0)
+}
+func (p Policy) ApplyRequested(kind, key string, requested uint64) (Assignment, error) {
 	var zero Assignment
 	if os.Geteuid() != 0 {
 		return zero, errors.New("quota helper requires root")
 	}
 	if e := p.Validate(); e != nil {
+		return zero, e
+	}
+	if e := p.request(kind, requested); e != nil {
 		return zero, e
 	}
 	var name, path string
@@ -33,6 +39,9 @@ func (p Policy) Apply(kind, key string) (Assignment, error) {
 		name = "bench:" + key
 		path = filepath.Join(p.Root, "benches", key)
 		size = p.BenchBytes
+		if requested != 0 {
+			size = requested
+		}
 		inodes = p.BenchInodes
 	case "shared":
 		switch key {
@@ -132,11 +141,17 @@ func (p Policy) Apply(kind, key string) (Assignment, error) {
 	if e = p.checkLedger(l); e != nil {
 		return zero, e
 	}
-	if l.VolumeID != volumeID {
+	if l.filesystem() != volumeID {
 		return zero, errors.New("filesystem UUID differs from the allocation ledger; explicit recovery required")
 	}
 	if e = p.anchor(); e != nil {
 		return zero, e
+	}
+	if l.FormatVersion != 2 || p.upgradingInodes {
+		p.bindLedger(&l)
+		if e = save(p.Ledger, filepath.Join(p.Ledger, "assignments.json"), l); e != nil {
+			return zero, e
+		}
 	}
 
 	a, known := l.Assignments[name]
@@ -159,6 +174,9 @@ func (p Policy) Apply(kind, key string) (Assignment, error) {
 	if known {
 		if a.Bytes == 0 {
 			return zero, errors.New("bench project is retired; use another key")
+		}
+		if kind == "bench" && requested == 0 {
+			size = a.Bytes
 		}
 		if a.Path != path || a.Bytes != size || !p.upgradingInodes && a.Inodes != inodes {
 			return zero, errors.New("existing allocation differs from policy; explicit migration required")

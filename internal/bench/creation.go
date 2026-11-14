@@ -48,6 +48,9 @@ func (s Store) creationSetupNeeded(b *Bench) (bool, error) {
 	if e != nil {
 		return true, e
 	}
+	if e = setup.MatchQuota(c, b.RequestedQuotaBytes); e != nil {
+		return true, e
+	}
 	if c != nil && c.Hooks() {
 		return true, nil
 	}

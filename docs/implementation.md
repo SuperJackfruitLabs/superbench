@@ -56,10 +56,14 @@ keep that approval distinct from permission to implement the product.
 
 ## Published checkpoints
 
+The first sixteen implementation PRs are merged into `main`. The entries below
+record their original verification and dependency order; references to stacked
+PRs describe their publication history.
+
 - `c874bf6`: initial CLI, journaled clean-worktree adoption, failure experiments
   and full phase checklist. Local checks and Forge push CI passed.
 - `ea47c2f`: versioned SQLite state, legacy import, rollback and read-only status;
-  local race tests, Linux failure tests and Forge CI passed; PR #1 is open.
+  local race tests, Linux failure tests and Forge CI passed; PR #1 is merged.
 - `c1def55`: supervised Linux execution; local checks, staged cgroup tests and Forge
   CI passed; PR #2 is stacked on #1.
 - Current storage slice: quota helper, admission, frozen setup, atomic mirrors and
@@ -120,8 +124,15 @@ keep that approval distinct from permission to implement the product.
 - Repository cache settings: typed sharing flags select fixed shared or
   checkout-local pnpm/npm/Bun/Playwright/Go paths across setup and supervised
   commands. Actual pnpm, daemon handoff, once invalidation, unprivileged service
-  and XFS private-cache cap checks passed; see [caches](caches.md). Quota/archive
+  and XFS private-cache cap checks passed; see [caches](caches.md). Archive
   repository configuration remains pending.
+
+- Repository quota requests: creation pins a byte request from its source commit;
+  managed hosts enforce it within the root ceiling without resizing existing
+  allocations. State schema 11 and ledger format 2 preserve old allocations and
+  refuse old binaries after upgrade. Request drift blocks new work while repair,
+  checkpoint and release remain available. See [quota requests](quotas.md) for
+  compatibility and verification.
 
 ## Remaining retention work
 
@@ -145,7 +156,7 @@ The original proposal remains the acceptance source; the checkpoints above do
 not replace its scope. Before calling Phase 1 complete, explicitly verify the
 standalone laptop preparation path (supervised hooks currently require Linux),
 multiple repositories within a bench, automatic completion/archive
-lifecycle and broader collection, remaining quota/archive repository configuration, and the
+lifecycle and broader collection, remaining archive repository configuration, and the
 AgentPod acquisition/prompt/checkpoint pilot on an opt-in board. The review of
 charter/treaty boundaries must precede suite consumers. Source-level progress or
 passing single-host drills alone is not evidence that those outcomes are done.

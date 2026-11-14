@@ -56,7 +56,9 @@ byte/inode caps, fixed-policy root allocation, free-space admission and bounded 
 `bench setup` supports frozen pnpm/npm installs and explicit repository
 [once/each setup hooks](docs/setup.md), automatically honored before runs and
 cooperative lease handoff. Repository [cache settings](docs/caches.md) select
-shared or checkout-local stores for managed commands. See [storage management](docs/storage.md)
+shared or checkout-local stores for managed commands. Repository
+[quota requests](docs/quotas.md) select smaller allocations within root policy.
+See [storage management](docs/storage.md)
 for provisioning prerequisites, budgets, compatibility and verification. Existing
 byte-only hosts require the [explicit inode migration](docs/inodes.md).
 

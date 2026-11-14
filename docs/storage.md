@@ -8,11 +8,12 @@ quotas. No filesystem is formatted or mounted by the quota helper.
 
 ## Fixed-policy helper
 
-`bench-quota` accepts only `apply bench KEY`, `apply shared store`, or
+`bench-quota` accepts only `apply bench KEY [BENCH_BYTES]`, `apply shared store`, or
 `apply shared mirrors`. The `release bench KEY PROJECT_ID` operation removes
 only an empty allocated directory and confirms zero usage before retiring its
-reservation. Paths, byte caps and worker ownership come from a
-root-owned policy, not caller arguments. The policy and its ancestors cannot be
+reservation. Paths, maximum/default byte caps and worker ownership come from a
+root-owned policy. A [repository request](quotas.md) may select a smaller new
+bench cap within that ceiling. The policy and its ancestors cannot be
 replaced through writable non-sticky directories or symlinks. Data parents stay
 root-owned; the worker owns only assigned bench/cache/mirror directories.
 The ledger is root-owned and private. The helper uses fixed absolute XFS tools

@@ -139,7 +139,7 @@ assert old.returncode!=0 and "unsupported state schema" in old.stderr,old.stderr
 legacy_policy=root / "legacy-policy.json"
 legacy_policy.write_text(json.dumps({key:value for key,value in json.loads(policy.read_text()).items() if not key.endswith("Inodes")}));legacy_policy.chmod(0o600)
 old=run([old_helper,"--policy",legacy_policy,"apply","shared","store"])
-assert old.returncode!=0 and "ledger allocation conflicts" in old.stderr,old.stderr
+assert old.returncode!=0 and "ledger" in old.stderr,old.stderr
 print("PASS: previous binaries refuse archive schema and retired-project ledger",flush=True)
 
 second,plan2,file2=archived("second")

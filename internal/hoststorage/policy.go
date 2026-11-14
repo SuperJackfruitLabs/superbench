@@ -33,10 +33,13 @@ type Assignment struct {
 	Inodes    uint64
 }
 type ledger struct {
-	VolumeID    string
-	Root        string
-	Next        uint32
-	Assignments map[string]Assignment
+	FormatVersion  int            `json:",omitempty"`
+	FilesystemUUID string         `json:",omitempty"`
+	VolumeID       string         `json:",omitempty"`
+	Binding        *policyBinding `json:",omitempty"`
+	Root           string
+	Next           uint32
+	Assignments    map[string]Assignment
 }
 
 var Key = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$`)
@@ -187,7 +190,10 @@ func trustedAncestors(path string) error {
 	}
 }
 func (p Policy) checkLedger(l ledger) error {
-	if l.VolumeID == "" || l.Root != p.Root || l.Assignments == nil || l.Next < 10000 {
+	if e := p.ledgerHeader(l); e != nil {
+		return e
+	}
+	if l.Root != p.Root || l.Assignments == nil || l.Next < 10000 {
 		return errors.New("privileged ledger conflicts with policy")
 	}
 	seen := map[uint32]bool{}
@@ -215,6 +221,12 @@ func (p Policy) checkLedger(l ledger) error {
 			}
 			path = filepath.Join(p.Root, "benches", name[6:])
 			bytes = p.BenchBytes
+			if l.FormatVersion == 2 && a.Bytes != 0 {
+				if a.Bytes < 1024 || a.Bytes%1024 != 0 || a.Bytes > p.BenchBytes {
+					return errors.New("bench allocation exceeds pinned quota ceiling")
+				}
+				bytes = a.Bytes
+			}
 			inodes = p.BenchInodes
 			if a.Bytes == 0 {
 				bytes = 0
