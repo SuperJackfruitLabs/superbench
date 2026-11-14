@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/history"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/setup"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -13,7 +14,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const schemaVersion = 6
+const schemaVersion = 7
 
 type reader interface {
 	Query(string, ...any) (*sql.Rows, error)
@@ -101,7 +102,7 @@ func (s Store) migrate(tx *sql.Tx) error {
 	if version == schemaVersion {
 		return nil
 	}
-	if version == 1 || version == 2 || version == 3 || version == 4 || version == 5 {
+	if version == 1 || version == 2 || version == 3 || version == 4 || version == 5 || version == 6 {
 		records, err := loadRecords(tx)
 		if err != nil {
 			return err
@@ -112,8 +113,10 @@ func (s Store) migrate(tx *sql.Tx) error {
 			}
 		}
 		for key, b := range records {
-			if err = s.pinMigratedInodes(b); err != nil {
-				return err
+			if version < 5 {
+				if err = s.pinMigratedInodes(b); err != nil {
+					return err
+				}
 			}
 			raw, e := json.Marshal(b)
 			if e != nil {
@@ -126,7 +129,10 @@ func (s Store) migrate(tx *sql.Tx) error {
 		if err = history.Schema(tx); err != nil {
 			return err
 		}
-		_, err = tx.Exec("PRAGMA user_version=6")
+		if err = setup.Schema(tx); err != nil {
+			return err
+		}
+		_, err = tx.Exec("PRAGMA user_version=7")
 		return err
 	}
 	if version != 0 {
@@ -151,7 +157,10 @@ func (s Store) migrate(tx *sql.Tx) error {
 	if err = history.Schema(tx); err != nil {
 		return err
 	}
-	_, err = tx.Exec("PRAGMA user_version=6")
+	if err = setup.Schema(tx); err != nil {
+		return err
+	}
+	_, err = tx.Exec("PRAGMA user_version=7")
 	return err
 }
 func loadRecords(r reader) (database, error) {

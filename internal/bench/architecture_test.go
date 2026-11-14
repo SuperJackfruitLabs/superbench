@@ -50,7 +50,7 @@ func TestArchitecture(t *testing.T) {
 			rel, _ := filepath.Rel(root, filepath.Dir(path))
 			rel = filepath.ToSlash(rel)
 			edges := map[string][]string{
-				"internal/bench":       {"internal/hoststorage", "internal/reap", "internal/history", "internal/retention"},
+				"internal/bench":       {"internal/execution", "internal/setup", "internal/hoststorage", "internal/reap", "internal/history", "internal/retention"},
 				"internal/client":      {"internal/protocol"},
 				"internal/history":     {"internal/reap"},
 				"internal/retention":   {"internal/history", "internal/reap"},
@@ -67,6 +67,9 @@ func TestArchitecture(t *testing.T) {
 				}
 			}
 			if p == "modernc.org/sqlite" && (rel == "internal/bench" && filepath.Base(path) == "sqlite.go" || rel == "internal/service" && filepath.Base(path) == "receipts.go") {
+				allowed = true
+			}
+			if p == "github.com/pelletier/go-toml/v2" && rel == "internal/setup" && filepath.Base(path) == "config.go" {
 				allowed = true
 			}
 			if p == "golang.org/x/sys/unix" && rel == "internal/service" && filepath.Base(path) == "peer_darwin.go" {
