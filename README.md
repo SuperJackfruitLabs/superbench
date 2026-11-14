@@ -68,8 +68,10 @@ filesystems.
 - No automatic expiry or takeover. A process crash preserves the lease. Stop and
   inspect the holder before using its saved token to checkpoint/release. If the
   token is lost, this prototype has no safe automated takeover command.
-- State is an atomic JSON file with an OS file lock, file fsync and directory
-  fsync, outside bench data. This is a prototype substitute for proposed SQLite.
+- State is versioned SQLite outside bench data, with FULL synchronous commits.
+  A host-wide OS file lock also serializes git/filesystem operations. Existing
+  prototype JSON is imported once on the next successful write and preserved as
+  a historical snapshot; SQLite is authoritative thereafter. Status is read-only.
   All commands serialize, including git calls. Use local filesystems only.
 - Git/network failures may block; there are no service timeouts yet. Git and state
   updates are not one transaction: journaled worktree creation can be resumed,
@@ -87,5 +89,5 @@ Storage feasibility evidence is in sketchbook's `ideas/2026-11-14-superbench/res
 
 Run `sh scripts/check.sh`: formatting, zero-warning vet ratchet, architecture guards,
 race-enabled integration tests and build. See [code quality](docs/code-quality.md).
-No external Go dependencies. Forge CI configuration is prepared but has not run on
+SQLite is provided by the pinned pure-Go modernc.org/sqlite driver. Forge CI configuration is prepared but has not run on
 a remote. Forge is the primary remote. Initial implementation checkpoints are published there; no production deployment is configured.

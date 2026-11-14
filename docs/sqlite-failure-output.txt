@@ -1,0 +1,16 @@
+Setting up project 101 (path /var/tmp/superbench-failures.MMnqdl/mnt/store)...
+Processed 1 (/etc/projects and cmdline) paths for project 101 with recursion depth infinite (-1).
+Setting up project 102 (path /var/tmp/superbench-failures.MMnqdl/mnt/state)...
+Processed 1 (/etc/projects and cmdline) paths for project 102 with recursion depth infinite (-1).
+EXPECTED SQLite write failure: bench: unable to open database file (14)
+PASS: real state-write failure after successful push preserves prior state and lease
+EXPECTED quota exhaustion: [Errno 28] No space left on device
+PASS: failed release state-save retains lease; retry succeeds after freeing space
+PASS: SIGKILL after worktree creation leaves durable intent; retry safely registers original checkout
+PASS: SIGKILL after push retains lease; checkpoint retry reconciles remote/local state
+EXPECTED pnpm store failure:  ERR_PNPM_ENOSPC  Failed to add tarball from "/var/tmp/superbench-failures.MMnqdl/fixtures/large-fixture.tgz" to store: ENOSPC: no space left on device, write
+
+This error happened while installing a direct dependency of /var/tmp/superbench-failures.MMnqdl/mnt/large-client
+
+PASS: pnpm reports store exhaustion, healthy install stays intact, retry and healthy offline reuse succeed
+DONE: failure and interruption experiments passed

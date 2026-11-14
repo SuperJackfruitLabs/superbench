@@ -13,8 +13,8 @@ func TestCreationJournalReconciles(t *testing.T) {
 		t.Fatal(e)
 	}
 	// The persisted intent plus completed checkout is exactly the state left when
-	// creation dies before committing benches.json.
-	if e = os.Remove(filepath.Join(s.State, "benches.json")); e != nil {
+	// creation dies before committing bench.db.
+	if e = os.Remove(filepath.Join(s.State, "bench.db")); e != nil {
 		t.Fatal(e)
 	}
 	resumed, e := s.Create("task", Options{Repo: r}, false)
@@ -36,7 +36,7 @@ func TestCreationJournalPreservesConflict(t *testing.T) {
 			if e != nil {
 				t.Fatal(e)
 			}
-			if e = os.Remove(filepath.Join(s.State, "benches.json")); e != nil {
+			if e = os.Remove(filepath.Join(s.State, "bench.db")); e != nil {
 				t.Fatal(e)
 			}
 			options := Options{Repo: r}

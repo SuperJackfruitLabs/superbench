@@ -114,3 +114,25 @@ The Linux failure/SIGKILL experiment also passed, including automatic registrati
 of the original journaled checkout after interruption. Its raw output is in
 [phase1-failure-output.txt](phase1-failure-output.txt). Temporary staging data was
 removed by the experiment's exit trap. No service was deployed.
+
+
+## SQLite checkpoint
+
+State schema v1 uses pinned modernc.org/sqlite through database/sql, with FULL
+synchronous commits and the existing host-wide lock for filesystem/git mutation.
+Legacy JSON imports on the next successful mutating operation, is retained intact,
+and cannot overwrite SQL records after migration. Status opens SQL read-only and
+does not create absent state directories/files. Future schema versions fail closed.
+
+Formatting, vet, architecture checks, build and race tests passed locally. Added
+checks cover preserved lease tokens on legacy import, rollback, malformed legacy
+migration, future-schema refusal and read-only status. A CGO-disabled Linux binary
+passed the quota/SIGKILL experiment; [sqlite-failure-output.txt](sqlite-failure-output.txt)
+contains its output. A fixture post-receive hook exhausts state only after the
+remote accepts the push, precisely testing push-success/state-save-failure.
+Already-full state can instead prevent SQLite opening; that also fails closed.
+Neither failure releases the holder. All disposable staging data was removed.
+
+Creation journal records remain separate durable intents. SQLite does not yet
+provide writer fencing, supervised execution, quotas or automatic reconciliation
+for partial mirror clones. Those remain Phase 1 implementation work.
