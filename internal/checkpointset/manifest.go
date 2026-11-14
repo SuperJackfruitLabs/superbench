@@ -151,7 +151,16 @@ func validRepository(repository string) bool {
 		if err != nil || parsed.Opaque != "" || strings.ContainsAny(repository, "?#") {
 			return false
 		}
-		switch parsed.Scheme {
+		if strings.HasPrefix(parsed.Host, "[") &&
+			(!strings.Contains(parsed.Hostname(), ":") || net.ParseIP(parsed.Hostname()) == nil) {
+			return false
+		}
+		if port := parsed.Port(); port != "" {
+			if _, err := strconv.ParseUint(port, 10, 16); err != nil {
+				return false
+			}
+		}
+		switch strings.ToLower(parsed.Scheme) {
 		case "http", "https":
 			return parsed.User == nil && parsed.Hostname() != ""
 		case "ssh":
@@ -165,7 +174,9 @@ func validRepository(repository string) bool {
 			}
 			return true
 		case "file":
-			return parsed.User == nil && (parsed.Host == "" || parsed.Host == "localhost") && strings.HasPrefix(parsed.Path, "/")
+			localhost := strings.EqualFold(parsed.Host, "localhost")
+			return parsed.User == nil && (parsed.Host == "" || localhost) &&
+				(strings.HasPrefix(parsed.Path, "/") || parsed.Path == "")
 		default:
 			return false
 		}

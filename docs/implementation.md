@@ -160,6 +160,8 @@ PRs describe their publication history.
   rather than summing member budgets. A failed later source returns no partial
   plan. Mirror preparation and source observation share a bounded member context.
   SQLite file opening is extracted without changing locking or migration policy.
+  Review also aligned URL port bounds and local file URL acceptance with the
+  canonical validator while preserving literal repository identities.
   Durable aggregate creation, quota allocation, setup, leases, checkpoints,
   recovery, archive and v2 service/CLI responses remain to be integrated.
   Native `sh scripts/check.sh` passed, including vet, race tests, installer
