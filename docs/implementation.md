@@ -1,0 +1,48 @@
+# Phase 1: single-host core
+
+The feasibility spike is complete. Implementation starts with the single-host
+Phase 1 core. Phase 0 operational alerts and board rules remain separate work;
+no destructive cleanup is authorized by this implementation plan.
+
+## Sequence and acceptance
+
+1. **Durable creation intent (implemented locally).** Persist and fsync the task,
+   repository, branch, target path and pinned source SHA before creating a
+   worktree. A retry registers only that exact clean checkout. Preserve and reject
+   dirty, changed, unjournaled or conflicting checkouts. Retain intents alongside
+   state; archive/retention cleanup is future work. No filesystem reset/deletion.
+2. **Transactional service storage.** Replace provisional JSON state with SQLite
+   and migrations outside bench data; keep journal semantics and state-failure
+   regressions. Status must be read-only. Define reconciliation for partial mirror
+   clones as well as worktrees; the current journal covers worktree creation only.
+3. **Supervised execution and fencing.** One managed writer, explicit stop/reap
+   before reassignment, no timeout-based takeover. Test crashed parents and living
+   descendants. Direct arbitrary shell writes remain outside this guarantee.
+4. **Host storage management.** Narrow privileged quota helper, budgets for
+   benches/stores/state, low-space admission and setup using existing lockfiles.
+5. **benchd and local CLI.** Local socket API with authenticated holder identity,
+   idempotent operations and recovery, then checkpoint-verified archive/retention.
+6. **Suite pilot.** Charter ownership change and treaty API/event contracts before
+   adapters; one opt-in board and a clean-checkout verification path. No production
+   tag or deployment is part of this local implementation turn.
+
+Phase 2 adds visibility and locality. Phase 3 adds additional hosts and stronger
+isolation. Neither is needed to start the Phase 1 core.
+
+
+## Full implementation scope
+
+The active objective includes every phase in sketchbook's SuperBench proposal.
+A core checkpoint does not constitute completion of a phase or the product.
+
+| Phase | Required outcome | Current evidence |
+|---|---|---|
+| 0 | Host disk alert, reviewed cleanup dry-run, code-stage branch/checkpoint rules | Not implemented by this repository; inspect estate and board settings before changes |
+| 1 | Standalone CLI and host service; durable state/leases; checkpoints/recovery; quotas, shared mirrors/stores; verified archive/reap | CLI and journaled creation tested; service, SQLite, enforced execution and storage budgets pending |
+| 2 | Suite adapters, card panel, locality scoring, witness events; read-only web, file/diff/log/timeline views, terminal attach and MCP | Pending; charter/treaty contracts precede consumers; visual mockups before UI |
+| 3 | Remote editor launch/browser IDE; second-host recovery drill; per-bench isolation; Salaam layout and execution-host integration | Pending |
+
+For each checkpoint: run required checks, commit in this repository, verify remote
+PR state before pushing, and record concrete verification and remaining limits.
+Production tags remain operator-only. Cleanup requires a reviewed dry-run list;
+keep that approval distinct from permission to implement the product.
