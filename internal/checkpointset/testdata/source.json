@@ -1,0 +1,15 @@
+{
+  "repository": "https://forge.superjackfruit.com/SuperJackfruitLabs/treaty",
+  "revision": "250ca4f7d4380cfe236abe577bb4e608fa6fdf46",
+  "status": "proposed checkpoint extension; no suite consumer deployment implied",
+  "files": {
+    "schemas/superbench/checkpoint.v1.json": {
+      "local": "checkpoint.v1.json",
+      "sha256": "9c3dd1f1ffd076ac0c4546b427283c1f439eae7e9a7f750e812f0fc47babe008"
+    },
+    "fixtures/superbench-api/checkpoints.json": {
+      "local": "checkpoints.json",
+      "sha256": "bc1c11ba57c8ccbe7f683108c8866ac0a51bdb7b219e87bd664c033bff7f52ed"
+    }
+  }
+}

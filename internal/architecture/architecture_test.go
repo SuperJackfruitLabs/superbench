@@ -54,6 +54,7 @@ func TestArchitecture(t *testing.T) {
 				"internal/archivepolicy": {"internal/model", "internal/reap", "internal/repository", "internal/setup"},
 				"internal/setup":         {"internal/cachepolicy", "internal/quotapolicy"},
 				"internal/autoarchive":   {"internal/bench", "internal/archivepolicy", "internal/model", "internal/repository", "internal/setup"},
+				"internal/checkpointset": {"internal/model"},
 				"internal/execution":     {"internal/cachepolicy"},
 				"internal/model":         {"internal/execution"},
 				"internal/creation":      {"internal/model", "internal/repository"},

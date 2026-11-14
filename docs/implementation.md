@@ -139,6 +139,12 @@ PRs describe their publication history.
   missing history, uncertain merge state and held/dirty work remain preserved.
   Reviewed reap is still separate. See [automatic archive](automatic-archive.md).
 
+- Multi-repository checkpoint foundation: a pinned complete-vector manifest,
+  durable generation journal, member tag pins and a final remote metadata seal
+  preserve recovery selection across partial pushes. Group creation, execution,
+  lease, release and archive integration remain pending; see
+  [checkpoint generations](checkpoint-generations.md).
+
 ## Remaining retention work
 
 Reviewed log collection and history are implemented in [retention.md](retention.md),
