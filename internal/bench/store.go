@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 )
 
 type Lease struct {
@@ -38,6 +39,7 @@ type Bench struct {
 type Store struct {
 	State, Data        string
 	CgroupRoot         string
+	MirrorTimeout      time.Duration
 	reapAfterDelete    func() error
 	collectAfterDelete func() error
 	executor           executionBackend
@@ -47,6 +49,9 @@ type Store struct {
 type database map[string]*Bench
 
 func (s Store) validate() error {
+	if s.MirrorTimeout < 0 || s.MirrorTimeout > time.Hour {
+		return errors.New("mirror timeout must be between zero (default) and one hour")
+	}
 	for _, p := range []string{s.State, s.Data} {
 		if !filepath.IsAbs(p) {
 			return errors.New("state and data paths must be absolute")

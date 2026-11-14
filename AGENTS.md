@@ -43,3 +43,6 @@
   effects; preserve the lease on failure. Automatic handoffs hold the same lease,
   protect prior-stage logs and require a matching private continuation. Successful
   stop revokes that continuation; never launch a later stage after it.
+- Ordinary acquisition refreshes only remote-tracking branches after validating
+  the registered mirror and checkout identity. Preserve local refs/work; refuse
+  missing or changed mirrors instead of recloning. Repair leases skip refresh.

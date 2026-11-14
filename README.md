@@ -55,6 +55,10 @@ cooperative lease handoff. See [storage management](docs/storage.md)
 for provisioning prerequisites, budgets, compatibility and verification. Existing
 byte-only hosts require the [explicit inode migration](docs/inodes.md).
 
+Ordinary acquisition also [refreshes the shared mirror](docs/mirrors.md),
+preserving the task branch and all local work. Remote failure refuses acquisition;
+the local repair lease remains available for maintenance.
+
 ## Supervised runs
 
 Linux hosts with a delegated cgroup-v2 root can use `bench run` and `bench stop`

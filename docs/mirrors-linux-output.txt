@@ -1,0 +1,66 @@
+....
+----------------------------------------------------------------------
+Ran 4 tests in 0.003s
+
+OK
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/cmd/bench	1.348s
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/cmd/bench-quota	[no test files]
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/cmd/benchd	[no test files]
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/architecture	1.030s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/bench	15.773s
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/client	[no test files]
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/execution	[no test files]
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/history	[no test files]
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage	1.023s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/integration	2.050s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/maintenance	1.139s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/output	1.026s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/protocol	1.032s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/reap	1.046s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/repository	2.406s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/retention	1.313s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/service	2.067s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/setup	1.040s
+PASS: explicit CLI and daemon setup refresh remote tracking while retaining the task HEAD
+PASS: schema-6 state upgrades; old binary refuses; once persists across CLI/daemon and each honors explicit offline environment
+PASS: changed configuration invalidates the successful once receipt
+PASS: failed alternate preparation revokes the prior once receipt before effects; restoring old config reruns once
+PASS: each failure retains a fenced lease and output, records no success, and blocks another setup
+PASS: config mutation during hooks is preserved and refuses a setup success receipt
+PASS: cancellation fences hook descendants, retains the lease and records no successful preparation
+PASS: automatic run and cooperative acquisition refresh remote tracking before preparation
+PASS: automatic run/lease preparation shares ownership, preserves all held logs, and keeps once success after main failure; cooperative handoff retains setup evidence until final release
+PASS: hook-free run/lease acquisition revokes old preparation success before configuration is later restored
+PASS: failed automatic preparation starts neither the requested command nor a cooperative handoff
+PASS: successful administrative stop cancels automatic continuation and fences hook descendants
+PASS: daemon SIGKILL during preparation retains ownership; explicit fencing/release never redispatches the interrupted request
+PASS: failed refresh starts no task and grants no lease; local repair remains usable during a remote outage
+PASS: canceled and expired refresh stop before task/lease creation and never launch the requested command
+DONE: repository setup and automatic preparation integration passed
+PASS: managed payload staged idempotently; fixed sudo policy validates
+PASS: installed systemd settings start an unprivileged daemon
+PASS: service delegation launches, fences, checkpoints and releases a Linux run
+PASS: unprivileged service fences preparation before launching the requested command
+PASS: fixed helper sudo works inside service; policy override remains forbidden
+PASS: stopping service removes its socket and delegated execution tree
+DONE: service installation integration passed
+PASS: managed host config verifies a separate data filesystem and fixed-policy shared caps
+PASS: managed frozen setup, build and warm/offline handoffs work inside project quotas
+PASS: noisy command output is bounded, marked truncated and still checkpointed safely
+/var/tmp/superbench-storage.AwWzZ6/data/benches/first/node_modules/storage-fixture/payload.bin:
+ EXT: FILE-OFFSET      BLOCK-RANGE      TOTAL FLAGS
+   0: [0..8191]:       655560..663751    8192 0x2001
+/var/tmp/superbench-storage.AwWzZ6/data/benches/second/node_modules/storage-fixture/payload.bin:
+ EXT: FILE-OFFSET      BLOCK-RANGE      TOTAL FLAGS
+   0: [0..8191]:       655560..663751    8192 0x2001
+PASS: package clone mutation leaves the other bench intact
+PASS: bench hard cap refuses writes while the shared store stays writable
+PASS: helper refuses escaping keys, writable/symlink policy and allocation-policy drift
+PASS: disabled project enforcement blocks new work until restored
+PASS: quota enforcement is required and total cap reservations reject overcommit
+PASS: interrupted privileged allocation resumes with the same project and reservation
+PASS: interrupted mirror publication is isolated; retry publishes a complete mirror
+PASS: incomplete privileged ledger fails closed without defaulting to fresh allocations
+PASS: filesystem UUID binding survives remount on a different loop device
+PASS: a different filesystem at the same path is refused
+DONE: managed storage integration passed
