@@ -2,9 +2,10 @@
 
 `bench setup` reads `.bench/config.toml` in the registered checkout. Configured
 hooks also run automatically before `run` and before a cooperative `lease` is
-returned. `create` registers the checkout; warming during creation remains
-subsequent work. Existing socket operations use the same implementation and
-request replay protection, without a new request field or operation.
+returned. New CLI `create`/`recover` also perform initial preparation; see
+[creation and recovery](creation.md) for the explicit initialization request and
+legacy cold-request compatibility. Socket operations use the same setup code and
+durable request replay protection.
 
 ```toml
 [setup]
@@ -20,7 +21,7 @@ bench setup --state /absolute/state --data /absolute/data \
 The commands are trusted repository shell code, executed as the service user
 with `/bin/sh -e`. Each command runs in a separate subshell rooted at the
 checkout. An `exit` or `cd` in `once` cannot skip or change the working directory
-of `each`. The usual shared cache environment and output budgets apply. Only
+of `each`. The selected [cache environment](caches.md) and output budgets apply. Only
 Linux cgroup-v2 hosts support fenced setup; cooperative lease/checkpoint commands
 remain available elsewhere.
 
@@ -28,12 +29,13 @@ Configuration is selected inside the lease-acquisition transaction. It must be
 UTF-8, at most 64 KiB, in a physical `.bench` directory with a regular, nonlinked
 `config.toml`; each command is bounded to 16 KiB without NUL. A pinned TOML parser
 rejects duplicate keys, invalid types and unknown fields. Parser errors do not
-echo shell text. The proposed `[caches]`, `[quota]` and `[archive]` settings are
-not implemented here and are rejected rather than silently ignored.
+echo shell text. `[caches]` selects fixed shared or checkout-local paths.
+The proposed `[quota]` and `[archive]` repository settings remain unsupported and
+are rejected rather than silently ignored.
 
 With no configured hooks, setup retains its frozen-lockfile behavior: exactly
-one supported pnpm/npm lockfile, clone imports for pnpm, and the host's shared
-store/cache paths. Missing or ambiguous lockfiles refuse setup. Custom commands
+one supported pnpm/npm lockfile, clone imports for pnpm, and the selected
+store/cache paths (shared by default). Missing or ambiguous lockfiles refuse setup. Custom commands
 own their package-manager flags. For custom hooks, `--offline` exports
 `BENCH_SETUP_OFFLINE=1` (otherwise `0`); it does not rewrite shell text or claim
 network isolation.
@@ -144,8 +146,9 @@ shape and is exercised by the execution failure drill.
 
 The parser is pinned to [go-toml v2.4.3](https://github.com/pelletier/go-toml/releases/tag/v2.4.3)
 in the configuration adapter only. [Creation warm-up](creation.md) is verified
-on Linux. Laptop preparation, cache/quota/archive configuration, suite pilots and
-broader collection remain Phase 1 work.
+on Linux, and [cache selection](caches.md) is implemented. Laptop preparation,
+quota/archive repository configuration, suite pilots and broader collection remain
+Phase 1 work.
 
 Recorded results: [Linux setup and execution failure drills](setup-linux-output.txt)
 and [frozen setup/storage regressions](setup-storage-output.txt).

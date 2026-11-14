@@ -60,11 +60,8 @@ func (s Store) Run(ctx context.Context, key, holder string, args []string, check
 	}
 	prepared := false
 	digest := ""
-	first, e := s.runStage(ctx, key, holder, args, checkpoint, func(b *Bench, tx *sql.Tx) ([]string, func(*sql.Tx, string) error, error) {
-		c, e := setup.Read(b.Path)
-		if e != nil {
-			return nil, nil, e
-		}
+	first, e := s.runStage(ctx, key, holder, args, checkpoint, func(b *Bench, tx *sql.Tx, configuration *setup.Config) ([]string, func(*sql.Tx, string) error, error) {
+		c := configuration
 		if c == nil || !c.Hooks() {
 			return args, nil, setup.Invalidate(tx, key)
 		}
@@ -75,8 +72,8 @@ func (s Store) Run(ctx context.Context, key, holder string, args []string, check
 	if e != nil || !prepared {
 		return first, e
 	}
-	result, e := s.runStage(ctx, key, holder, args, checkpoint, func(b *Bench, _ *sql.Tx) ([]string, func(*sql.Tx, string) error, error) {
-		return args, nil, setup.Verify(b.Path, digest)
+	result, e := s.runStage(ctx, key, holder, args, checkpoint, func(b *Bench, _ *sql.Tx, configuration *setup.Config) ([]string, func(*sql.Tx, string) error, error) {
+		return args, nil, setup.Match(configuration, digest)
 	}, stageOptions{prior: permit(first.Bench)})
 	if result == nil {
 		return first, e
@@ -103,8 +100,8 @@ func (s Store) LeaseContext(ctx context.Context, key, holder string) (*Bench, er
 		return b, e
 	}
 	preparing := true
-	r, e := s.runStage(ctx, key, holder, nil, false, func(b *Bench, tx *sql.Tx) ([]string, func(*sql.Tx, string) error, error) {
-		if e := setup.Verify(b.Path, c.Digest); e != nil {
+	r, e := s.runStage(ctx, key, holder, nil, false, func(b *Bench, tx *sql.Tx, configuration *setup.Config) ([]string, func(*sql.Tx, string) error, error) {
+		if e := setup.Match(configuration, c.Digest); e != nil {
 			return nil, nil, e
 		}
 		return s.configuredSetup(b, tx, c, false)

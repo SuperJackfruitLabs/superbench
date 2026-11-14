@@ -55,7 +55,8 @@ Linux hosts can configure a dedicated XFS data mount with per-bench and shared
 byte/inode caps, fixed-policy root allocation, free-space admission and bounded run logs.
 `bench setup` supports frozen pnpm/npm installs and explicit repository
 [once/each setup hooks](docs/setup.md), automatically honored before runs and
-cooperative lease handoff. See [storage management](docs/storage.md)
+cooperative lease handoff. Repository [cache settings](docs/caches.md) select
+shared or checkout-local stores for managed commands. See [storage management](docs/storage.md)
 for provisioning prerequisites, budgets, compatibility and verification. Existing
 byte-only hosts require the [explicit inode migration](docs/inodes.md).
 

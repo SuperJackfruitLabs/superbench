@@ -3,25 +3,23 @@ package bench
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/cachepolicy"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/execution"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/setup"
 )
 
 func (s Store) Setup(ctx context.Context, key, holder string, offline bool) (*RunResult, error) {
-	return s.run(ctx, key, holder, nil, true, func(b *Bench, tx *sql.Tx) ([]string, func(*sql.Tx, string) error, error) {
-		return s.setupPlan(b, tx, offline)
+	return s.run(ctx, key, holder, nil, true, func(b *Bench, tx *sql.Tx, c *setup.Config) ([]string, func(*sql.Tx, string) error, error) {
+		return s.setupPlan(b, tx, c, offline)
 	})
 }
-func (s Store) setupPlan(b *Bench, tx *sql.Tx, offline bool) ([]string, func(*sql.Tx, string) error, error) {
-	c, e := setup.Read(b.Path)
-	if e != nil {
-		return nil, nil, e
-	}
+func (s Store) setupPlan(b *Bench, tx *sql.Tx, c *setup.Config, offline bool) ([]string, func(*sql.Tx, string) error, error) {
 	if c == nil || !c.Hooks() {
-		if e = setup.Invalidate(tx, b.Key); e != nil {
+		if e := setup.Invalidate(tx, b.Key); e != nil {
 			return nil, nil, e
 		}
-		args, e := s.setupCommand(b.Path, offline)
+		args, e := setup.FrozenCommandFor(b.Path, cachepolicy.Select(s.Data, b.Path, c.CacheSettings()), offline)
 		return args, nil, e
 	}
 	return s.configuredSetup(b, tx, c, offline)
@@ -52,3 +50,17 @@ func (s Store) setupCommand(path string, offline bool) ([]string, error) {
 	return setup.FrozenCommand(path, s.Data, offline)
 }
 func (s Store) cacheEnvironment(env []string) []string { return execution.Environment(s.Data, env) }
+
+func (s Store) cacheEnvironmentFor(b *Bench, c *setup.Config, env []string) ([]string, error) {
+	if c.CacheSettings().Private() {
+		tracked, e := git(b.Path, "ls-files", "--", ".bench/cache")
+		if e != nil || tracked != "" {
+			return nil, errors.New("checkout-local cache namespace must be untracked and Git-readable")
+		}
+	}
+	paths, e := cachepolicy.Prepare(s.Data, b.Path, c.CacheSettings())
+	if e != nil {
+		return nil, e
+	}
+	return execution.EnvironmentFor(paths, env), nil
+}

@@ -1,23 +1,33 @@
 package execution
 
 import (
-	"path/filepath"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/cachepolicy"
 	"strings"
 )
 
 func Environment(data string, env []string) []string {
+	return EnvironmentFor(cachepolicy.Select(data, "", cachepolicy.Settings{}), env)
+}
+
+func EnvironmentFor(paths cachepolicy.Paths, env []string) []string {
 	overrides := map[string]string{
-		"npm_config_cache":         filepath.Join(data, "store", "npm"),
-		"BUN_INSTALL_CACHE_DIR":    filepath.Join(data, "store", "bun"),
-		"PLAYWRIGHT_BROWSERS_PATH": filepath.Join(data, "store", "playwright"),
-		"GOCACHE":                  filepath.Join(data, "store", "go-build"),
-		"GOMODCACHE":               filepath.Join(data, "store", "go-mod"),
+		"npm_config_cache":                 paths.Npm,
+		"npm_config_store_dir":             paths.Pnpm,
+		"npm_config_package_import_method": "clone",
+		"BUN_INSTALL_CACHE_DIR":            paths.Bun,
+		"PLAYWRIGHT_BROWSERS_PATH":         paths.Playwright,
+		"GOCACHE":                          paths.GoBuild,
+		"GOMODCACHE":                       paths.GoMod,
 	}
 	clean := commandEnvironment(env)
 	var result []string
 	for _, v := range clean {
 		key, _, _ := strings.Cut(v, "=")
-		if _, replace := overrides[key]; !replace {
+		if strings.HasPrefix(strings.ToLower(key), "npm_config_") {
+			key = strings.ToLower(key)
+		}
+		_, replace := overrides[key]
+		if !replace {
 			result = append(result, v)
 		}
 	}

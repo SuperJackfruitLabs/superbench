@@ -84,6 +84,23 @@ assert git(remote,'rev-parse','refs/heads/'+warm['Branch'])==warm['Checkpoint']
 initial=cli('history','warm-create')
 assert len(initial)==1 and initial[0]['ExitCode']==0 and not initial[0]['ReleasedAt'].startswith('0001-')
 print('PASS: warm creation selects frozen setup without hooks, installs under its quota and confirms the remote checkpoint before release',flush=True)
+(seed/'.bench').mkdir()
+(seed/'.bench/config.toml').write_text('[caches]\npnpm=false\n')
+(seed/'.gitignore').write_text('node_modules/\nbuild.out\n.bench/cache/\n')
+git(seed,'add','.');git(seed,'-c','user.name=Test','-c','user.email=test@example.invalid','commit','-m','private pnpm cache');git(seed,'push','origin','main')
+private=cli('create','--repo',remote,'private-cache')
+private_store=Path(private['Path'])/'.bench/cache/pnpm'
+assert private.get('Lease') is None and private_store.is_dir()
+assert (Path(private['Path'])/'node_modules/storage-fixture/payload.bin').read_bytes()==payload
+with (private_store/'quota-probe').open('wb',buffering=0) as output:
+ try:
+  for _ in range(32):output.write(b'x'*(1<<20))
+ except OSError as e:assert e.errno in (errno.ENOSPC,errno.EDQUOT),e
+ else:raise AssertionError('private cache escaped its bench quota')
+(private_store/'quota-probe').unlink()
+(data/'store/private-isolation-probe').write_bytes(b'y'*(1<<20))
+print('PASS: private frozen pnpm setup uses a checkout-local store; that cache reaches its bench cap while shared storage remains writable',flush=True)
+
 noisy=cli('run','--holder','noisy-command','first','--','sh','-c','head -c 2097152 /dev/zero')
 assert noisy['LogTruncated'] and Path(noisy['Execution']['Log']).stat().st_size<=1<<20
 assert noisy['Bench'].get('Lease') is None

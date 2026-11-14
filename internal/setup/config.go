@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/cachepolicy"
 	"io"
 	"os"
 	"strings"
@@ -18,11 +19,19 @@ import (
 const MaxConfig = 64 << 10
 
 type Config struct {
-	Setup struct {
+	Caches cachepolicy.Settings `toml:"caches"`
+	Setup  struct {
 		Once string `toml:"once"`
 		Each string `toml:"each"`
 	} `toml:"setup"`
 	Digest string `toml:"-"`
+}
+
+func (c *Config) CacheSettings() cachepolicy.Settings {
+	if c == nil {
+		return cachepolicy.Settings{}
+	}
+	return c.Caches
 }
 
 // Read never follows the configuration directory/file outside the checkout.
@@ -113,6 +122,11 @@ func Verify(path, digest string) error {
 	if e != nil {
 		return e
 	}
+	return Match(c, digest)
+}
+
+// Match binds handoff validation to the same parsed configuration used for cache paths.
+func Match(c *Config, digest string) error {
 	if c == nil || c.Digest != digest {
 		return errors.New("setup config changed during execution; success receipt not recorded")
 	}

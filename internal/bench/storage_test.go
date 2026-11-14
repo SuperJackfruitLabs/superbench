@@ -152,7 +152,7 @@ func TestSetupRequiresFrozenUnambiguousLockfile(t *testing.T) {
 		t.Fatal("ambiguous lockfiles accepted")
 	}
 	env := s.cacheEnvironment([]string{"npm_config_cache=/other", "BENCH_LEASE_TOKEN=private"})
-	if len(env) != 5 {
+	if len(env) != 7 {
 		t.Fatal("duplicate override or leaked token", env)
 	}
 }

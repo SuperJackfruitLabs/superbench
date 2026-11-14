@@ -47,3 +47,8 @@
 - Ordinary acquisition refreshes only remote-tracking branches after validating
   the registered mirror and checkout identity. Preserve local refs/work; refuse
   missing or changed mirrors instead of recloning. Repair leases skip refresh.
+
+- Repository cache settings choose fixed shared or checkout-local paths, never
+  arbitrary paths or larger quota caps. Preserve the repository's ignore rules;
+  untracked private output must retain its stopped lease rather than being hidden
+  or deleted. Command selection and cache environment use the same parsed config.
