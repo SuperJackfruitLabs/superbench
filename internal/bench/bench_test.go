@@ -18,6 +18,17 @@ func g(t *testing.T, dir string, args ...string) string {
 func fixture(t *testing.T) (Store, string) {
 	t.Helper()
 	r := t.TempDir()
+	t.Cleanup(func() {
+		_ = filepath.WalkDir(r, func(path string, d os.DirEntry, e error) error {
+			if e != nil {
+				return e
+			}
+			if d.IsDir() {
+				return os.Chmod(path, 0700)
+			}
+			return nil
+		})
+	})
 	remote := filepath.Join(r, "remote.git")
 	seed := filepath.Join(r, "seed")
 	g(t, r, "init", "--bare", remote)

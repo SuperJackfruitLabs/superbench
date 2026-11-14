@@ -9,13 +9,14 @@ import (
 // Plan is a local administrative approval, not a socket API message. The
 // optional final field preserves v1 journal digests while v2 pins the deadline.
 type Plan struct {
-	Version    string
-	Key        string
-	Path       string
-	Checkpoint string
-	Tree       Tree
-	Digest     string
-	ReapAfter  string `json:",omitempty"`
+	Version      string
+	Key          string
+	Path         string
+	Checkpoint   string
+	Tree         Tree
+	Digest       string
+	ReapAfter    string `json:",omitempty"`
+	FreezeDigest string `json:",omitempty"`
 }
 
 func (p Plan) DigestValue() (string, error) {

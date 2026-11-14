@@ -15,7 +15,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const schemaVersion = 9
+const schemaVersion = 10
 
 type reader interface {
 	Query(string, ...any) (*sql.Rows, error)
@@ -70,7 +70,7 @@ func validRecords(records database) error {
 	}
 	for key, b := range records {
 		if b != nil {
-			if e := archivepolicy.Validate(b.ArchivedAt, b.ReapAfter); e != nil {
+			if e := archivepolicy.ValidateArchive(b); e != nil {
 				return e
 			}
 		}
@@ -121,7 +121,7 @@ func (s Store) migrate(tx *sql.Tx) error {
 	if version == schemaVersion {
 		return nil
 	}
-	if version == 1 || version == 2 || version == 3 || version == 4 || version == 5 || version == 6 || version == 7 || version == 8 {
+	if version == 1 || version == 2 || version == 3 || version == 4 || version == 5 || version == 6 || version == 7 || version == 8 || version == 9 {
 		records, err := loadRecords(tx)
 		if err != nil {
 			return err
@@ -157,7 +157,7 @@ func (s Store) migrate(tx *sql.Tx) error {
 		if err = setup.Schema(tx); err != nil {
 			return err
 		}
-		_, err = tx.Exec("PRAGMA user_version=9")
+		_, err = tx.Exec("PRAGMA user_version=10")
 		return err
 	}
 	if version != 0 {
@@ -191,7 +191,7 @@ func (s Store) migrate(tx *sql.Tx) error {
 	if err = setup.Schema(tx); err != nil {
 		return err
 	}
-	_, err = tx.Exec("PRAGMA user_version=9")
+	_, err = tx.Exec("PRAGMA user_version=10")
 	return err
 }
 func loadRecords(r reader) (database, error) {

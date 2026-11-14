@@ -218,7 +218,7 @@ func run(args []string) error {
 		return fmt.Errorf("unknown command %q", args[0])
 	}
 	if err != nil {
-		if (args[0] == "run" || args[0] == "setup" || args[0] == "lease" || args[0] == "create" || args[0] == "recover") && out != nil {
+		if (args[0] == "run" || args[0] == "setup" || args[0] == "lease" || args[0] == "archive" || args[0] == "create" || args[0] == "recover") && out != nil {
 			if e := json.NewEncoder(os.Stdout).Encode(out); e != nil {
 				return e
 			}

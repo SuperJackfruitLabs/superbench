@@ -1,0 +1,109 @@
+Read-only archive verification, 2026-11-15
+Disposable files, Git remotes, mount namespace and unique service account only.
+No production bench, policy or service changed.
+Prior CLI revisions: ec96e2998570288aa9653cfc58076b58c3d8e2eb (schema 8),
+4d9257d783799aeffbcf286b5a8e4570d15ced62 (schema 9).
+Candidate: feat/read-only-archives, state schema 10, reap v3.
+
+readonly-check.log
+....
+----------------------------------------------------------------------
+Ran 4 tests in 0.003s
+
+OK
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/cmd/bench	1.473s
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/cmd/bench-quota	[no test files]
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/cmd/benchd	[no test files]
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/architecture	1.029s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/archivepolicy	1.015s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/bench	15.992s
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/client	[no test files]
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/creation	[no test files]
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/execution	[no test files]
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/history	[no test files]
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage	1.018s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/integration	4.432s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/maintenance	1.139s
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model	[no test files]
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/output	1.020s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/protocol	1.028s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/reap	1.149s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/repository	2.428s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/retention	1.266s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/service	1.962s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/setup	1.040s
+
+readonly-permissions.log
+PASS: schema-9 archives require explicit read-only conversion, preserve the deadline and reject unstarted v2 approvals
+PASS: SIGKILL after a real permission change retains a pending archive, blocks writers/plans and resumes only the original tree
+PASS: SIGKILL after directory thaw retains exact deletion approval; new files are preserved and the same reviewed intent resumes
+
+readonly-v1.log
+PASS: schema-8 SIGKILL leaves a genuine superbench.reap.v1 intent; schema-10 migration resumes exact approval and preserves replay/downgrade guards
+PASS: default seven-day grace, pre-effect rejection, immutable retry deadline and forged-plan rejection preserve checkout/artifacts
+PASS: explicit zero grace still requires an exact reviewed v3 manifest; schema 10 is persisted
+
+readonly-v2.log
+PASS: schema-9 SIGKILL leaves a genuine superbench.reap.v2 intent; schema-10 migration resumes exact approval and preserves replay/downgrade guards
+PASS: default seven-day grace, pre-effect rejection, immutable retry deadline and forged-plan rejection preserve checkout/artifacts
+PASS: explicit zero grace still requires an exact reviewed v3 manifest; schema 10 is persisted
+
+readonly-service.log
+PASS: managed payload staged idempotently; fixed sudo policy validates
+PASS: installed systemd settings start an unprivileged daemon
+PASS: unprivileged service warms creation before returning readiness
+PASS: service delegation launches, fences, checkpoints and releases a Linux run
+PASS: unprivileged service fences preparation before launching the requested command
+PASS: fixed helper sudo works inside service; policy override remains forbidden
+PASS: stopping service removes its socket and delegated execution tree
+PASS: archived files and directories reject writes under the real unprivileged service uid
+PASS: the unprivileged service owner reopens only approved directories and completes reviewed deletion
+DONE: service installation integration passed
+
+readonly-xfs.log
+PASS: same-filesystem nested bind mount is refused without deleting its contents
+PASS: explicit approval required; open unlinked data retains quota until close; retry retires project
+PASS: zero-block open inode independently prevents reservation release
+PASS: wrong project IDs and symlink targets refuse privileged empty-directory retirement
+PASS: previous binaries refuse archive schema and retired-project ledger
+PASS: SIGKILL after quota retirement retains approval; retry finalizes only once; checkpoint recovers
+DONE: managed archive/reap integration passed
+
+Native macOS: superbench-readonly-macos-check.log
+....
+----------------------------------------------------------------------
+Ran 4 tests in 0.007s
+
+OK
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/cmd/bench	3.506s
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/cmd/bench-quota	[no test files]
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/cmd/benchd	[no test files]
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/architecture	1.299s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/archivepolicy	1.296s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/bench	40.936s
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/client	[no test files]
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/creation	[no test files]
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/execution	[no test files]
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/history	[no test files]
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/integration	10.679s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/maintenance	1.609s
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model	[no test files]
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/output	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/protocol	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/reap	1.389s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/repository	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/retention	1.456s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/service	2.660s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/setup	(cached)
+
+Native macOS: superbench-readonly-macos-runtime.log
+PASS: schema-9 archives require explicit read-only conversion, preserve the deadline and reject unstarted v2 approvals
+PASS: SIGKILL after a real permission change retains a pending archive, blocks writers/plans and resumes only the original tree
+PASS: SIGKILL after directory thaw retains exact deletion approval; new files are preserved and the same reviewed intent resumes
+
+Native macOS: superbench-readonly-macos-grace.log
+PASS: schema-9 SIGKILL leaves a genuine superbench.reap.v2 intent; schema-10 migration resumes exact approval and preserves replay/downgrade guards
+PASS: default seven-day grace, pre-effect rejection, immutable retry deadline and forged-plan rejection preserve checkout/artifacts
+PASS: explicit zero grace still requires an exact reviewed v3 manifest; schema 10 is persisted
+

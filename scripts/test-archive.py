@@ -63,6 +63,7 @@ def archived(key):
     token=lease["Lease"]["Token"]
     cli("checkpoint","--token",token,key);cli("release","--token",token,key)
     build=Path(b["Path"]) / "build";build.mkdir();(build / "artifact").write_bytes(b"x"*(2<<20))
+    if key=="inode-only": (build / "empty").touch()
     b=cli("archive","--archive-grace","0s",key)
     plan=cli("plan-reap",key);planfile=root / (key+".json");planfile.write_text(json.dumps(plan));planfile.chmod(0o600)
     return b,plan,planfile
@@ -105,7 +106,7 @@ print("PASS: explicit approval required; open unlinked data retains quota until 
 
 # A zero-byte open file proves the inode guard independently of block usage.
 inode_bench,inode_plan,inode_file=archived("inode-only")
-empty=Path(inode_bench["Path"]) / "build/empty";empty.touch()
+empty=Path(inode_bench["Path"]) / "build/empty"
 inode_plan=cli("plan-reap","inode-only");inode_file.write_text(json.dumps(inode_plan))
 with empty.open("rb") as held:
     failed=run(reap_args("inode-only",inode_plan,inode_file))

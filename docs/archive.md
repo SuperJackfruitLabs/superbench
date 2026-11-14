@@ -1,7 +1,9 @@
 # Archive and reviewed reap
 
 Archive records a released, clean, remote-confirmed task checkout as unavailable
-for new leases/runs. It preserves all files, including ignored build artifacts.
+for new leases/runs. It preserves all files, including ignored build artifacts,
+and removes write permission from regular files and directories after saving a
+durable permission intent. Symlinks are preserved without changing their targets.
 A persisted grace deadline blocks new deletion intents for seven days by default.
 After that deadline, reap removes only the files in an explicitly reviewed plan. Neither operation is
 a time-based lease takeover or an automatic card-completion policy.
@@ -47,12 +49,30 @@ supplied. There is no reap flag to override it. You can inspect a plan during th
 grace period; an early reap is refused before publishing an approval journal or
 removing files. A new plan binds the persisted deadline into its `Digest`.
 
+The first archive saves `ArchiveFreezeDigest` before changing any permissions.
+`ArchiveFrozenAt` is saved only after the whole original tree has the intended
+modes and the checkpoint is revalidated. A crash in between leaves a pending
+archive: new acquisition and deletion planning stay blocked. Repeating archive
+uses the same retained intent and accepts only the original bytes/identities with
+either their original mode or the exact removal of write bits. New, replaced or
+changed entries stop the retry and are preserved for operator review. It never
+moves or auto-commits unknown work.
+
+Regular files with multiple hard links are refused before the transition; changing
+their mode could affect another checkout or shared store. Use cloned imports and
+review existing links explicitly. The bounded permission journal stays outside
+bench data and is retained independently from checkout deletion. Permission and
+content changes after completion also prevent a fresh reap plan from silently
+adopting a different archive.
+
 The clock boundary uses the host's UTC clock. This is not protection against an
 operator changing that clock or private state, nor is it permission to expire a
 lease. Deadline passage alone does not schedule deletion. Automatic completion/
-merged-branch archive and read-only filesystem enforcement remain unfinished:
-archive currently prevents SuperBench acquisition but does not remove filesystem
-write permission from the trusted owner or other existing processes.
+merged-branch archive remains unfinished. The permission boundary is cooperative:
+ordinary writes through the archived tree are refused, while the trusted owner
+can deliberately chmod it and root can bypass mode bits. Already-open writable
+handles are not revoked. Stop those writers before archive; this is not uid or
+mount isolation.
 
 ## Review and approve deletion
 
@@ -88,8 +108,9 @@ The CLI requires both the bounded JSON plan and matching digest. Duplicate JSON
 fields, trailing documents, invalid UTF-8 and unknown plan fields are refused. The engine checks
 that the entire current snapshot still matches, then fsyncs an approval journal
 outside bench data and commits its reaping intent before deleting files. State
-schema 9 makes earlier binaries refuse this archive policy. New plans use
-`superbench.reap.v2` and bind `ReapAfter`; a changed deadline invalidates approval. Reap never resets a dirty
+schema 10 makes earlier binaries refuse this archive policy. New plans use
+`superbench.reap.v3` and bind both `ReapAfter` and `FreezeDigest`; a changed
+deadline or permission intent invalidates approval. Reap never resets a dirty
 checkout to make its checks succeed. The current stopped/released-writer boundary
 remains cooperative for processes launched outside SuperBench; stop those writers
 before approving a plan. This is not uid/mount isolation against a hostile writer.
@@ -99,21 +120,30 @@ before approving a plan. This is not uid/mount isolation against a hostile write
 Stop active supervised executions with the installed binary before upgrading;
 the existing migration guard refuses an active old supervisor. Read-only status
 does not migrate. Use the new CLI's `migrate` command or a mutating operation to
-upgrade to schema 9. Existing archives without deadlines receive seven days from
+upgrade to schema 10. Existing archives without deadlines receive seven days from
 their original archive timestamp, so an already-old archive is not reset to a
 new seven-day clock. Invalid timestamps refuse migration.
 
-An unstarted v1 plan needs a fresh v2 review after upgrade. A v1 deletion intent
-already committed in the old state may resume only with its exact saved journal
+Existing archives without a completed permission intent require an explicit
+repeat of `archive` before a new deletion plan can be made. That converts the
+verified checkout to read-only without changing its original grace deadline.
+Migration itself does not chmod old checkouts.
+
+An unstarted v1/v2 plan needs a fresh v3 review after upgrade. A v1/v2 deletion
+intent already committed in the old state may resume only with its exact saved journal
 and digest. That exception preserves recovery of already-approved partial deletion;
-it does not admit a fresh v1 approval. New or changed files still stop that retry,
+it does not admit a fresh older-version approval. New or changed files still stop that retry,
 and a completed retained intent remains idempotent. Earlier binaries refuse the
 new state rather than ignoring its deadline.
 
 ## Retry, quota and evidence
 
 After interruption, keep the same plan and digest. Only unchanged **remaining**
-entries from that durable approval may be removed. New, replaced, edited or special
+entries from that durable approval may be removed. For a v3 frozen tree, only
+approved directories gain owner-write permission after the deletion intent is
+saved. Regular files stay read-only and are unlinked through those directories.
+A crash during reopening permits only that exact owner-write bit on retry;
+changed bytes, other modes or new entries still stop deletion. New, replaced, edited or special
 files stop deletion and remain for review. A partially deleted checkout cannot
 silently acquire a fresh lease. The retained branch/checkpoint and approval record
 remain visible. A successful reap retains a tombstone with archive/reap timestamps
@@ -163,3 +193,12 @@ retry, forged deadlines, explicit zero grace and downgrade refusal. Race tests
 cover the exact expiry boundary, malformed/missing timestamps, migration from the
 original time, rejection of fresh v1 approvals and preservation of new files on
 an old-intent retry.
+
+Read-only archive results: [archive-permissions-output.txt](archive-permissions-output.txt).
+`test-archive-permissions.py` converts a published schema-9 archive, SIGKILLs a
+new archive after an actual mode change across a 4,096-file tree, and separately
+kills an approved reap after directory reopening. Both resume their original
+intents; new work after the latter crash is preserved. The unprivileged systemd
+installation drill supplies positive read access and path-specific kernel write
+refusals, then completes reviewed deletion as that same uid. The required race
+suite and real crash drills also passed natively on macOS.

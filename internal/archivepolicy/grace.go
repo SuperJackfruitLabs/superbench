@@ -2,10 +2,34 @@
 package archivepolicy
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
 	"time"
 )
+
+func ValidateArchive(b *model.Bench) error {
+	if e := Validate(b.ArchivedAt, b.ReapAfter); e != nil {
+		return e
+	}
+	if b.ArchiveFreezeDigest != "" {
+		if decoded, e := hex.DecodeString(b.ArchiveFreezeDigest); e != nil || len(decoded) != 32 || b.ArchivedAt == "" {
+			return errors.New("invalid archive permission digest")
+		}
+	}
+	if b.ArchiveFrozenAt != "" {
+		at, e := time.Parse(time.RFC3339Nano, b.ArchiveFrozenAt)
+		start, _ := time.Parse(time.RFC3339Nano, b.ArchivedAt)
+		if e != nil || at.IsZero() || at.Before(start) || b.ArchiveFreezeDigest == "" {
+			return errors.New("invalid archive permission completion")
+		}
+	}
+	if b.ReapingDigest != "" && b.ArchiveFreezeDigest != "" && b.ArchiveFrozenAt == "" {
+		return errors.New("deletion intent precedes archive permission completion")
+	}
+	return nil
+}
 
 const DefaultGrace = 7 * 24 * time.Hour
 const MaxGrace = 365 * 24 * time.Hour
