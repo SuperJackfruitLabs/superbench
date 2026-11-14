@@ -13,8 +13,9 @@
 - Run `sh scripts/check.sh` before publishing. External runtime imports are the pinned SQLite driver in storage adapters and
   x/sys/unix in the macOS peer-credential adapter and the pinned TOML parser only
   in internal/setup/config.go. Protocol/client/service layers
-  follow the edges in the architecture test; the engine never imports the service. The reap layer only snapshots/verifies
-  approved directory entries; the engine owns lifecycle and intent authority.
+  follow the edges in the architecture test; the engine never imports the service. The reap layer owns filesystem snapshots,
+  verified permission transitions and deletion of approved entries; the engine
+  owns lifecycle and durable intent authority.
 
 - Linux payloads live in deploy/linux. The installer stages files, preserves changed
   configuration and never starts/enables a service. Managed sudo permits only the

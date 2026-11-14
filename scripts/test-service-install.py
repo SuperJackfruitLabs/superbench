@@ -157,6 +157,25 @@ def main():
         assert not sock.exists()
         assert not service_cgroup.exists()
         print("PASS: stopping service removes its socket and delegated execution tree", flush=True)
+        local_cli = ["runuser", "-u", name, "--", str(image / "usr/local/bin/bench")]
+        archive = command(*local_cli, "archive", "--state", str(state / "state"), "--data", str(data), "--archive-grace", "0s", "task")
+        archived = json.loads(archive.stdout)
+        assert archived["ArchiveFrozenAt"] and archived["ArchiveFreezeDigest"]
+        readable = command("runuser", "-u", name, "--", "python3", "-c", "from pathlib import Path; import sys; print(Path(sys.argv[1]).read_text(), end='')", str(data / "benches/task/file"), cwd=base)
+        assert readable.stdout == b"base\n"
+        for path in (data / "benches/task/file", data / "benches/task/new-file"):
+            attempt = subprocess.run(["runuser", "-u", name, "--", "python3", "-c", "from pathlib import Path; import sys; Path(sys.argv[1]).write_text('forbidden')", str(path)], capture_output=True, cwd=base)
+            assert attempt.returncode != 0 and b"PermissionError" in attempt.stderr and str(path).encode() in attempt.stderr
+        print("PASS: archived files and directories reject writes under the real unprivileged service uid", flush=True)
+        plan = json.loads(command(*local_cli, "plan-reap", "--state", str(state / "state"), "--data", str(data), "task").stdout)
+        approved = base / "reap-plan.json"
+        approved.write_text(json.dumps(plan))
+        os.chown(approved, uid, gid)
+        approved.chmod(0o600)
+        assert plan["Version"] == "superbench.reap.v3"
+        command(*local_cli, "reap", "--state", str(state / "state"), "--data", str(data), "--plan", str(approved), "--approve", plan["Digest"], "task")
+        assert not (data / "benches/task").exists()
+        print("PASS: the unprivileged service owner reopens only approved directories and completes reviewed deletion", flush=True)
         print("DONE: service installation integration passed", flush=True)
     except Exception:
         if unit.exists():

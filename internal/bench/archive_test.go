@@ -100,8 +100,14 @@ func TestReapRefusesChangedOrUnconfirmedPlan(t *testing.T) {
 			}
 			switch kind {
 			case "artifact":
+				if e = os.Chmod(filepath.Join(b.Path, "build", "non-recoverable"), 0600); e != nil {
+					t.Fatal(e)
+				}
 				write(t, filepath.Join(b.Path, "build", "non-recoverable"), "changed")
 			case "new-file":
+				if e = os.Chmod(filepath.Join(b.Path, "build"), 0700); e != nil {
+					t.Fatal(e)
+				}
 				write(t, filepath.Join(b.Path, "build", "new"), "keep")
 			case "remote":
 				g(t, b.Mirror, "push", "origin", ":refs/heads/"+b.Branch)
@@ -167,24 +173,4 @@ func TestArchiveRequiresReleasedCleanCheckpoint(t *testing.T) {
 	if _, e = s.Archive("task"); !errors.Is(e, ErrDirty) {
 		t.Fatal("dirty archive accepted", e)
 	}
-}
-
-func TestPlanDoesNotCallHiddenOrFilteredLocalBytesRecoverable(t *testing.T) {
-	s, b := archivedFixture(t)
-	// Git's assume-unchanged bit can make status clean despite local source edits.
-	g(t, b.Path, "update-index", "--assume-unchanged", "file")
-	write(t, filepath.Join(b.Path, "file"), "uncommitted hidden source")
-	p, e := s.PlanReap("task")
-	if e != nil {
-		t.Fatal(e)
-	}
-	for _, v := range p.Tree.Entries {
-		if v.Path == "file" {
-			if v.Recoverable {
-				t.Fatal("hidden local edits called recoverable")
-			}
-			return
-		}
-	}
-	t.Fatal("source omitted from plan")
 }

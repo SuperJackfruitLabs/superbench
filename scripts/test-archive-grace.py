@@ -18,7 +18,7 @@ import time
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--bench", required=True)
-    parser.add_argument("--old-bench", required=True, help="published schema-8 CLI")
+    parser.add_argument("--old-bench", required=True, help="published schema-8 or schema-9 CLI")
     args = parser.parse_args()
     root = Path(tempfile.mkdtemp(prefix="sb-archive-grace-"))
     state, data = root / "state", root / "data"
@@ -68,9 +68,14 @@ def main():
         # Capture a genuine v1 journal committed by the old CLI, then SIGKILL
         # after it removed approved data but before registration/finalization.
         previous = prepare(args.old_bench, "legacy")
-        cli(args.old_bench, "archive", "legacy")
+        with sqlite3.connect(state / "bench.db") as db:
+            old_version = db.execute("PRAGMA user_version").fetchone()[0]
+        if old_version >= 9:
+            cli(args.old_bench, "archive", "--archive-grace", "0s", "legacy")
+        else:
+            cli(args.old_bench, "archive", "legacy")
         old_plan, old_file = plan_file(args.old_bench, "legacy")
-        assert old_plan["Version"] == "superbench.reap.v1"
+        assert old_plan["Version"] in ("superbench.reap.v1", "superbench.reap.v2")
         marker = root / "retirement-ready"
         wrapper = root / "wrapper"
         wrapper.mkdir()
@@ -97,7 +102,7 @@ def main():
         assert result["ReapedAt"]
         assert cli(args.bench, "reap", "--plan", old_file, "--approve", old_plan["Digest"], "legacy")["ReapedAt"] == result["ReapedAt"]
         assert run(command(args.old_bench, "status")).returncode != 0
-        print("PASS: schema-8 SIGKILL leaves a genuine v1 intent; schema-9 migration resumes that exact approved deletion and preserves replay/downgrade guards", flush=True)
+        print(f"PASS: schema-{old_version} SIGKILL leaves a genuine {old_plan['Version']} intent; schema-10 migration resumes exact approval and preserves replay/downgrade guards", flush=True)
 
         b = prepare(args.bench, "retained")
         for duration in ("-1s", "8760h1s"):
@@ -123,15 +128,17 @@ def main():
         prepare(args.bench, "explicit-zero")
         cli(args.bench, "archive", "--archive-grace", "0s", "explicit-zero")
         plan, file = plan_file(args.bench, "explicit-zero")
-        assert plan["Version"] == "superbench.reap.v2" and plan["ReapAfter"]
+        assert plan["Version"] == "superbench.reap.v3" and plan["ReapAfter"]
         assert cli(args.bench, "reap", "--plan", file, "--approve", plan["Digest"], "explicit-zero")["ReapedAt"]
         with sqlite3.connect(state / "bench.db") as db:
-            assert db.execute("PRAGMA user_version").fetchone()[0] == 9
-        print("PASS: explicit zero grace still requires an exact reviewed v2 manifest; schema 9 is persisted", flush=True)
+            assert db.execute("PRAGMA user_version").fetchone()[0] == 10
+        print("PASS: explicit zero grace still requires an exact reviewed v3 manifest; schema 10 is persisted", flush=True)
     finally:
         if process is not None and process.poll() is None:
             os.killpg(process.pid, signal.SIGKILL)
             process.communicate(timeout=10)
+        for directory, _, _ in os.walk(root, topdown=True):
+            os.chmod(directory, 0o700)
         shutil.rmtree(root)
 
 

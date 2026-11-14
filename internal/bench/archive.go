@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -15,80 +14,16 @@ import (
 
 type ReapPlan = reap.Plan
 
-func archivePaths(s Store, b *Bench) error {
-	if !keyPattern.MatchString(b.Key) || b.Path != filepath.Join(s.Data, "benches", b.Key) || b.Mirror != s.mirrorPath(b.Repo) {
-		return errors.New("bench paths conflict with store")
-	}
-	actual, e := filepath.EvalSymlinks(b.Path)
-	if e == nil {
-		data, e := filepath.EvalSymlinks(s.Data)
-		if e != nil {
-			return e
-		}
-		if actual != filepath.Join(data, "benches", b.Key) {
-			return errors.New("bench path escapes its data directory")
-		}
-	} else if !os.IsNotExist(e) {
-		return e
-	}
-	return nil
+func (s Store) archiveInspector() archivepolicy.Inspector {
+	return archivepolicy.Inspector{Data: s.Data, Git: git, MirrorPath: s.mirrorPath, Clean: clean, Confirmed: confirmed, CheckpointError: ErrCheckpoint, ValidKey: keyPattern.MatchString}
 }
 func archiveRemote(b *Bench) error {
-	origin, e := git(b.Mirror, "remote", "get-url", "origin")
-	if e != nil {
-		return e
-	}
-	if origin != b.Repo {
-		return errors.New("mirror origin changed")
-	}
-	copy := *b
-	copy.Path = b.Mirror
-	return confirmed(&copy, b.Checkpoint)
+	return archivepolicy.Inspector{Git: git, Confirmed: confirmed}.Remote(b)
 }
 func archiveCheckout(b *Bench) error {
-	if e := clean(b); e != nil {
-		return e
-	}
-	sha, e := head(b)
-	if e != nil {
-		return e
-	}
-	if b.Checkpoint == "" || sha != b.Checkpoint {
-		return ErrCheckpoint
-	}
-	branch, e := git(b.Path, "symbolic-ref", "--quiet", "HEAD")
-	if e != nil {
-		return e
-	}
-	if branch != "refs/heads/"+b.Branch {
-		return ErrCheckpoint
-	}
-	common, e := git(b.Path, "rev-parse", "--path-format=absolute", "--git-common-dir")
-	if e != nil {
-		return e
-	}
-	actual, e := filepath.EvalSymlinks(common)
-	if e != nil {
-		return e
-	}
-	expected, e := filepath.EvalSymlinks(b.Mirror)
-	if e != nil {
-		return e
-	}
-	if actual != expected {
-		return errors.New("worktree belongs to another mirror")
-	}
-	admin, e := git(b.Path, "rev-parse", "--absolute-git-dir")
-	if e != nil {
-		return e
-	}
-	if _, e = os.Lstat(filepath.Join(admin, "locked")); e == nil {
-		return errors.New("worktree is locked; review its lock before archive")
-	} else if !os.IsNotExist(e) {
-		return e
-	}
-	return archiveRemote(b)
+	return archivepolicy.Inspector{Git: git, Clean: clean, Confirmed: confirmed, CheckpointError: ErrCheckpoint}.Checkout(b)
 }
+func archivePaths(s Store, b *Bench) error { return s.archiveInspector().Paths(b) }
 func (s Store) Archive(key string) (*Bench, error) {
 	return s.ArchiveWithGrace(key, archivepolicy.DefaultGrace)
 }
@@ -108,15 +43,57 @@ func (s Store) ArchiveWithGrace(key string, grace time.Duration) (*Bench, error)
 		if b.Lease != nil {
 			return ErrBusy
 		}
-		if b.ArchivedAt == "" {
+		if b.ArchiveFreezeDigest == "" && b.ReapingDigest == "" && b.ReapedAt == "" {
 			if e = archiveCheckout(b); e != nil {
 				return e
 			}
+			plan, e := reap.NewFreeze(b.Key, b.Path, b.Checkpoint)
+			if e != nil {
+				return e
+			}
+			raw, e := plan.Bytes()
+			if e != nil {
+				return e
+			}
+			if e = s.saveLifecycleIntent(s.freezeJournal(b.Key), raw); e != nil {
+				return e
+			}
+			b.ArchiveFreezeDigest = plan.Digest
+		}
+		if b.ArchivedAt == "" {
 			b.ArchivedAt = time.Now().UTC().Format(time.RFC3339Nano)
 			b.ReapAfter, e = archivepolicy.Deadline(b.ArchivedAt, grace)
 			if e != nil {
 				return e
 			}
+		}
+		copy := *b
+		out = &copy
+		return nil
+	})
+	if e != nil || out.ReapingDigest != "" || out.ReapedAt != "" {
+		return out, e
+	}
+	e = s.transaction(func(db database) error {
+		b, e := get(db, key)
+		if e != nil {
+			return e
+		}
+		if b.ArchiveFreezeDigest != out.ArchiveFreezeDigest || b.Lease != nil || b.ReapingDigest != "" {
+			return errors.New("archive permission intent changed")
+		}
+		plan, e := reap.ReadFreeze(s.freezeJournal(key), b.Key, b.Path, b.Checkpoint, b.ArchiveFreezeDigest)
+		if e != nil {
+			return e
+		}
+		if e = reap.Freeze(b.Path, plan.Tree); e != nil {
+			return e
+		}
+		if e = archiveCheckout(b); e != nil {
+			return e
+		}
+		if b.ArchiveFrozenAt == "" {
+			b.ArchiveFrozenAt = time.Now().UTC().Format(time.RFC3339Nano)
 		}
 		copy := *b
 		out = &copy
@@ -137,36 +114,19 @@ func (s Store) makeReapPlan(b *Bench) (*ReapPlan, error) {
 	if e := archiveCheckout(b); e != nil {
 		return nil, e
 	}
-	// Compare raw file/link content with HEAD objects, rather than assuming an
-	// index flag or a checkout filter proves that these local bytes recover.
-	rawFiles, e := exec.Command("git", "-C", b.Path, "ls-tree", "-r", "-z", "HEAD").Output()
+	if b.ArchiveFreezeDigest == "" || b.ArchiveFrozenAt == "" {
+		return nil, errors.New("repeat archive to finish the read-only transition before planning deletion")
+	}
+	freeze, e := reap.ReadFreeze(s.freezeJournal(b.Key), b.Key, b.Path, b.Checkpoint, b.ArchiveFreezeDigest)
 	if e != nil {
 		return nil, e
 	}
-	objects := map[string]string{}
-	for _, row := range strings.Split(string(rawFiles), "\x00") {
-		header, path, ok := strings.Cut(row, "\t")
-		if !ok {
-			continue
-		}
-		fields := strings.Fields(header)
-		if len(fields) == 3 && fields[1] == "blob" {
-			objects[path] = fields[2]
-		}
-	}
-	tree, e := reap.Snapshot(b.Path, nil)
-	if e != nil {
+	if _, e = reap.Frozen(b.Path, freeze.Tree); e != nil {
 		return nil, e
 	}
-	for i := range tree.Entries {
-		v := &tree.Entries[i]
-		oid, ok := objects[v.Path]
-		v.Recoverable = ok && (oid == v.GitSHA1 || oid == v.GitSHA256)
-	}
-	p := &ReapPlan{Version: "superbench.reap.v2", ReapAfter: b.ReapAfter, Key: b.Key, Path: b.Path, Checkpoint: b.Checkpoint, Tree: tree}
-	p.Digest, e = p.DigestValue()
-	return p, e
+	return s.archiveInspector().Plan(b)
 }
+
 func (s Store) PlanReap(key string) (*ReapPlan, error) {
 	var p *ReapPlan
 	e := s.read(func(db database) error {
@@ -188,7 +148,7 @@ func (s Store) Reap(p ReapPlan) (*Bench, error) {
 	if e != nil {
 		return nil, e
 	}
-	if !keyPattern.MatchString(p.Key) || (p.Version != "superbench.reap.v1" && p.Version != "superbench.reap.v2") || p.Digest != digest {
+	if !keyPattern.MatchString(p.Key) || (p.Version != "superbench.reap.v1" && p.Version != "superbench.reap.v2" && p.Version != "superbench.reap.v3") || p.Digest != digest {
 		return nil, errors.New("invalid approved reap plan")
 	}
 	e = s.transaction(func(db database) error {
@@ -202,7 +162,7 @@ func (s Store) Reap(p ReapPlan) (*Bench, error) {
 		if b.Path != p.Path || b.Checkpoint != p.Checkpoint || b.ArchivedAt == "" || b.Lease != nil {
 			return errors.New("reap plan conflicts with bench state")
 		}
-		if p.Version == "superbench.reap.v2" && p.ReapAfter != b.ReapAfter {
+		if p.Version != "superbench.reap.v1" && p.ReapAfter != b.ReapAfter {
 			return errors.New("reap plan grace deadline conflicts with bench state")
 		}
 		if b.ReapingDigest != "" {
@@ -211,11 +171,14 @@ func (s Store) Reap(p ReapPlan) (*Bench, error) {
 			}
 			return nil
 		}
-		if p.Version != "superbench.reap.v2" {
+		if p.Version != "superbench.reap.v3" {
 			return errors.New("legacy reap approval requires a fresh review")
 		}
 		if e = archivepolicy.Eligible(b.ArchivedAt, b.ReapAfter, time.Now()); e != nil {
 			return e
+		}
+		if p.FreezeDigest != b.ArchiveFreezeDigest || b.ArchiveFrozenAt == "" {
+			return errors.New("reap plan has no completed read-only archive")
 		}
 		current, e := s.makeReapPlan(b)
 		if e != nil {
@@ -228,17 +191,7 @@ func (s Store) Reap(p ReapPlan) (*Bench, error) {
 		if e != nil {
 			return e
 		}
-		if len(raw) > reap.MaxManifest {
-			return errors.New("reap plan exceeds limit")
-		}
-		space, e := s.space(s.State)
-		if e != nil {
-			return e
-		}
-		if space.Free < uint64(len(raw))*2+(1<<20) {
-			return errors.New("insufficient state space for durable reap intent")
-		}
-		if e = atomicWrite(s.State, s.reapJournal(p.Key), raw); e != nil {
+		if e = s.saveLifecycleIntent(s.reapJournal(p.Key), raw); e != nil {
 			return e
 		}
 		b.ReapingDigest = p.Digest
@@ -280,7 +233,11 @@ func (s Store) Reap(p ReapPlan) (*Bench, error) {
 			return e
 		}
 		if _, e = os.Lstat(b.Path); e == nil {
-			if e = reap.DeleteContents(b.Path, saved.Tree); e != nil {
+			deleteContents := reap.DeleteContents
+			if saved.Version == "superbench.reap.v3" {
+				deleteContents = reap.DeleteFrozenContents
+			}
+			if e = deleteContents(b.Path, saved.Tree); e != nil {
 				return e
 			}
 		} else if !os.IsNotExist(e) {

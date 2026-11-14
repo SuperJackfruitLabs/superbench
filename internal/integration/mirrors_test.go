@@ -30,6 +30,17 @@ func write(t *testing.T, path, text string) {
 func fixture(t *testing.T) (bench.Store, *bench.Bench, string, string) {
 	t.Helper()
 	root := t.TempDir()
+	t.Cleanup(func() {
+		_ = filepath.WalkDir(root, func(path string, d os.DirEntry, e error) error {
+			if e != nil {
+				return e
+			}
+			if d.IsDir() {
+				return os.Chmod(path, 0700)
+			}
+			return nil
+		})
+	})
 	remote, seed := filepath.Join(root, "remote.git"), filepath.Join(root, "seed")
 	git(t, root, "init", "--bare", remote)
 	git(t, root, "init", "-b", "main", seed)

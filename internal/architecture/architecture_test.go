@@ -50,17 +50,18 @@ func TestArchitecture(t *testing.T) {
 			rel, _ := filepath.Rel(root, filepath.Dir(path))
 			rel = filepath.ToSlash(rel)
 			edges := map[string][]string{
-				"internal/bench":       {"internal/archivepolicy", "internal/model", "internal/creation", "internal/repository", "internal/output", "internal/execution", "internal/setup", "internal/hoststorage", "internal/reap", "internal/history", "internal/retention"},
-				"internal/model":       {"internal/execution"},
-				"internal/creation":    {"internal/model", "internal/repository"},
-				"internal/client":      {"internal/protocol"},
-				"internal/history":     {"internal/reap"},
-				"internal/retention":   {"internal/history", "internal/reap"},
-				"internal/maintenance": {"internal/retention", "internal/reap"},
-				"internal/service":     {"internal/bench", "internal/protocol", "internal/maintenance"},
-				"cmd/bench":            {"internal/bench", "internal/client", "internal/protocol", "internal/reap", "internal/retention", "internal/history", "internal/maintenance"},
-				"cmd/benchd":           {"internal/bench", "internal/service"},
-				"cmd/bench-quota":      {"internal/hoststorage"},
+				"internal/bench":         {"internal/archivepolicy", "internal/model", "internal/creation", "internal/repository", "internal/output", "internal/execution", "internal/setup", "internal/hoststorage", "internal/reap", "internal/history", "internal/retention"},
+				"internal/archivepolicy": {"internal/model", "internal/reap"},
+				"internal/model":         {"internal/execution"},
+				"internal/creation":      {"internal/model", "internal/repository"},
+				"internal/client":        {"internal/protocol"},
+				"internal/history":       {"internal/reap"},
+				"internal/retention":     {"internal/history", "internal/reap"},
+				"internal/maintenance":   {"internal/retention", "internal/reap"},
+				"internal/service":       {"internal/bench", "internal/protocol", "internal/maintenance"},
+				"cmd/bench":              {"internal/bench", "internal/client", "internal/protocol", "internal/reap", "internal/retention", "internal/history", "internal/maintenance"},
+				"cmd/benchd":             {"internal/bench", "internal/service"},
+				"cmd/bench-quota":        {"internal/hoststorage"},
 			}
 			allowed := !strings.Contains(strings.Split(p, "/")[0], ".")
 			for _, target := range edges[rel] {

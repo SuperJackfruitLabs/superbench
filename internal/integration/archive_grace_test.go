@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/bench"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/reap"
 
 	_ "modernc.org/sqlite"
 )
@@ -36,6 +37,7 @@ func graceFixture(t *testing.T, grace time.Duration) (bench.Store, *bench.Bench)
 func legacyArchive(t *testing.T, s bench.Store, b *bench.Bench) {
 	t.Helper()
 	b.ReapAfter = ""
+	b.ArchiveFreezeDigest, b.ArchiveFrozenAt = "", ""
 	raw, e := json.Marshal(b)
 	if e != nil {
 		t.Fatal(e)
@@ -56,7 +58,7 @@ func legacyArchive(t *testing.T, s bench.Store, b *bench.Bench) {
 func TestArchiveGraceCannotBeShortenedByRetryOrPlan(t *testing.T) {
 	s, b := graceFixture(t, 7*24*time.Hour)
 	p, e := s.PlanReap("task")
-	if e != nil || p.Version != "superbench.reap.v2" || p.ReapAfter != b.ReapAfter {
+	if e != nil || p.Version != "superbench.reap.v3" || p.ReapAfter != b.ReapAfter {
 		t.Fatal(p, e)
 	}
 	if _, e = s.Reap(*p); e == nil {
@@ -79,7 +81,7 @@ func TestArchiveGraceCannotBeShortenedByRetryOrPlan(t *testing.T) {
 		t.Fatal("caller shortened deadline")
 	}
 	legacy := *p
-	legacy.Version, legacy.ReapAfter = "superbench.reap.v1", ""
+	legacy.Version, legacy.ReapAfter, legacy.FreezeDigest = "superbench.reap.v1", "", ""
 	legacy.Digest, _ = legacy.DigestValue()
 	if _, e = s.Reap(legacy); e == nil {
 		t.Fatal("fresh legacy approval bypassed grace")
@@ -92,7 +94,7 @@ func TestArchiveMigrationPinsOriginalTimeAndRequiresNewApproval(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	p.Version, p.ReapAfter = "superbench.reap.v1", ""
+	p.Version, p.ReapAfter, p.FreezeDigest = "superbench.reap.v1", "", ""
 	p.Digest, _ = p.DigestValue()
 	at := time.Now().UTC().Add(-10 * 24 * time.Hour)
 	b.ArchivedAt = at.Format(time.RFC3339Nano)
@@ -110,6 +112,9 @@ func TestArchiveMigrationPinsOriginalTimeAndRequiresNewApproval(t *testing.T) {
 	if _, e = s.Reap(*p); e == nil {
 		t.Fatal("unstarted v1 approval was reused")
 	}
+	if _, e = s.Archive("task"); e != nil {
+		t.Fatal(e)
+	}
 	fresh, e := s.PlanReap("task")
 	if e != nil {
 		t.Fatal(e)
@@ -125,7 +130,24 @@ func TestAlreadyApprovedLegacyReapRemainsRecoverable(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	p.Version, p.ReapAfter = "superbench.reap.v1", ""
+	p.Version, p.ReapAfter, p.FreezeDigest = "superbench.reap.v1", "", ""
+	p.Digest, _ = p.DigestValue()
+	if e = filepath.WalkDir(b.Path, func(path string, d os.DirEntry, e error) error {
+		if e != nil {
+			return e
+		}
+		st, e := d.Info()
+		if e != nil {
+			return e
+		}
+		return os.Chmod(path, st.Mode()|0200)
+	}); e != nil {
+		t.Fatal(e)
+	}
+	p.Tree, e = reap.Snapshot(b.Path, nil)
+	if e != nil {
+		t.Fatal(e)
+	}
 	p.Digest, _ = p.DigestValue()
 	b.ReapingDigest = p.Digest
 	legacyArchive(t, s, b)

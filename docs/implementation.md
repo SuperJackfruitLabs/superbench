@@ -108,7 +108,14 @@ keep that approval distinct from permission to implement the product.
 - Archive grace: a persisted seven-day default deadline binds reviewed v2 plans;
   early reap and caller-shortened deadlines are refused before effects. Schema-8
   SIGKILL intent recovery and managed XFS retirement regressions passed. Read-only
-  filesystem enforcement and automatic completion archive remain pending.
+  enforcement is verified in the following checkpoint; automatic completion archive
+  remains pending.
+
+- Read-only archives: a durable exact-tree permission intent precedes mode changes;
+  pending transitions block acquisition/planning and resume only known changes.
+  Reviewed v3 deletion reopens only approved directories. Linux/macOS race checks,
+  real SIGKILL/restart, unprivileged write refusal and XFS retirement passed; see
+  [archive permissions](archive-permissions-output.txt).
 
 ## Remaining retention work
 
@@ -131,8 +138,8 @@ Do not implement collection by simply deleting completed receipt rows.
 The original proposal remains the acceptance source; the checkpoints above do
 not replace its scope. Before calling Phase 1 complete, explicitly verify the
 standalone laptop preparation path (supervised hooks currently require Linux),
-multiple repositories within a bench, archive read-only filesystem
-lifecycle and collection, remaining cache/quota/archive configuration, and the
+multiple repositories within a bench, automatic completion/archive
+lifecycle and broader collection, remaining cache/quota/archive configuration, and the
 AgentPod acquisition/prompt/checkpoint pilot on an opt-in board. The review of
 charter/treaty boundaries must precede suite consumers. Source-level progress or
 passing single-host drills alone is not evidence that those outcomes are done.
