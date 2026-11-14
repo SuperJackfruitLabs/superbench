@@ -20,7 +20,7 @@ func clean(b *Bench) error {
 		return err
 	}
 	if out != "" {
-		return fmt.Errorf("bench has uncommitted or untracked files; commit or preserve them before checkpoint/release")
+		return ErrDirty
 	}
 	return nil
 }

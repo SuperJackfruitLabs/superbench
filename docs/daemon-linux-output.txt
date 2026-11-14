@@ -1,0 +1,6 @@
+PASS: socket create and same-request durable replay
+PASS: client disconnect preserves execution; replay runs command once
+PASS: CLI preserves command exit status; failed lease reconciles
+PASS: daemon SIGKILL retains lease and interrupted receipt; restart fences detached writer
+PASS: actual read-only kernel peer cannot forge operator authority
+DONE: Linux daemon integration passed

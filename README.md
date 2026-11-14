@@ -1,8 +1,8 @@
-# SuperBench local CLI prototype
+# SuperBench single-host prototype
 
 A bench is one task's git worktree, kept warm between cooperating agents. This is
-an experimental local prototype, not benchd or a production release. It has no
-network API or dependency on any other suite product.
+an experimental CLI and local Unix-socket daemon, not a production release. It
+has no TCP listener or dependency on another suite product.
 
 ## Build and use
 
@@ -33,6 +33,14 @@ Defaults use the OS config directory for state and cache directory for bench dat
 They cannot overlap, including via symlinks. Use the same paths on every invocation.
 Mirrors share git objects across benches; fetches update remote-tracking refs, never
 branches another bench has checked out. Do not manually prune mirrors or alter refs.
+
+## Local daemon
+
+Build `go build -o bin/benchd ./cmd/benchd`, then run it with private state and an
+absolute socket path. Use `bench <operation> --socket /absolute/api.sock ...` to
+connect. Linux supervised execution requires a delegated cgroup root. See
+[the service API](docs/service.md) for permissions, stable request IDs, restart
+reconciliation and operational limits.
 
 ## Managed storage
 
@@ -70,15 +78,17 @@ If create/recover stops after creating its worktree but before registration, ret
 with exactly the same arguments. The intent pins the original SHA; adoption
 requires the expected path, shared git directory, branch, HEAD and clean files.
 Conflicts are preserved for manual review. Intents are retained as creation records.
-This does not yet cover partially cloned mirrors or power-loss durability across
-filesystems.
+Partial mirror clones are staged before publication; abandoned clone directories
+remain bounded for operator review. Filesystem and SQLite changes are not one
+atomic transaction.
 
 ## Safety boundaries and deliberate limitations
 
 - One host, one repository per bench. No cross-host lease coordination. Recovery
   elsewhere requires the operator to stop the old host's writer first.
 - Leases are cooperative: they block other CLI acquisitions, not direct edits,
-  arbitrary shells, or processes sharing the same uid. No sandbox/fencing yet.
+  arbitrary shells, or processes sharing the same uid. Supervised Linux runs use
+  cgroup fencing; neither mode provides uid/mount isolation.
 - No automatic expiry. Fenced executions can be stopped by their holder or the
   local administrator; cooperative shell leases still need manual inspection. A process crash preserves the lease. Stop and
   inspect the holder before using its saved token to checkpoint/release. If a supervised holder token is lost, local `bench stop --admin` fences the
@@ -93,8 +103,8 @@ filesystems.
   while conflicting files require review and a pushed checkpoint may need retrying
   if saving state failed.
   No automatic deletion/reset is attempted.
-- Archive/retention, service provisioning/APIs,
-  authentication, UI and suite integrations are not implemented.
+- Archive/retention, service provisioning, remote authentication, UI and suite
+  integrations are not implemented. The local API authenticates Unix peer uids.
 - Only trusted repositories are suitable. Local git configuration and hooks apply.
   Verification should use a separate clean checkout of the pushed checkpoint.
 
@@ -104,5 +114,5 @@ Storage feasibility evidence is in sketchbook's `ideas/2026-11-14-superbench/res
 
 Run `sh scripts/check.sh`: formatting, zero-warning vet ratchet, architecture guards,
 race-enabled integration tests and build. See [code quality](docs/code-quality.md).
-SQLite is provided by the pinned pure-Go modernc.org/sqlite driver. Forge CI configuration is prepared but has not run on
-a remote. Forge is the primary remote. Initial implementation checkpoints are published there; no production deployment is configured.
+SQLite is provided by the pinned pure-Go modernc.org/sqlite driver. Forge is the primary remote; the first three implementation checkpoints passed
+Forge CI. No production deployment is configured.
