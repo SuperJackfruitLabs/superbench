@@ -50,13 +50,15 @@ func TestArchitecture(t *testing.T) {
 			rel, _ := filepath.Rel(root, filepath.Dir(path))
 			rel = filepath.ToSlash(rel)
 			edges := map[string][]string{
-				"internal/bench":         {"internal/statepath", "internal/gitcontrol", "internal/quotapolicy", "internal/cachepolicy", "internal/archivepolicy", "internal/model", "internal/creation", "internal/repository", "internal/output", "internal/execution", "internal/setup", "internal/hoststorage", "internal/reap", "internal/history", "internal/retention"},
+				"internal/bench":         {"internal/statestore", "internal/statepath", "internal/gitcontrol", "internal/quotapolicy", "internal/cachepolicy", "internal/archivepolicy", "internal/model", "internal/creation", "internal/repository", "internal/output", "internal/execution", "internal/setup", "internal/hoststorage", "internal/reap", "internal/history", "internal/retention"},
 				"internal/gitcontrol":    {"internal/execution"},
 				"internal/archivepolicy": {"internal/gitcontrol", "internal/model", "internal/reap", "internal/repository", "internal/setup"},
 				"internal/setup":         {"internal/gitcontrol", "internal/cachepolicy", "internal/quotapolicy"},
 				"internal/repository":    {"internal/gitcontrol"},
 				"internal/autoarchive":   {"internal/bench", "internal/archivepolicy", "internal/model", "internal/repository", "internal/setup"},
 				"internal/checkpointset": {"internal/model", "internal/gitcontrol"},
+				"internal/protocolv2":    {"internal/checkpointset", "internal/model"},
+				"internal/workspace":     {"internal/checkpointset", "internal/model", "internal/quotapolicy", "internal/repository", "internal/setup"},
 				"internal/execution":     {"internal/cachepolicy"},
 				"internal/model":         {"internal/execution"},
 				"internal/creation":      {"internal/model", "internal/repository"},
@@ -75,7 +77,7 @@ func TestArchitecture(t *testing.T) {
 					allowed = true
 				}
 			}
-			if p == "modernc.org/sqlite" && (rel == "internal/bench" && filepath.Base(path) == "sqlite.go" || rel == "internal/service" && filepath.Base(path) == "receipts.go") {
+			if p == "modernc.org/sqlite" && (rel == "internal/statestore" && filepath.Base(path) == "sqlite.go" || rel == "internal/service" && filepath.Base(path) == "receipts.go") {
 				allowed = true
 			}
 			if p == "github.com/pelletier/go-toml/v2" && rel == "internal/setup" && filepath.Base(path) == "config.go" {

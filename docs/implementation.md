@@ -151,6 +151,23 @@ PRs describe their publication history.
   Schema 13 prevents older binaries from ignoring live control intents; see
   [Git control operations](git-control.md).
 
+- Aggregate admission foundation: the strict Go v2 request parser checks the
+  mandatory schema/corpus pinned to treaty `04813138dd1dc32aef2e528fc08dd7e76cca92f5`
+  (merged in treaty #33). It validates request shape only; the service still
+  exposes v1. A separate workspace planner selects every member's immutable
+  source and quota declaration before any task checkout is created. Matching
+  declarations select one total allocation; conflicting declarations refuse
+  rather than summing member budgets. A failed later source returns no partial
+  plan. Mirror preparation and source observation share a bounded member context.
+  SQLite file opening is extracted without changing locking or migration policy.
+  Review also aligned URL port bounds and local file URL acceptance with the
+  canonical validator while preserving literal repository identities.
+  Durable aggregate creation, quota allocation, setup, leases, checkpoints,
+  recovery, archive and v2 service/CLI responses remain to be integrated.
+  Native `sh scripts/check.sh` passed, including vet, race tests, installer
+  tests and all three builds. Two-repository Git tests cover source selection,
+  a failing second source, total-budget conflicts and no checkout effects.
+
 ## Remaining retention work
 
 Reviewed log collection and history are implemented in [retention.md](retention.md),

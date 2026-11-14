@@ -10,11 +10,9 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotapolicy"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/setup"
-	"net/url"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/statestore"
 	"os"
 	"path/filepath"
-
-	_ "modernc.org/sqlite"
 )
 
 const schemaVersion = 13
@@ -25,36 +23,7 @@ type reader interface {
 }
 
 func (s Store) openSQL(readOnly bool) (*sql.DB, error) {
-	path := filepath.Join(s.State, "bench.db")
-	if !readOnly {
-		f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600)
-		if err != nil {
-			return nil, err
-		}
-		if err = f.Close(); err != nil {
-			return nil, err
-		}
-	}
-	u := url.URL{Scheme: "file", Path: path}
-	q := u.Query()
-	if readOnly {
-		q.Set("mode", "ro")
-	} else {
-		q.Set("mode", "rw")
-	}
-	q.Add("_pragma", "busy_timeout(5000)")
-	q.Add("_pragma", "synchronous(FULL)")
-	u.RawQuery = q.Encode()
-	db, err := sql.Open("sqlite", u.String())
-	if err != nil {
-		return nil, err
-	}
-	db.SetMaxOpenConns(1)
-	if err = db.Ping(); err != nil {
-		db.Close()
-		return nil, err
-	}
-	return db, nil
+	return statestore.Open(filepath.Join(s.State, "bench.db"), readOnly)
 }
 func checkVersion(r reader) error {
 	var v int
