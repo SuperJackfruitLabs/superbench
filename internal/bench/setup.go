@@ -2,46 +2,48 @@ package bench
 
 import (
 	"context"
-	"errors"
-	"os"
+	"database/sql"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/setup"
 	"path/filepath"
 	"strings"
 )
 
 func (s Store) Setup(ctx context.Context, key, holder string, offline bool) (*RunResult, error) {
-	states, e := s.Status(key)
-	if e != nil {
-		return nil, e
-	}
-	args, e := s.setupCommand(states[0].Path, offline)
-	if e != nil {
-		return nil, e
-	}
-	return s.Run(ctx, key, holder, args, true)
+	return s.run(ctx, key, holder, nil, true, func(b *Bench, tx *sql.Tx) ([]string, func(*sql.Tx, string) error, error) {
+		c, e := setup.Read(b.Path)
+		if e != nil {
+			return nil, nil, e
+		}
+		if c == nil || !c.Hooks() {
+			if e = setup.Invalidate(tx, key); e != nil {
+				return nil, nil, e
+			}
+			args, e := s.setupCommand(b.Path, offline)
+			return args, nil, e
+		}
+		if e = setup.Admit(tx, key); e != nil {
+			return nil, nil, e
+		}
+		done, e := setup.Completed(tx, key, c.Digest)
+		if e != nil {
+			return nil, nil, e
+		}
+		if !done {
+			if e = setup.Invalidate(tx, key); e != nil {
+				return nil, nil, e
+			}
+		}
+		finish := func(tx *sql.Tx, runID string) error {
+			if e := setup.Verify(b.Path, c.Digest); e != nil {
+				return e
+			}
+			return setup.Record(tx, key, c.Digest, runID)
+		}
+		return c.Command(done, offline), finish, nil
+	})
 }
 func (s Store) setupCommand(path string, offline bool) ([]string, error) {
-	candidates := map[string][]string{
-		"pnpm-lock.yaml":    {"pnpm", "install", "--frozen-lockfile", "--store-dir", filepath.Join(s.Data, "store", "pnpm"), "--package-import-method", "clone"},
-		"package-lock.json": {"npm", "ci", "--cache", filepath.Join(s.Data, "store", "npm"), "--no-audit", "--no-fund"},
-	}
-	var selected []string
-	for lock, args := range candidates {
-		if _, e := os.Stat(filepath.Join(path, lock)); e == nil {
-			if selected != nil {
-				return nil, errors.New("multiple supported lockfiles; choose an explicit bench run setup command")
-			}
-			selected = args
-		} else if !os.IsNotExist(e) {
-			return nil, e
-		}
-	}
-	if selected == nil {
-		return nil, errors.New("no supported frozen lockfile; use bench run with the repository's explicit setup command")
-	}
-	if offline {
-		selected = append(selected, "--offline")
-	}
-	return selected, nil
+	return setup.FrozenCommand(path, s.Data, offline)
 }
 func (s Store) cacheEnvironment(env []string) []string {
 	overrides := map[string]string{

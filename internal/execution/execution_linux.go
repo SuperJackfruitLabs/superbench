@@ -1,6 +1,6 @@
 //go:build linux
 
-package bench
+package execution
 
 import (
 	"crypto/sha256"
@@ -15,22 +15,22 @@ import (
 	"time"
 )
 
-type hostExecutor struct{}
+type Host struct{}
 
-func bootIdentity() (executionIdentity, error) {
+func bootIdentity() (Identity, error) {
 	raw, e := os.ReadFile("/proc/sys/kernel/random/boot_id")
 	if e != nil {
-		return executionIdentity{}, e
+		return Identity{}, e
 	}
 	machine, e := os.ReadFile("/etc/machine-id")
 	if e != nil {
-		return executionIdentity{}, e
+		return Identity{}, e
 	}
 	if strings.TrimSpace(string(machine)) == "" || strings.TrimSpace(string(raw)) == "" {
-		return executionIdentity{}, errors.New("stable host and boot identity required")
+		return Identity{}, errors.New("stable host and boot identity required")
 	}
 	digest := sha256.Sum256([]byte("superbench-host:" + strings.TrimSpace(string(machine))))
-	return executionIdentity{BootID: strings.TrimSpace(string(raw)), HostID: hex.EncodeToString(digest[:])}, nil
+	return Identity{BootID: strings.TrimSpace(string(raw)), HostID: hex.EncodeToString(digest[:])}, nil
 }
 func sameBoot(e *Execution) (bool, error) {
 	identity, err := bootIdentity()
@@ -54,33 +54,33 @@ func scopePath(e *Execution) (string, error) {
 	}
 	return filepath.Join(e.Root, e.ID), nil
 }
-func (hostExecutor) Create(root, id string) (executionIdentity, error) {
+func (Host) Create(root, id string) (Identity, error) {
 	e := &Execution{Root: root, ID: id}
 	path, err := scopePath(e)
 	if err != nil {
-		return executionIdentity{}, err
+		return Identity{}, err
 	}
 	var stat syscall.Statfs_t
 	if err = syscall.Statfs(root, &stat); err != nil {
-		return executionIdentity{}, fmt.Errorf("delegated cgroup root required: %w", err)
+		return Identity{}, fmt.Errorf("delegated cgroup root required: %w", err)
 	}
 	if stat.Type != 0x63677270 {
-		return executionIdentity{}, errors.New("execution root must be a cgroup-v2 filesystem")
+		return Identity{}, errors.New("execution root must be a cgroup-v2 filesystem")
 	}
 	identity, err := bootIdentity()
 	if err != nil {
-		return executionIdentity{}, err
+		return Identity{}, err
 	}
 	if err = os.Mkdir(path, 0700); err != nil {
-		return executionIdentity{}, fmt.Errorf("create delegated execution cgroup: %w", err)
+		return Identity{}, fmt.Errorf("create delegated execution cgroup: %w", err)
 	}
 	if _, err = os.Stat(filepath.Join(path, "cgroup.kill")); err != nil {
 		_ = os.Remove(path)
-		return executionIdentity{}, errors.New("cgroup.kill support required")
+		return Identity{}, errors.New("cgroup.kill support required")
 	}
 	return identity, nil
 }
-func (hostExecutor) Start(cmd *exec.Cmd, e *Execution) error {
+func (Host) Start(cmd *exec.Cmd, e *Execution) error {
 	path, err := scopePath(e)
 	if err != nil {
 		return err
@@ -94,7 +94,7 @@ func (hostExecutor) Start(cmd *exec.Cmd, e *Execution) error {
 	cmd.SysProcAttr = &syscall.SysProcAttr{UseCgroupFD: true, CgroupFD: fd}
 	return cmd.Start()
 }
-func (hostExecutor) Empty(e *Execution) error {
+func (Host) Empty(e *Execution) error {
 	current, err := sameBoot(e)
 	if err != nil {
 		return err
@@ -124,7 +124,7 @@ func (hostExecutor) Empty(e *Execution) error {
 	}
 	return errors.New("unable to read execution cgroup population")
 }
-func (h hostExecutor) Fence(e *Execution) error {
+func (h Host) Fence(e *Execution) error {
 	current, err := sameBoot(e)
 	if err != nil {
 		return err

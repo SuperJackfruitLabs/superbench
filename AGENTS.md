@@ -11,7 +11,8 @@
 - No suite consumer contracts are implemented here. Shared contracts need treaty and
   charter review before integration. No production deployment or tags.
 - Run `sh scripts/check.sh` before publishing. External runtime imports are the pinned SQLite driver in storage adapters and
-  x/sys/unix in the macOS peer-credential adapter. Protocol/client/service layers
+  x/sys/unix in the macOS peer-credential adapter and the pinned TOML parser only
+  in internal/setup/config.go. Protocol/client/service layers
   follow the edges in the architecture test; the engine never imports the service. The reap layer only snapshots/verifies
   approved directory entries; the engine owns lifecycle and intent authority.
 
@@ -37,3 +38,6 @@
   Legacy adoption is separate operator evidence, never a fabricated run outcome.
 - Receipt IDs are replay protection. Log/history collection must never delete
   service receipts or make an interrupted command executable again.
+- Explicit setup records success only after fencing/sealing, while its stopped
+  lease is held. Revoke a prior setup receipt before a different configuration's
+  effects; preserve the lease on failure. Automatic acquisition hooks remain pending.

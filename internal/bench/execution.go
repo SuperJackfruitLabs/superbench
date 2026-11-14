@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/execution"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/history"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/retention"
 	"os"
@@ -16,23 +17,14 @@ import (
 	"time"
 )
 
-type Execution struct {
-	ID            string
-	Root          string
-	BootID        string
-	HostID        string
-	Phase         string // starting, running, stopped
-	PID           int
-	Log           string
-	LogLimitBytes uint64
-}
+type Execution = execution.Execution
 type RunResult struct {
 	Execution    *Execution
 	Bench        *Bench
 	ExitCode     int
 	LogTruncated bool
 }
-type executionIdentity struct{ BootID, HostID string }
+type executionIdentity = execution.Identity
 type executionBackend interface {
 	Create(root, id string) (executionIdentity, error) // returns boot identity; never start outside scope
 	Start(*exec.Cmd, *Execution) error
@@ -44,7 +36,7 @@ func (s Store) backend() executionBackend {
 	if s.executor != nil {
 		return s.executor
 	}
-	return hostExecutor{}
+	return execution.Host{}
 }
 func nonce() (string, error) {
 	v := make([]byte, 16)
@@ -82,7 +74,14 @@ func (s Store) executionGate(key string, fn func() error) error {
 	return fn()
 }
 func (s Store) Run(ctx context.Context, key, holder string, args []string, checkpoint bool) (*RunResult, error) {
-	if len(args) == 0 {
+	return s.run(ctx, key, holder, args, checkpoint, nil)
+}
+
+type commandPlan func(*Bench, *sql.Tx) ([]string, func(*sql.Tx, string) error, error)
+
+func (s Store) run(ctx context.Context, key, holder string, args []string, checkpoint bool, plan commandPlan) (*RunResult, error) {
+	var finish func(*sql.Tx, string) error
+	if len(args) == 0 && plan == nil {
 		return nil, errors.New("command required")
 	}
 	if err := s.validate(); err != nil {
@@ -127,6 +126,15 @@ func (s Store) Run(ctx context.Context, key, holder string, args []string, check
 			return e
 		}
 		execution.LogLimitBytes = limit
+		if plan != nil {
+			args, finish, e = plan(original, tx)
+			if e != nil {
+				return e
+			}
+			if len(args) == 0 {
+				return errors.New("command plan is empty")
+			}
+		}
 		lease, e := newLease(holder)
 		if e != nil {
 			return e
@@ -202,6 +210,24 @@ func (s Store) Run(ctx context.Context, key, holder string, args []string, check
 	}
 	if waitErr != nil {
 		return result, fmt.Errorf("command failed; stopped lease retained: %w", waitErr)
+	}
+	if finish != nil {
+		err = s.transactionSQL(func(records database, tx *sql.Tx) error {
+			current, e := get(records, key)
+			if e != nil {
+				return e
+			}
+			if e = owned(current, b.Lease.Token); e != nil {
+				return e
+			}
+			if e = s.ensureStopped(current); e != nil {
+				return e
+			}
+			return finish(tx, id)
+		})
+		if err != nil {
+			return result, fmt.Errorf("setup success save failed; stopped lease retained: %w", err)
+		}
 	}
 	if !checkpoint {
 		return result, nil

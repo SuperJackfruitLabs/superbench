@@ -1,27 +1,31 @@
-# Prototype checks
+# Implementation checks
 
-CI runs scripts/check.sh with Go 1.26.4. go vet has a zero-warning baseline: any
-new diagnostic fails. gofmt must report no files. The SQLite driver is the only allowed external runtime dependency.
+CI runs `scripts/check.sh` with Go 1.26.4: gofmt, installer unit tests, zero-warning
+go vet, the full race suite and all three binary builds. Architecture tests cap
+Go files at 1,000 lines and packages at 4,000 lines, including tests. They enforce
+runtime import edges and prohibit reverse engine-to-CLI/service dependencies.
 
-Architecture tests cap Go files at 1000 lines and packages at 4000 lines, allow the SQLite driver only in its storage adapter and prohibit other
-external engine dependencies and reverse engine-to-CLI imports. Go rejects import
-cycles at compile time. The CLI may depend on the engine; the engine uses only the
-standard library plus the storage adapter's SQLite driver. Filesystem/git integration tests cover leases, dirty state,
-remote checkpoint rejection, handoff and recovery. The race detector runs locally.
+The engine owns lease/lifecycle transactions. `internal/execution` implements the
+host process fence without importing the engine. `internal/setup` reads bounded
+repository configuration and stores setup receipts through database/sql; the
+engine alone decides when successful preparation is eligible to commit.
+`internal/retention` and `internal/maintenance` separate exact-file collection
+from approved policy scheduling. The root quota helper remains a fixed logical
+allocator and empty-directory retire operation, never a recursive collector.
 
-SQLite now provides transactional state storage. Before benchd, extend
-recovery journals across all filesystem operations and add
-process fencing, identity and API conformance tests. None is claimed by this scaffold.
+External runtime imports are pinned in go.mod/go.sum and restricted by adapter:
 
-SQLite storage uses modernc.org/sqlite v1.62.0 through database/sql. Its import is
-allowed only in sqlite.go; the rest of the engine does not depend on driver APIs.
-Version 1 creates the benches table and atomically imports the old JSON snapshot.
-The JSON file is retained unchanged; later commands use SQLite exclusively.
-Unknown schema versions fail closed. The driver and its transitives are recorded
-in go.mod/go.sum; there is no floating dependency during CI.
+- modernc.org/sqlite v1.62.0: engine SQL adapter and service receipt adapter only.
+- golang.org/x/sys/unix: Darwin Unix-peer credentials only.
+- github.com/pelletier/go-toml/v2 v2.4.3: setup configuration decoder only.
 
+Other runtime code uses the standard library. No dependency version floats in
+CI. Schema 7 protects setup receipts; older supported state upgrades retain
+history and pinned quota metadata. Unknown versions fail closed. Active older
+supervisors must be stopped with their installed binary before migration.
 
-The storage layer has no external dependencies. Engine imports may point to the
-hoststorage policy layer; only the quota CLI invokes privileged policy application.
-Both CLI binaries build in the check script. Schema 3 protects storage metadata
-and blocks upgrades underneath active schema-1/2 supervisors.
+Filesystem/Git tests cover dirty-work preservation, lease ownership, confirmed
+remote checkpoints, handoff and recovery. Disposable Linux drills cover actual
+cgroup execution, full-state failures, daemon interruption, XFS byte/inode limits,
+reviewed archive/reap, retention and systemd delegation. The corresponding docs
+state which behavior is verified and what remains outside each checkpoint.
