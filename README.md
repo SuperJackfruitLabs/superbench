@@ -34,6 +34,13 @@ They cannot overlap, including via symlinks. Use the same paths on every invocat
 Mirrors share git objects across benches; fetches update remote-tracking refs, never
 branches another bench has checked out. Do not manually prune mirrors or alter refs.
 
+## Supervised runs
+
+Linux hosts with a delegated cgroup-v2 root can use `bench run` and `bench stop`
+for supervised process-tree fencing. Success checkpoints and releases; failures
+retain the lease. See [execution and recovery](docs/execution.md) for provisioning,
+log output, schema upgrades, local administration and the isolation boundary.
+
 ## Recovery
 
 On a replacement host with empty state/data directories:
@@ -65,9 +72,10 @@ filesystems.
   elsewhere requires the operator to stop the old host's writer first.
 - Leases are cooperative: they block other CLI acquisitions, not direct edits,
   arbitrary shells, or processes sharing the same uid. No sandbox/fencing yet.
-- No automatic expiry or takeover. A process crash preserves the lease. Stop and
-  inspect the holder before using its saved token to checkpoint/release. If the
-  token is lost, this prototype has no safe automated takeover command.
+- No automatic expiry. Fenced executions can be stopped by their holder or the
+  local administrator; cooperative shell leases still need manual inspection. A process crash preserves the lease. Stop and
+  inspect the holder before using its saved token to checkpoint/release. If a supervised holder token is lost, local `bench stop --admin` fences the
+  recorded scope and returns the retained lease. No process is reassigned by time.
 - State is versioned SQLite outside bench data, with FULL synchronous commits.
   A host-wide OS file lock also serializes git/filesystem operations. Existing
   prototype JSON is imported once on the next successful write and preserved as

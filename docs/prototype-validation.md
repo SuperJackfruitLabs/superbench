@@ -136,3 +136,16 @@ Neither failure releases the holder. All disposable staging data was removed.
 Creation journal records remain separate durable intents. SQLite does not yet
 provide writer fencing, supervised execution, quotas or automatic reconciliation
 for partial mirror clones. Those remain Phase 1 implementation work.
+
+## Supervised execution checkpoint
+
+The Linux runner uses clone3 cgroup placement and cgroup.kill, records host/boot
+identity and never releases a supervised lease before its scope is empty. Schema
+2 prevents the previous SQLite binary from ignoring execution metadata. Local
+checks (format, vet, architecture, race tests, build) pass. The CGO-disabled Linux
+binary passed the integration script in a disposable cgroup subtree with an
+8 MiB state tmpfs. [execution-output.txt](execution-output.txt) records detached
+children, supervisor SIGKILL, wrong-token/admin stop, cancellation, full-state
+cancellation, previous-binary refusal and foreign-host refusal. Test data and
+scope directories were cleaned up on exit. No service or production work was
+started. UID/mount isolation and host storage budgets remain pending.

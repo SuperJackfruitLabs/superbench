@@ -15,9 +15,11 @@ no destructive cleanup is authorized by this implementation plan.
    schema v1 and legacy import now replace JSON outside bench data; keep journal semantics and state-failure
    regressions. Status is read-only. Define reconciliation for partial mirror
    clones as well as worktrees; the current journal covers worktree creation only.
-3. **Supervised execution and fencing.** One managed writer, explicit stop/reap
-   before reassignment, no timeout-based takeover. Test crashed parents and living
-   descendants. Direct arbitrary shell writes remain outside this guarantee.
+3. **Supervised execution and fencing (implemented for delegated Linux cgroups).**
+   Durable run/start/stop state, atomic cgroup placement and descendant fencing
+   precede checkpoint/release. Supervisor crash, detached children, cancellation
+   and full-state behavior are exercised on Linux. Cross-uid isolation and service
+   provisioning remain pending; cooperative shell leases are not fenced.
 4. **Host storage management.** Narrow privileged quota helper, budgets for
    benches/stores/state, low-space admission and setup using existing lockfiles.
 5. **benchd and local CLI.** Local socket API with authenticated holder identity,
@@ -51,6 +53,7 @@ keep that approval distinct from permission to implement the product.
 
 - `c874bf6`: initial CLI, journaled clean-worktree adoption, failure experiments
   and full phase checklist. Local checks and Forge push CI passed.
-- Next checkpoint in progress: versioned SQLite state, legacy import, rollback
-  behavior and read-only status. macOS race tests and Linux quota/SIGKILL failure verification pass. Publication
-  is the next action.
+- `ea47c2f`: versioned SQLite state, legacy import, rollback and read-only status;
+  local race tests, Linux failure tests and Forge CI passed; PR #1 is open.
+- Supervised execution checkpoint: local checks and Linux cgroup integration pass.
+  Publication is the next action; storage budgets/quotas and benchd follow.

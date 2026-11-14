@@ -130,3 +130,39 @@ func TestInvalidLegacyDoesNotInitializeSchema(t *testing.T) {
 		t.Fatal("failed migration committed schema")
 	}
 }
+
+func TestExecutionSchemaRequiresExplicitOrMutatingUpgrade(t *testing.T) {
+	s, r := fixture(t)
+	if _, e := s.Create("task", Options{Repo: r}, false); e != nil {
+		t.Fatal(e)
+	}
+	db, e := s.openSQL(false)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.Exec("PRAGMA user_version=1"); e != nil {
+		t.Fatal(e)
+	}
+	db.Close()
+	if _, e = s.Status(""); e == nil {
+		t.Fatal("read-only status silently migrated schema")
+	}
+	if e = s.Migrate(); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = s.Status("task"); e != nil {
+		t.Fatal(e)
+	}
+	db, e = s.openSQL(true)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+	var version int
+	if e = db.QueryRow("PRAGMA user_version").Scan(&version); e != nil {
+		t.Fatal(e)
+	}
+	if version != 2 {
+		t.Fatal("execution metadata not protected by schema version")
+	}
+}

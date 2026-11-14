@@ -1,8 +1,6 @@
 package bench
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -123,17 +121,15 @@ func (s Store) Lease(key, holder string) (*Bench, error) {
 		if err != nil {
 			return err
 		}
-		if holder == "" {
-			return errors.New("holder required")
-		}
 		if b.Lease != nil {
 			return fmt.Errorf("bench already leased by %s; no automatic expiry", b.Lease.Holder)
 		}
-		token := make([]byte, 24)
-		if _, err = rand.Read(token); err != nil {
+		lease, err := newLease(holder)
+		if err != nil {
 			return err
 		}
-		b.Lease = &Lease{Token: hex.EncodeToString(token), Holder: holder}
+		b.Lease = lease
+
 		result = b
 		return nil
 	})
@@ -147,6 +143,9 @@ func (s Store) Checkpoint(key, token string) (*Bench, error) {
 			return err
 		}
 		if err = owned(b, token); err != nil {
+			return err
+		}
+		if err = s.ensureStopped(b); err != nil {
 			return err
 		}
 		if err = clean(b); err != nil {
@@ -177,6 +176,9 @@ func (s Store) Release(key, token string) error {
 			return err
 		}
 		if err = owned(b, token); err != nil {
+			return err
+		}
+		if err = s.ensureStopped(b); err != nil {
 			return err
 		}
 		if err = clean(b); err != nil {
@@ -223,5 +225,7 @@ func publicLease(l *Lease) *Lease {
 	if l == nil {
 		return nil
 	}
-	return &Lease{Holder: l.Holder}
+	copy := *l
+	copy.Token = ""
+	return &copy
 }
