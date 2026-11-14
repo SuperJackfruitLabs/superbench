@@ -40,4 +40,6 @@
   service receipts or make an interrupted command executable again.
 - Explicit setup records success only after fencing/sealing, while its stopped
   lease is held. Revoke a prior setup receipt before a different configuration's
-  effects; preserve the lease on failure. Automatic acquisition hooks remain pending.
+  effects; preserve the lease on failure. Automatic handoffs hold the same lease,
+  protect prior-stage logs and require a matching private continuation. Successful
+  stop revokes that continuation; never launch a later stage after it.

@@ -15,6 +15,8 @@ import (
 	"time"
 )
 
+const Supported = true
+
 type Host struct{}
 
 func bootIdentity() (Identity, error) {

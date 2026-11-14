@@ -1,4 +1,4 @@
-package bench
+package architecture
 
 import (
 	"go/parser"
@@ -50,7 +50,7 @@ func TestArchitecture(t *testing.T) {
 			rel, _ := filepath.Rel(root, filepath.Dir(path))
 			rel = filepath.ToSlash(rel)
 			edges := map[string][]string{
-				"internal/bench":       {"internal/execution", "internal/setup", "internal/hoststorage", "internal/reap", "internal/history", "internal/retention"},
+				"internal/bench":       {"internal/output", "internal/execution", "internal/setup", "internal/hoststorage", "internal/reap", "internal/history", "internal/retention"},
 				"internal/client":      {"internal/protocol"},
 				"internal/history":     {"internal/reap"},
 				"internal/retention":   {"internal/history", "internal/reap"},

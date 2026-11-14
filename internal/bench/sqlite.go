@@ -14,7 +14,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const schemaVersion = 7
+const schemaVersion = 8
 
 type reader interface {
 	Query(string, ...any) (*sql.Rows, error)
@@ -68,6 +68,19 @@ func validRecords(records database) error {
 		return errors.New("invalid state: null database")
 	}
 	for key, b := range records {
+		if b != nil && b.Lease != nil {
+			if len(b.Lease.RetainedRuns) > 8 || (b.Lease.Continuation != "" && !history.ID.MatchString(b.Lease.Continuation)) {
+				return errors.New("invalid preparation chain")
+			}
+			seen := map[string]bool{}
+			for _, id := range b.Lease.RetainedRuns {
+				if !history.ID.MatchString(id) || seen[id] || id == executionID(b.Lease) {
+					return errors.New("invalid retained preparation history")
+				}
+				seen[id] = true
+			}
+		}
+
 		if b == nil || b.Key != key || b.Path == "" || b.Mirror == "" {
 			return errors.New("invalid bench record")
 		}
@@ -102,7 +115,7 @@ func (s Store) migrate(tx *sql.Tx) error {
 	if version == schemaVersion {
 		return nil
 	}
-	if version == 1 || version == 2 || version == 3 || version == 4 || version == 5 || version == 6 {
+	if version == 1 || version == 2 || version == 3 || version == 4 || version == 5 || version == 6 || version == 7 {
 		records, err := loadRecords(tx)
 		if err != nil {
 			return err
@@ -132,7 +145,7 @@ func (s Store) migrate(tx *sql.Tx) error {
 		if err = setup.Schema(tx); err != nil {
 			return err
 		}
-		_, err = tx.Exec("PRAGMA user_version=7")
+		_, err = tx.Exec("PRAGMA user_version=8")
 		return err
 	}
 	if version != 0 {
@@ -160,7 +173,7 @@ func (s Store) migrate(tx *sql.Tx) error {
 	if err = setup.Schema(tx); err != nil {
 		return err
 	}
-	_, err = tx.Exec("PRAGMA user_version=7")
+	_, err = tx.Exec("PRAGMA user_version=8")
 	return err
 }
 func loadRecords(r reader) (database, error) {

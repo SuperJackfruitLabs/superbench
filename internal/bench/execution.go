@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/execution"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/history"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/output"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/retention"
 	"os"
 	"os/exec"
@@ -73,13 +74,13 @@ func (s Store) executionGate(key string, fn func() error) error {
 	defer syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
 	return fn()
 }
-func (s Store) Run(ctx context.Context, key, holder string, args []string, checkpoint bool) (*RunResult, error) {
-	return s.run(ctx, key, holder, args, checkpoint, nil)
-}
 
 type commandPlan func(*Bench, *sql.Tx) ([]string, func(*sql.Tx, string) error, error)
 
 func (s Store) run(ctx context.Context, key, holder string, args []string, checkpoint bool, plan commandPlan) (*RunResult, error) {
+	return s.runStage(ctx, key, holder, args, checkpoint, plan, stageOptions{})
+}
+func (s Store) runStage(ctx context.Context, key, holder string, args []string, checkpoint bool, plan commandPlan, options stageOptions) (*RunResult, error) {
 	var finish func(*sql.Tx, string) error
 	if len(args) == 0 && plan == nil {
 		return nil, errors.New("command required")
@@ -101,73 +102,107 @@ func (s Store) run(ctx context.Context, key, holder string, args []string, check
 	}
 	execution := &Execution{ID: id, Root: root, BootID: identity.BootID, HostID: identity.HostID, Phase: "starting", Log: filepath.Join(s.State, "run-"+id+".log")}
 	var b *Bench
-	err = s.transactionSQL(func(db database, tx *sql.Tx) error {
-		if e := retention.Directory(s.State); e != nil {
-			return e
-		}
-		if e := s.admit(); e != nil {
-			return e
-		}
-		original, e := get(db, key)
-		if e != nil {
-			return e
-		}
-		if original.ArchivedAt != "" {
-			return ErrArchived
-		}
-		if original.Lease != nil {
-			return ErrBusy
-		}
-		if e := s.ensureBenchQuota(original); e != nil {
-			return e
-		}
-		limit, e := s.reserveLog(db)
-		if e != nil {
-			return e
-		}
-		execution.LogLimitBytes = limit
-		if plan != nil {
-			args, finish, e = plan(original, tx)
+	acquire := func() error {
+		return s.transactionSQL(func(db database, tx *sql.Tx) error {
+			if e := retention.Directory(s.State); e != nil {
+				return e
+			}
+			if e := s.admit(); e != nil {
+				return e
+			}
+			original, e := get(db, key)
 			if e != nil {
 				return e
 			}
-			if len(args) == 0 {
-				return errors.New("command plan is empty")
+			if original.ArchivedAt != "" {
+				return ErrArchived
 			}
-		}
-		lease, e := newLease(holder)
-		if e != nil {
-			return e
-		}
-		original.Lease = lease
-		original.Lease.Execution = execution
-		if e = history.Start(tx, history.Record{ID: id, Key: key, Holder: holder, StartedAt: time.Now().UTC()}); e != nil {
-			return e
-		}
-		copy := *original
-		b = &copy
-		return nil
-	})
+			if options.prior != nil {
+				if e = options.prior.check(original); e != nil {
+					return e
+				}
+				if e = s.retainExecution(tx, original); e != nil {
+					return e
+				}
+			} else if original.Lease != nil {
+				return ErrBusy
+			}
+
+			if e := s.ensureBenchQuota(original); e != nil {
+				return e
+			}
+			limit, e := s.reserveLog(db)
+			if e != nil {
+				return e
+			}
+			execution.LogLimitBytes = limit
+			if plan != nil {
+				args, finish, e = plan(original, tx)
+				if e != nil {
+					return e
+				}
+				if len(args) == 0 {
+					return errors.New("command plan is empty")
+				}
+			}
+			lease := original.Lease
+			if lease == nil {
+				lease, e = newLease(holder)
+				if e != nil {
+					return e
+				}
+			}
+			if options.preparing != nil && *options.preparing {
+				if lease.Continuation == "" {
+					lease.Continuation, e = nonce()
+					if e != nil {
+						return e
+					}
+				}
+			} else {
+				lease.Continuation = ""
+			}
+
+			original.Lease = lease
+			original.Lease.Execution = execution
+			if e = history.Start(tx, history.Record{ID: id, Key: key, Holder: holder, StartedAt: time.Now().UTC()}); e != nil {
+				return e
+			}
+			copy := *original
+			b = &copy
+			return nil
+		})
+	}
+	if options.prior != nil {
+		err = s.executionGate(key, acquire)
+	} else {
+		err = acquire()
+	}
 	if err != nil {
 		_ = s.backend().Fence(execution)
 		return nil, err
 	}
+	continuation := ""
+	if options.preparing != nil && *options.preparing {
+		continuation = b.Lease.Continuation
+		checkpoint = false
+	}
 	result := &RunResult{Bench: b, ExitCode: -1, Execution: execution}
-	capture, err := openLog(execution.Log, execution.LogLimitBytes)
+	capture, err := output.Open(execution.Log, execution.LogLimitBytes)
 	if err != nil {
 		return result, err
 	}
-	defer capture.close()
+	defer capture.Close()
 
 	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Dir = b.Path
-	cmd.Stdout = capture.writer
-	cmd.Stderr = capture.writer
+	cmd.Stdout = capture.Writer
+	cmd.Stderr = capture.Writer
 	cmd.Env = s.cacheEnvironment(os.Environ())
 	// Persist intent before launch; stop and launch share this gate so a delayed
 	// supervisor cannot create a new writer after another caller fenced the lease.
 	err = s.startExecution(ctx, key, b, cmd, execution)
-	_ = capture.writer.Close()
+	_ = capture.Writer.Close()
 	if err != nil {
 		if cmd.Process != nil {
 			if fenceErr := s.backend().Fence(execution); fenceErr != nil {
@@ -194,14 +229,14 @@ func (s Store) run(ctx context.Context, key, holder string, args []string, check
 	if cmd.ProcessState != nil {
 		result.ExitCode = cmd.ProcessState.ExitCode()
 	}
-	stopped, err := s.Stop(key, b.Lease.Token, false)
+	stopped, err := s.stop(key, b.Lease.Token, false, continuation, true)
 	if err != nil {
 		return result, fmt.Errorf("unable to prove execution stopped; lease retained: %w", err)
 	}
 	result.Bench = stopped
 	result.Execution = stopped.Lease.Execution
-	logErr := capture.finish()
-	result.LogTruncated = capture.truncated
+	logErr := capture.Finish()
+	result.LogTruncated = capture.Truncated
 	if logErr != nil {
 		return result, fmt.Errorf("command log failed; stopped lease retained: %w", logErr)
 	}
@@ -220,6 +255,9 @@ func (s Store) run(ctx context.Context, key, holder string, args []string, check
 			if e = owned(current, b.Lease.Token); e != nil {
 				return e
 			}
+			if continuation != "" && current.Lease.Continuation != continuation {
+				return ErrLease
+			}
 			if e = s.ensureStopped(current); e != nil {
 				return e
 			}
@@ -237,26 +275,19 @@ func (s Store) run(ctx context.Context, key, holder string, args []string, check
 		return result, fmt.Errorf("checkpoint failed; stopped lease retained: %w", err)
 	}
 	result.Bench.Checkpoint = cp.Checkpoint
-	if err = s.Release(key, b.Lease.Token); err != nil {
+	if err = s.release(key, b.Lease.Token, true); err != nil {
 		return result, err
 	}
 	result.Bench.Lease = nil
 	return result, nil
 }
-func commandEnvironment(env []string) []string {
-	var clean []string
-	for _, v := range env {
-		if len(v) >= 18 && v[:18] == "BENCH_LEASE_TOKEN=" {
-			continue
-		}
-		clean = append(clean, v)
-	}
-	return clean
-}
 
 // Admin is for a local operator with access to the private state directory.
 // Network adapters must authorize administrative access before calling it.
 func (s Store) Stop(key, token string, admin bool) (*Bench, error) {
+	return s.stop(key, token, admin, "", false)
+}
+func (s Store) stop(key, token string, admin bool, continuation string, internal bool) (*Bench, error) {
 	if err := s.validate(); err != nil {
 		return nil, err
 	}
@@ -276,17 +307,24 @@ func (s Store) Stop(key, token string, admin bool) (*Bench, error) {
 					return e
 				}
 			}
-			if b.Lease.Execution == nil {
+			if continuation != "" && b.Lease.Continuation != continuation {
+				return ErrLease
+			}
+			if b.Lease.Execution == nil && b.Lease.Continuation == "" {
 				return errors.New("lease has no supervised execution; stop its writer manually")
 			}
+
 			prior = b
 			return nil
 		}); err != nil {
 			return err
 		}
-		if err := s.backend().Fence(prior.Lease.Execution); err != nil {
-			return err
+		if prior.Lease.Execution != nil {
+			if err := s.backend().Fence(prior.Lease.Execution); err != nil {
+				return err
+			}
 		}
+
 		return s.transaction(func(db database) error {
 			b, e := get(db, key)
 			if e != nil {
@@ -295,10 +333,21 @@ func (s Store) Stop(key, token string, admin bool) (*Bench, error) {
 			if e = owned(b, prior.Lease.Token); e != nil {
 				return e
 			}
-			if b.Lease.Execution == nil || b.Lease.Execution.ID != prior.Lease.Execution.ID {
+			if continuation != "" && b.Lease.Continuation != continuation {
+				return ErrLease
+			}
+			if executionID(b.Lease) != executionID(prior.Lease) {
 				return errors.New("execution changed during stop")
 			}
-			b.Lease.Execution.Phase = "stopped"
+			if b.Lease.Execution != nil {
+				b.Lease.Execution.Phase = "stopped"
+			}
+			if continuation == "" {
+				b.Lease.Continuation = ""
+			}
+			if !internal {
+				b.Lease.StopRequested = true
+			}
 			copy := *b
 			result = &copy
 			return nil

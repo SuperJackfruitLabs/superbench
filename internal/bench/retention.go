@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/history"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/output"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/retention"
 	"syscall"
 	"time"
@@ -13,18 +14,23 @@ import (
 func protectedRuns(db database) map[string]bool {
 	ids := map[string]bool{}
 	for _, b := range db {
+		if b.Lease != nil {
+			for _, id := range b.Lease.RetainedRuns {
+				ids[id] = true
+			}
+		}
 		if b.Lease != nil && b.Lease.Execution != nil {
 			ids[b.Lease.Execution.ID] = true
 		}
 	}
 	return ids
 }
-func (s Store) sealRunLog(id string, c *logCapture, exit *int, truncated bool) error {
+func (s Store) sealRunLog(id string, c *output.Capture, exit *int, truncated bool) error {
 	entry, e := retention.Snapshot(s.State, id)
 	if e != nil {
 		return e
 	}
-	info, e := c.file.Stat()
+	info, e := c.File.Stat()
 	if e != nil {
 		return e
 	}

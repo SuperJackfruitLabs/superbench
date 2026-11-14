@@ -68,7 +68,7 @@ def main():
             return db.execute("SELECT digest,run_id FROM setup_receipts WHERE bench=?", (key,)).fetchone()
 
     def replace_config(key, value):
-        token = cli("lease", "--holder", "configure", key)["Lease"]["Token"]
+        token = cli("lease-repair", "--holder", "configure", key)["Lease"]["Token"]
         path = data / "benches" / key
         (path / ".bench/config.toml").write_text(value)
         good(["git", "-C", path, "add", ".bench/config.toml"])
@@ -166,10 +166,107 @@ def main():
         assert status["Lease"]["Execution"]["Phase"] == "stopped"
         assert not (cg / status["Lease"]["Execution"]["ID"]).exists()
         print("PASS: cancellation fences hook descendants, retains the lease and records no successful preparation", flush=True)
+        cli("create", "--repo", remote, "auto")
+        auto = data / "benches/auto"
+        job = run(command("run", "--holder", "job", "auto", "--", "sh", "-c", "printf job >> .setup-events; exit 7"))
+        assert job.returncode == 7, job.stderr
+        held = json.loads(job.stdout)["Bench"]["Lease"]
+        assert len(held["RetainedRuns"]) == 1 and held["Execution"]["Phase"] == "stopped"
+        records = cli("history", "auto")
+        assert len(records) == 2 and all(r["ReleasedAt"].startswith("0001-") for r in records)
+        assert receipt("auto")[1] == held["RetainedRuns"][0]
+        candidates = cli("plan-collect", "--older-than", "0s", "--metadata-older-than", "0s")
+        assert not any(item["Record"]["Key"] == "auto" for item in (candidates["Logs"] or []))
+        cli("checkpoint", "--token", held["Token"], "auto")
+        cli("release", "--token", held["Token"], "auto")
+        assert all(not r["ReleasedAt"].startswith("0001-") for r in cli("history", "auto"))
+        cli("run", "--holder", "next", "auto", "--", "sh", "-c", "printf next >> .setup-events")
+        assert (auto / ".setup-events").read_text() == "onceeach:0jobeach:0next"
+        cooperative = json.loads(good([args.bench, "lease", "--socket", sock, "--request-id", "auto-cooperative",
+                                       "--holder", "cooperative", "auto"]))["bench"]["lease"]
+        assert cooperative["mode"] == "cooperative" and "execution" not in cooperative
+        state_lease = cli("status", "auto")[0]["Lease"]
+        assert len(state_lease["RetainedRuns"]) == 1 and "Execution" not in state_lease and "Continuation" not in state_lease
+        assert (auto / ".setup-events").read_text() == "onceeach:0jobeach:0nexteach:0"
+        cli("checkpoint", "--token", cooperative["token"], "auto")
+        cli("release", "--token", cooperative["token"], "auto")
+        print("PASS: automatic run/lease preparation shares ownership, preserves all held logs, and keeps once success after main failure; cooperative handoff retains setup evidence until final release", flush=True)
+        replace_config("auto", "[setup]\n")
+        cli("run", "--holder", "without-hooks", "auto", "--", "true")
+        assert receipt("auto") is None
+        replace_config("auto", config)
+        restored = cli("lease", "--holder", "restored-hooks", "auto")
+        token = restored["Lease"]["Token"]
+        cli("checkpoint", "--token", token, "auto")
+        cli("release", "--token", token, "auto")
+        assert (auto / ".setup-events").read_text().count("once") == 2
+        replace_config("auto", "[setup]\n")
+        plain = cli("lease", "--holder", "plain", "auto")
+        assert receipt("auto") is None and "RetainedRuns" not in plain["Lease"]
+        token = plain["Lease"]["Token"]
+        cli("checkpoint", "--token", token, "auto")
+        cli("release", "--token", token, "auto")
+        print("PASS: hook-free run/lease acquisition revokes old preparation success before configuration is later restored", flush=True)
+
+
+        cli("create", "--repo", remote, "autoFail")
+        replace_config("autoFail", "[setup]\nonce='exit 7'\n")
+        main_marker = root / "forbidden-main"
+        failed = run(command("run", "--holder", "blocked", "autoFail", "--", "touch", main_marker))
+        assert failed.returncode == 7 and not main_marker.exists() and receipt("autoFail") is None
+        cli("create", "--repo", remote, "leaseFail")
+        replace_config("leaseFail", "[setup]\neach='exit 7'\n")
+        failed_lease = run(command("lease", "--holder", "blocked", "leaseFail"))
+        assert failed_lease.returncode == 7
+        assert json.loads(failed_lease.stdout)["Lease"]["Execution"]["Phase"] == "stopped"
+        assert receipt("leaseFail") is None
+        print("PASS: failed automatic preparation starts neither the requested command nor a cooperative handoff", flush=True)
+
+        cli("create", "--repo", remote, "autoStop")
+        stopped_path = replace_config("autoStop", "[setup]\nonce='sleep 90 & touch .hook-ready; wait'\n")
+        process = subprocess.Popen(list(map(str, command("run", "--holder", "stopped", "autoStop", "--", "touch", main_marker))),
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        wait_for((stopped_path / ".hook-ready").exists, "automatic hook ready")
+        stopped = cli("stop", "--admin", "autoStop")
+        _, error = process.communicate(timeout=15)
+        assert process.returncode != 0 and not main_marker.exists(), error
+        process = None
+        assert stopped["Lease"]["Execution"]["Phase"] == "stopped" and "Continuation" not in stopped["Lease"]
+        print("PASS: successful administrative stop cancels automatic continuation and fences hook descendants", flush=True)
+
+        cli("create", "--repo", remote, "autoCrash")
+        crashed_path = replace_config("autoCrash", "[setup]\nonce='printf partial; touch .hook-ready; sleep 90'\n")
+        request = {"version": "superbench.v1", "operation": "run", "key": "autoCrash", "holder": "crashed",
+                   "request_id": "automatic-preparation-crash", "arguments": ["touch", str(main_marker)]}
+        connection = UnixHTTP(sock)
+        connection.request("POST", "/v1/operations", json.dumps(request), {"Content-Type": "application/json"})
+        connection.close()
+        wait_for((crashed_path / ".hook-ready").exists, "automatic request started")
+        daemon.kill()
+        daemon.wait(timeout=10)
+        daemon = None
+        assert run(command("lease", "--holder", "replacement", "autoCrash")).returncode != 0
+        stopped = cli("stop", "--admin", "autoCrash")
+        assert stopped["Lease"]["Execution"]["Phase"] == "stopped" and not main_marker.exists()
+        assert receipt("autoCrash") is None
+        token = stopped["Lease"]["Token"]
+        cli("checkpoint", "--token", token, "autoCrash")
+        cli("release", "--token", token, "autoCrash")
+        daemon = subprocess.Popen([args.benchd, "--state", str(state), "--data", str(data),
+                                   "--socket", str(sock), "--cgroup-root", str(cg)],
+                                  stdout=daemon_log, stderr=daemon_log)
+        wait_for(ready, "daemon restart")
+        connection = UnixHTTP(sock)
+        connection.request("POST", "/v1/operations", json.dumps(request), {"Content-Type": "application/json"})
+        response = connection.getresponse()
+        reply = json.loads(response.read())
+        connection.close()
+        assert response.status == 409 and reply["error"]["code"] == "operation_in_doubt" and not main_marker.exists()
+        print("PASS: daemon SIGKILL during preparation retains ownership; explicit fencing/release never redispatches the interrupted request", flush=True)
         daemon.terminate()
         assert daemon.wait(timeout=15) == 0
         daemon = None
-        print("DONE: explicit repository setup integration passed", flush=True)
+        print("DONE: repository setup and automatic preparation integration passed", flush=True)
     finally:
         for child in (process, daemon):
             if child is not None and child.poll() is None:
