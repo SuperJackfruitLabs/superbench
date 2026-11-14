@@ -21,7 +21,7 @@ func (s Store) Create(key string, o Options, recovering bool) (*Bench, error) {
 			return errors.New("key must be 1-80 letters, digits, underscores or hyphens, starting with a letter or digit")
 		}
 		if db[key] != nil {
-			return errors.New("bench already exists; recovery uses a new host/state or a new key")
+			return fmt.Errorf("%w; recovery uses a new host/state or a new key", ErrExists)
 		}
 		if o.Repo == "" || strings.HasPrefix(o.Repo, "-") {
 			return errors.New("a repository is required")
@@ -103,13 +103,13 @@ func (s Store) Create(key string, o Options, recovering bool) (*Bench, error) {
 func get(db database, key string) (*Bench, error) {
 	b := db[key]
 	if b == nil {
-		return nil, errors.New("unknown bench")
+		return nil, ErrNotFound
 	}
 	return b, nil
 }
 func owned(b *Bench, token string) error {
 	if b.Lease == nil || token == "" || b.Lease.Token != token {
-		return errors.New("valid lease token required")
+		return ErrLease
 	}
 	return nil
 }
@@ -124,7 +124,7 @@ func (s Store) Lease(key, holder string) (*Bench, error) {
 			return err
 		}
 		if b.Lease != nil {
-			return fmt.Errorf("bench already leased by %s; no automatic expiry", b.Lease.Holder)
+			return fmt.Errorf("%w by %s; no automatic expiry", ErrBusy, b.Lease.Holder)
 		}
 		lease, err := newLease(holder)
 		if err != nil {
@@ -191,7 +191,7 @@ func (s Store) Release(key, token string) error {
 			return err
 		}
 		if b.Checkpoint == "" || b.Checkpoint != sha {
-			return errors.New("checkpoint current HEAD before releasing")
+			return ErrCheckpoint
 		}
 		if err = confirmed(b, sha); err != nil {
 			return err

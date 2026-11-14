@@ -46,9 +46,33 @@ func TestArchitecture(t *testing.T) {
 			if err != nil {
 				return err
 			}
-			if strings.Contains(strings.Split(p, "/")[0], ".") && !(strings.Contains(path, filepath.Join("internal", "bench")) && p == "forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage") && !(strings.HasSuffix(filepath.Dir(path), filepath.Join("cmd", "bench-quota")) && p == "forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage") && !(filepath.Base(path) == "sqlite.go" && p == "modernc.org/sqlite") && !(strings.HasSuffix(filepath.Dir(path), filepath.Join("cmd", "bench")) && p == "forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/bench") {
+			module := "forge.superjackfruit.com/SuperJackfruitLabs/superbench/"
+			rel, _ := filepath.Rel(root, filepath.Dir(path))
+			rel = filepath.ToSlash(rel)
+			edges := map[string][]string{
+				"internal/bench":   {"internal/hoststorage"},
+				"internal/client":  {"internal/protocol"},
+				"internal/service": {"internal/bench", "internal/protocol"},
+				"cmd/bench":        {"internal/bench", "internal/client", "internal/protocol"},
+				"cmd/benchd":       {"internal/bench", "internal/service"},
+				"cmd/bench-quota":  {"internal/hoststorage"},
+			}
+			allowed := !strings.Contains(strings.Split(p, "/")[0], ".")
+			for _, target := range edges[rel] {
+				if p == module+target {
+					allowed = true
+				}
+			}
+			if p == "modernc.org/sqlite" && (rel == "internal/bench" && filepath.Base(path) == "sqlite.go" || rel == "internal/service" && filepath.Base(path) == "receipts.go") {
+				allowed = true
+			}
+			if p == "golang.org/x/sys/unix" && rel == "internal/service" && filepath.Base(path) == "peer_darwin.go" {
+				allowed = true
+			}
+			if !allowed {
 				t.Errorf("%s: forbidden runtime dependency %s", path, p)
 			}
+
 		}
 		return nil
 	})

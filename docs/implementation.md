@@ -13,8 +13,8 @@ no destructive cleanup is authorized by this implementation plan.
    state; archive/retention cleanup is future work. No filesystem reset/deletion.
 2. **Transactional service storage (implemented, verification below).** SQLite
    versioned schema and legacy import now replace JSON outside bench data; keep journal semantics and state-failure
-   regressions. Status is read-only. Define reconciliation for partial mirror
-   clones as well as worktrees; the current journal covers worktree creation only.
+   regressions. Status is read-only. Partial mirror clones use staged atomic publication and
+   bounded abandoned directories; conflicting worktrees remain preserved.
 3. **Supervised execution and fencing (implemented for delegated Linux cgroups).**
    Durable run/start/stop state, atomic cgroup placement and descendant fencing
    precede checkpoint/release. Supervisor crash, detached children, cancellation
@@ -24,8 +24,10 @@ no destructive cleanup is authorized by this implementation plan.
    helper, reservation ledger, free-space admission, shared caches, frozen pnpm/npm
    setup, atomic mirror publication and bounded/reserved logs. Service installation,
    inode limits, TOML hooks and automatic collection remain pending.
-5. **benchd and local CLI.** Local socket API with authenticated holder identity,
-   idempotent operations and recovery, then checkpoint-verified archive/retention.
+5. **benchd and local CLI (API implemented; archive pending).** Kernel peer uid
+   authorization, bounded durable request receipts, strict pinned treaty vectors,
+   redacted status and crash reconciliation. See [service verification](service.md).
+   Service installation and checkpoint-verified archive/retention remain pending.
 6. **Suite pilot.** Charter ownership change and treaty API/event contracts before
    adapters; one opt-in board and a clean-checkout verification path. No production
    tag or deployment is part of this local implementation turn.
@@ -42,7 +44,7 @@ A core checkpoint does not constitute completion of a phase or the product.
 | Phase | Required outcome | Current evidence |
 |---|---|---|
 | 0 | Host disk alert, reviewed cleanup dry-run, code-stage branch/checkpoint rules | Not implemented by this repository; inspect estate and board settings before changes |
-| 1 | Standalone CLI and host service; durable state/leases; checkpoints/recovery; quotas, shared mirrors/stores; verified archive/reap | CLI, journals, SQLite, fenced Linux execution and host storage tested; service, archive/reap and integration pending |
+| 1 | Standalone CLI and host service; durable state/leases; checkpoints/recovery; quotas, shared mirrors/stores; verified archive/reap | CLI, journals, SQLite, fenced Linux execution and host storage tested; local service API added; installation, archive/reap and integration pending |
 | 2 | Suite adapters, card panel, locality scoring, witness events; read-only web, file/diff/log/timeline views, terminal attach and MCP | Pending; charter/treaty contracts precede consumers; visual mockups before UI |
 | 3 | Remote editor launch/browser IDE; second-host recovery drill; per-bench isolation; Salaam layout and execution-host integration | Pending |
 
@@ -61,4 +63,7 @@ keep that approval distinct from permission to implement the product.
   CI passed; PR #2 is stacked on #1.
 - Current storage slice: quota helper, admission, frozen setup, atomic mirrors and
   log budgets; local and staged verification recorded in docs/storage.md.
-  benchd, provisioning, history and archive/reap are next.
+  `32b3859`, stacked PR #3.
+- Local daemon slice: strict local API, authenticated Unix peers, durable receipts
+  and remote CLI. Treaty and charter are proposed separately. Installation,
+  history and archive/reap are next.

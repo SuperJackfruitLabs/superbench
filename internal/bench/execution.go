@@ -107,7 +107,7 @@ func (s Store) Run(ctx context.Context, key, holder string, args []string, check
 			return e
 		}
 		if original.Lease != nil {
-			return errors.New("bench already leased")
+			return ErrBusy
 		}
 		limit, e := s.reserveLog(db)
 		if e != nil {
@@ -267,7 +267,7 @@ func (s Store) ensureStopped(b *Bench) error {
 		return nil
 	}
 	if b.Lease.Execution.Phase != "stopped" {
-		return errors.New("supervised execution is not fenced; run bench stop first")
+		return ErrNotFenced
 	}
 	return s.backend().Empty(b.Lease.Execution)
 }

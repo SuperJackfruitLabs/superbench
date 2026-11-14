@@ -7,8 +7,8 @@ import (
 	"flag"
 	"fmt"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/bench"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/protocol"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"syscall"
@@ -17,7 +17,7 @@ import (
 func main() {
 	if err := run(os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, "bench:", err)
-		var exit *exec.ExitError
+		var exit interface{ ExitCode() int }
 		if errors.As(err, &exit) && exit.ExitCode() > 0 {
 			os.Exit(exit.ExitCode())
 		}
@@ -37,6 +37,8 @@ func run(args []string) error {
 		return err
 	}
 	f := flag.NewFlagSet(args[0], flag.ContinueOnError)
+	socket := f.String("socket", "", "local benchd Unix socket (operation output uses the versioned API shape)")
+	requestID := f.String("request-id", "", "stable id for replaying an accepted service request")
 	state := f.String("state", filepath.Join(config, "superbench", "state"), "authoritative state, outside bench data")
 	data := f.String("data", filepath.Join(cache, "superbench", "data"), "mirrors and checkouts")
 	repo := f.String("repo", "", "git remote URL or absolute path")
@@ -64,6 +66,45 @@ func run(args []string) error {
 	key := f.Arg(0)
 	if key == "" && args[0] != "status" && args[0] != "migrate" && args[0] != "configure-host" && args[0] != "host-status" {
 		return fmt.Errorf("key required")
+	}
+	if *socket != "" {
+		r := protocol.Request{Operation: args[0], Key: key, RequestID: *requestID}
+		switch args[0] {
+		case "create", "recover":
+			r.Repository = *repo
+			r.Branch = *branch
+			r.Base = *base
+		case "lease":
+			r.Holder = *holder
+		case "checkpoint", "release":
+			r.LeaseToken = *token
+		case "stop":
+			if *admin {
+				r.Operation = "stop_admin"
+			} else {
+				r.LeaseToken = *token
+			}
+		case "status", "host-status":
+			if args[0] == "host-status" {
+				r.Operation = "host_status"
+			}
+		case "run":
+			command := f.Args()[1:]
+			if len(command) < 2 || command[0] != "--" {
+				return fmt.Errorf("usage: bench run [flags] key -- command [args]")
+			}
+			r.Arguments = command[1:]
+			r.Holder = *holder
+			r.Checkpoint = checkpoint
+		case "setup":
+			r.Holder = *holder
+			r.Offline = offline
+		default:
+			return fmt.Errorf("operation is local administration only")
+		}
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		return remote(ctx, *socket, r)
 	}
 	s := bench.Store{State: *state, Data: *data, CgroupRoot: *cgroupRoot}
 	var out any
