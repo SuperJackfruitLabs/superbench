@@ -6,9 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 	"time"
+
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/gitcontrol"
 )
 
 type limitedOutput struct {
@@ -24,24 +25,17 @@ func (b *limitedOutput) Write(p []byte) (int, error) {
 	return n, nil
 }
 func gitEnvironment() []string {
-	var env []string
-	for _, v := range os.Environ() {
-		k, _, _ := strings.Cut(v, "=")
-		if strings.HasPrefix(k, "GIT_") || k == "BENCH_LEASE_TOKEN" {
-			continue
-		}
-		env = append(env, v)
-	}
+	env := gitcontrol.Environment(os.Environ())
 	return append(env, "GIT_TERMINAL_PROMPT=0", "GIT_NO_REPLACE_OBJECTS=1", "GIT_AUTHOR_NAME=SuperBench", "GIT_AUTHOR_EMAIL=checkpoint@example.invalid", "GIT_COMMITTER_NAME=SuperBench", "GIT_COMMITTER_EMAIL=checkpoint@example.invalid")
 }
 func runGit(ctx context.Context, path string, input []byte, extraEnv []string, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, "git", append([]string{"--no-replace-objects", "-c", "remote.origin.mirror=false", "-c", "push.followTags=false", "-c", "commit.gpgSign=false", "-c", "i18n.commitEncoding=UTF-8", "-C", path}, args...)...)
+	cmd := gitcontrol.Command(ctx, path, append([]string{"-c", "remote.origin.mirror=false", "-c", "commit.gpgSign=false", "-c", "i18n.commitEncoding=UTF-8"}, args...)...)
 	cmd.WaitDelay = 2 * time.Second
 	cmd.Env = append(gitEnvironment(), extraEnv...)
 	cmd.Stdin = bytes.NewReader(input)
 	var out limitedOutput
 	cmd.Stdout = &out
-	if err := cmd.Run(); err != nil {
+	if err := gitcontrol.Run(ctx, cmd); err != nil {
 		if ctx.Err() != nil {
 			return "", ctx.Err()
 		}

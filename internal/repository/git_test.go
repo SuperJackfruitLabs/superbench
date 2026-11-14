@@ -15,7 +15,22 @@ func quote(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\"'\"'")
 func wrapper(t *testing.T, text string) {
 	t.Helper()
 	dir := t.TempDir()
-	write(t, filepath.Join(dir, "git"), "#!/bin/sh\n"+text)
+	// Inspect the verb without shifting positional arguments: production adds
+	// command-local Git policy flags, all of which must reach the real process.
+	probe := `fixture_git_verb=
+fixture_git_first_argument=
+fixture_git_skip=
+for fixture_git_word do
+ if [ -n "$fixture_git_skip" ]; then fixture_git_skip=; continue; fi
+ if [ -n "$fixture_git_verb" ]; then fixture_git_first_argument=$fixture_git_word; break; fi
+ case "$fixture_git_word" in
+  -C|-c|--git-dir|--work-tree|--namespace|--config-env) fixture_git_skip=yes ;;
+  -*) ;;
+  *) fixture_git_verb=$fixture_git_word ;;
+ esac
+done
+`
+	write(t, filepath.Join(dir, "git"), "#!/bin/sh\n"+probe+text)
 	if e := os.Chmod(filepath.Join(dir, "git"), 0700); e != nil {
 		t.Fatal(e)
 	}
@@ -34,7 +49,7 @@ func TestRefreshDeadlineAndCancellation(t *testing.T) {
 				t.Fatal(e)
 			}
 			marker := filepath.Join(t.TempDir(), "fetch-started")
-			wrapper(t, "if [ \"$3\" = fetch ]; then printf started > "+quote(marker)+"; exec sleep 30; fi\nexec "+quote(real)+" \"$@\"\n")
+			wrapper(t, "if [ \"$fixture_git_verb\" = fetch ]; then printf started > "+quote(marker)+"; exec sleep 30; fi\nexec "+quote(real)+" \"$@\"\n")
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			if kind == "deadline" {

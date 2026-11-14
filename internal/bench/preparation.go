@@ -95,6 +95,10 @@ func (s Store) LeaseContext(ctx context.Context, key, holder string) (*Bench, er
 	if e := ctx.Err(); e != nil {
 		return nil, e
 	}
+	s, ctx, err := s.withControls(ctx, false)
+	if err != nil {
+		return nil, err
+	}
 	b, c, e := s.acquireLease(ctx, key, holder, true)
 	if e != nil || c == nil {
 		return b, e

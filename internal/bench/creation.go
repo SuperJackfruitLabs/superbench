@@ -18,11 +18,19 @@ func (s Store) CreateColdContext(ctx context.Context, key string, o Options, rec
 	if e := ctx.Err(); e != nil {
 		return nil, e
 	}
+	s, ctx, e := s.withControls(ctx, false)
+	if e != nil {
+		return nil, e
+	}
 	b, _, e := s.createRegistered(ctx, key, o, recovering, false)
 	return b, e
 }
 func (s Store) CreateContext(ctx context.Context, key string, o Options, recovering bool) (*Bench, error) {
 	if e := ctx.Err(); e != nil {
+		return nil, e
+	}
+	s, ctx, e := s.withControls(ctx, false)
+	if e != nil {
 		return nil, e
 	}
 	b, warming, e := s.createRegistered(ctx, key, o, recovering, true)

@@ -50,11 +50,13 @@ func TestArchitecture(t *testing.T) {
 			rel, _ := filepath.Rel(root, filepath.Dir(path))
 			rel = filepath.ToSlash(rel)
 			edges := map[string][]string{
-				"internal/bench":         {"internal/quotapolicy", "internal/cachepolicy", "internal/archivepolicy", "internal/model", "internal/creation", "internal/repository", "internal/output", "internal/execution", "internal/setup", "internal/hoststorage", "internal/reap", "internal/history", "internal/retention"},
-				"internal/archivepolicy": {"internal/model", "internal/reap", "internal/repository", "internal/setup"},
-				"internal/setup":         {"internal/cachepolicy", "internal/quotapolicy"},
+				"internal/bench":         {"internal/statepath", "internal/gitcontrol", "internal/quotapolicy", "internal/cachepolicy", "internal/archivepolicy", "internal/model", "internal/creation", "internal/repository", "internal/output", "internal/execution", "internal/setup", "internal/hoststorage", "internal/reap", "internal/history", "internal/retention"},
+				"internal/gitcontrol":    {"internal/execution"},
+				"internal/archivepolicy": {"internal/gitcontrol", "internal/model", "internal/reap", "internal/repository", "internal/setup"},
+				"internal/setup":         {"internal/gitcontrol", "internal/cachepolicy", "internal/quotapolicy"},
+				"internal/repository":    {"internal/gitcontrol"},
 				"internal/autoarchive":   {"internal/bench", "internal/archivepolicy", "internal/model", "internal/repository", "internal/setup"},
-				"internal/checkpointset": {"internal/model"},
+				"internal/checkpointset": {"internal/model", "internal/gitcontrol"},
 				"internal/execution":     {"internal/cachepolicy"},
 				"internal/model":         {"internal/execution"},
 				"internal/creation":      {"internal/model", "internal/repository"},

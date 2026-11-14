@@ -9,7 +9,7 @@ import (
 
 func g(t *testing.T, dir string, args ...string) string {
 	t.Helper()
-	out, e := git(dir, args...)
+	out, e := (Store{}).git(dir, args...)
 	if e != nil {
 		t.Fatal(e)
 	}

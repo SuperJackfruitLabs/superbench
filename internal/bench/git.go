@@ -2,20 +2,24 @@ package bench
 
 import (
 	"fmt"
-	"os/exec"
 	"strings"
+
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/gitcontrol"
 )
 
-func git(dir string, args ...string) (string, error) {
-	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
-	out, err := cmd.CombinedOutput()
+func (s Store) git(dir string, args ...string) (string, error) {
+	ctx := s.controlContext()
+	cmd := gitcontrol.Command(ctx, dir, args...)
+	var output strings.Builder
+	cmd.Stdout, cmd.Stderr = &output, &output
+	err := gitcontrol.Run(ctx, cmd)
 	if err != nil {
-		return "", fmt.Errorf("git %s failed: %w: %s", args[0], err, strings.TrimSpace(string(out)))
+		return "", fmt.Errorf("git %s failed: %w", args[0], err)
 	}
-	return strings.TrimSpace(string(out)), nil
+	return strings.TrimSpace(output.String()), nil
 }
-func clean(b *Bench) error {
-	out, err := git(b.Path, "status", "--porcelain", "--untracked-files=all")
+func (s Store) clean(b *Bench) error {
+	out, err := s.git(b.Path, "status", "--porcelain", "--untracked-files=all")
 	if err != nil {
 		return err
 	}
@@ -24,9 +28,9 @@ func clean(b *Bench) error {
 	}
 	return nil
 }
-func head(b *Bench) (string, error) { return git(b.Path, "rev-parse", "HEAD") }
-func confirmed(b *Bench, sha string) error {
-	out, err := git(b.Path, "ls-remote", "--exit-code", "origin", "refs/heads/"+b.Branch)
+func (s Store) head(b *Bench) (string, error) { return s.git(b.Path, "rev-parse", "HEAD") }
+func (s Store) confirmed(b *Bench, sha string) error {
+	out, err := s.git(b.Path, "ls-remote", "--exit-code", "origin", "refs/heads/"+b.Branch)
 	if err != nil {
 		return err
 	}

@@ -2,13 +2,12 @@ package bench
 
 import (
 	"context"
-	"crypto/rand"
 	"database/sql"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/execution"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/history"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/output"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/retention"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/setup"
@@ -40,23 +39,8 @@ func (s Store) backend() executionBackend {
 	}
 	return execution.Host{}
 }
-func nonce() (string, error) {
-	v := make([]byte, 16)
-	if _, e := rand.Read(v); e != nil {
-		return "", e
-	}
-	return hex.EncodeToString(v), nil
-}
-func newLease(holder string) (*Lease, error) {
-	if holder == "" {
-		return nil, errors.New("holder required")
-	}
-	token, e := nonce()
-	if e != nil {
-		return nil, e
-	}
-	return &Lease{Token: token, Holder: holder}, nil
-}
+func nonce() (string, error)                 { return model.Nonce() }
+func newLease(holder string) (*Lease, error) { return model.NewLease(holder) }
 
 // The execution gate linearizes start and stop independently from the global
 // state lock. It is never held while waiting for a command's execution to finish.
@@ -87,6 +71,10 @@ func (s Store) runStage(ctx context.Context, key, holder string, args []string, 
 		return nil, errors.New("command required")
 	}
 	if err := s.validate(); err != nil {
+		return nil, err
+	}
+	s, ctx, err := s.withControls(ctx, true)
+	if err != nil {
 		return nil, err
 	}
 	id, err := nonce()

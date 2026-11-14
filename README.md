@@ -72,6 +72,8 @@ Linux hosts with a delegated cgroup-v2 root can use `bench run` and `bench stop`
 for supervised process-tree fencing. Success checkpoints and releases; failures
 retain the lease. See [execution and recovery](docs/execution.md) for provisioning,
 log output, schema upgrades, local administration and the isolation boundary.
+Managed [Git control scopes](docs/git-control.md) also fence checkpoint helpers
+before ownership is released and recover their durable intent after a crash.
 
 ## Archive and reap
 

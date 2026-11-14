@@ -145,6 +145,12 @@ PRs describe their publication history.
   lease, release and archive integration remain pending; see
   [checkpoint generations](checkpoint-generations.md).
 
+- Git control handoff: managed Git commands use durable cgroup identities and
+  recovery before new ownership. Command-local policy suppresses client hooks
+  after payload fencing, while user work can run hooks inside its payload.
+  Schema 13 prevents older binaries from ignoring live control intents; see
+  [Git control operations](git-control.md).
+
 ## Remaining retention work
 
 Reviewed log collection and history are implemented in [retention.md](retention.md),
