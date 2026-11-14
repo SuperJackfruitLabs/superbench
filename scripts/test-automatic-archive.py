@@ -220,9 +220,9 @@ def main():
         assert run(f.command('status', 'task', binary=args.old_bench)).returncode != 0
         assert f.tick()['Results'][0]['Status'] == 'not eligible'
         with sqlite3.connect(f.state / 'bench.db') as db:
-            assert db.execute('PRAGMA user_version').fetchone()[0] == 12
+            assert db.execute('PRAGMA user_version').fetchone()[0] == 13
         f.assert_active()
-        print('PASS: genuine schema-11 CLI state migrates to12 without inventing creation/merge proof; old CLI refuses and legacy work remains active', flush=True)
+        print('PASS: genuine schema-11 CLI state migrates to13 without inventing creation/merge proof; old CLI refuses and legacy work remains active', flush=True)
 
         f = Fixture('interrupted')
         b = f.checkpoint(f.create())

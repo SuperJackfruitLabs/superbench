@@ -8,7 +8,7 @@ import (
 type creation = createfiles.Intent
 
 func (s Store) creationFiles() createfiles.Files {
-	return createfiles.Files{State: s.State, Data: s.Data, Git: git, Write: atomicWrite}
+	return createfiles.Files{State: s.State, Data: s.Data, Git: s.git, Write: atomicWrite}
 }
 func (s Store) journalPath(key string) string { return s.creationFiles().JournalPath(key) }
 func (s Store) pending(key string, o Options, recovering bool) (*creation, error) {

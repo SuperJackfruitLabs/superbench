@@ -4,11 +4,12 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"os/exec"
 	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/gitcontrol"
 )
 
 var errConfigBlob = errors.New("configuration must be a regular UTF-8 blob of at most 64 KiB")
@@ -26,11 +27,11 @@ func At(ctx context.Context, mirror, source string) (*Config, error) {
 // boundedOutput also bounds Git output if an object is malformed or changes
 // between the size query and content read. Parser errors never expose contents.
 func boundedOutput(ctx context.Context, mirror string, limit int, args ...string) ([]byte, error) {
-	command := exec.CommandContext(ctx, "git", append([]string{"--no-replace-objects", "-C", mirror}, args...)...)
+	command := gitcontrol.Command(ctx, mirror, args...)
 	command.WaitDelay = 2 * time.Second
 	out := &boundedBuffer{limit: limit}
 	command.Stdout = out
-	if err := command.Run(); err != nil {
+	if err := gitcontrol.Run(ctx, command); err != nil {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}

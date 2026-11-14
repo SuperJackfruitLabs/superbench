@@ -9,7 +9,11 @@ import (
 // Invalid/unreadable config is left for normal strict setup validation after
 // registration, preserving the initialization lease on configuration failure.
 func QuotaAt(mirror, source string) (uint64, error) {
-	raw, e := configBlob(context.Background(), mirror, source)
+	return QuotaAtContext(context.Background(), mirror, source)
+}
+
+func QuotaAtContext(ctx context.Context, mirror, source string) (uint64, error) {
+	raw, e := configBlob(ctx, mirror, source)
 	if errors.Is(e, errConfigBlob) {
 		return 0, nil
 	}

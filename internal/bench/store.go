@@ -2,14 +2,16 @@
 package bench
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/gitcontrol"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/statepath"
 	"os"
 	"path/filepath"
-	"strings"
 	"syscall"
 	"time"
 )
@@ -20,6 +22,7 @@ type Store struct {
 	State, Data        string
 	CgroupRoot         string
 	MirrorTimeout      time.Duration
+	controls           context.Context
 	reapAfterDelete    func() error
 	collectAfterDelete func() error
 	executor           executionBackend
@@ -32,47 +35,7 @@ func (s Store) validate() error {
 	if s.MirrorTimeout < 0 || s.MirrorTimeout > time.Hour {
 		return errors.New("mirror timeout must be between zero (default) and one hour")
 	}
-	for _, p := range []string{s.State, s.Data} {
-		if !filepath.IsAbs(p) {
-			return errors.New("state and data paths must be absolute")
-		}
-	}
-	// Canonicalize existing ancestors as well as existing directories to reject symlink overlap.
-	canonical := func(p string) (string, error) {
-		var tail []string
-		for {
-			resolved, err := filepath.EvalSymlinks(p)
-			if err == nil {
-				for i := len(tail) - 1; i >= 0; i-- {
-					resolved = filepath.Join(resolved, tail[i])
-				}
-				return resolved, nil
-			}
-			if !os.IsNotExist(err) {
-				return "", err
-			}
-			tail = append(tail, filepath.Base(p))
-			p = filepath.Dir(p)
-		}
-	}
-	state, err := canonical(s.State)
-	if err != nil {
-		return err
-	}
-	data, err := canonical(s.Data)
-	if err != nil {
-		return err
-	}
-	for _, pair := range [][2]string{{state, data}, {data, state}} {
-		rel, e := filepath.Rel(pair[0], pair[1])
-		if e != nil {
-			return e
-		}
-		if rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))) {
-			return errors.New("state and data directories must be separate, non-nested paths")
-		}
-	}
-	return nil
+	return statepath.Validate(s.State, s.Data)
 }
 
 // The host-wide OS lock also serializes mirror/worktree operations. SQLite
@@ -96,6 +59,13 @@ func (s Store) transactionSQL(fn func(database, *sql.Tx) error) error {
 		return err
 	}
 	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+	state, err := filepath.EvalSymlinks(s.State)
+	if err != nil {
+		return err
+	}
+	if err = gitcontrol.Recover(state); err != nil {
+		return err
+	}
 	db, err := s.openSQL(false)
 	if err != nil {
 		return err

@@ -1,6 +1,7 @@
 package bench
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -15,13 +16,13 @@ import (
 type ReapPlan = reap.Plan
 
 func (s Store) archiveInspector() archivepolicy.Inspector {
-	return archivepolicy.Inspector{Data: s.Data, Git: git, MirrorPath: s.mirrorPath, Clean: clean, Confirmed: confirmed, CheckpointError: ErrCheckpoint, ValidKey: keyPattern.MatchString}
+	return archivepolicy.Inspector{Data: s.Data, Git: s.git, MirrorPath: s.mirrorPath, Clean: s.clean, Confirmed: s.confirmed, CheckpointError: ErrCheckpoint, ValidKey: keyPattern.MatchString}
 }
-func archiveRemote(b *Bench) error {
-	return archivepolicy.Inspector{Git: git, Confirmed: confirmed}.Remote(b)
+func (s Store) archiveRemote(b *Bench) error {
+	return archivepolicy.Inspector{Git: s.git, Confirmed: s.confirmed}.Remote(b)
 }
-func archiveCheckout(b *Bench) error {
-	return archivepolicy.Inspector{Git: git, Clean: clean, Confirmed: confirmed, CheckpointError: ErrCheckpoint}.Checkout(b)
+func (s Store) archiveCheckout(b *Bench) error {
+	return archivepolicy.Inspector{Git: s.git, Clean: s.clean, Confirmed: s.confirmed, CheckpointError: ErrCheckpoint}.Checkout(b)
 }
 func archivePaths(s Store, b *Bench) error { return s.archiveInspector().Paths(b) }
 func (s Store) Archive(key string) (*Bench, error) {
@@ -34,6 +35,19 @@ func (s Store) ArchiveWithGrace(key string, grace time.Duration) (*Bench, error)
 // ArchiveWithCheck gates a new archive while holding its durable state lock.
 // Retried archives preserve the original intent without rerunning check.
 func (s Store) ArchiveWithCheck(key string, grace time.Duration, check func(*Bench) error) (*Bench, error) {
+	return s.ArchiveContext(context.Background(), key, grace, func(_ context.Context, b *Bench) error {
+		if check != nil {
+			return check(b)
+		}
+		return nil
+	})
+}
+
+func (s Store) ArchiveContext(ctx context.Context, key string, grace time.Duration, check func(context.Context, *Bench) error) (*Bench, error) {
+	s, ctx, err := s.withControls(ctx, false)
+	if err != nil {
+		return nil, err
+	}
 	return (archivepolicy.Archiver{
 		Update: func(key string, action func(*Bench) error) error {
 			return s.transaction(func(db database) error {
@@ -46,7 +60,12 @@ func (s Store) ArchiveWithCheck(key string, grace time.Duration, check func(*Ben
 		},
 		Inspector: s.archiveInspector(), Journal: s.freezeJournal,
 		SaveIntent: s.saveLifecycleIntent, Busy: ErrBusy,
-	}).Archive(key, grace, check)
+	}).Archive(key, grace, func(b *Bench) error {
+		if check != nil {
+			return check(ctx, b)
+		}
+		return nil
+	})
 }
 func (s Store) makeReapPlan(b *Bench) (*ReapPlan, error) {
 	if e := archivePaths(s, b); e != nil {
@@ -58,7 +77,7 @@ func (s Store) makeReapPlan(b *Bench) (*ReapPlan, error) {
 	if b.ArchivedAt == "" || b.ReapedAt != "" || b.ReapingDigest != "" {
 		return nil, errors.New("bench must be archived and not already reaping")
 	}
-	if e := archiveCheckout(b); e != nil {
+	if e := s.archiveCheckout(b); e != nil {
 		return nil, e
 	}
 	if b.ArchiveFreezeDigest == "" || b.ArchiveFrozenAt == "" {
@@ -176,7 +195,7 @@ func (s Store) Reap(p ReapPlan) (*Bench, error) {
 		if saved.Digest != p.Digest || savedDigest != p.Digest {
 			return errors.New("retained reap journal changed")
 		}
-		if e = archiveRemote(b); e != nil {
+		if e = s.archiveRemote(b); e != nil {
 			return e
 		}
 		if _, e = os.Lstat(b.Path); e == nil {
@@ -203,7 +222,7 @@ func (s Store) Reap(p ReapPlan) (*Bench, error) {
 			return e
 		}
 		// Remove only this registration. Never prune other benches or delete refs.
-		list, e := git(b.Mirror, "worktree", "list", "--porcelain", "-z")
+		list, e := s.git(b.Mirror, "worktree", "list", "--porcelain", "-z")
 		if e != nil {
 			return e
 		}
@@ -218,7 +237,7 @@ func (s Store) Reap(p ReapPlan) (*Bench, error) {
 			}
 			path := strings.TrimPrefix(field, "worktree ")
 			if path == b.Path || path == canonicalTarget {
-				if _, e = git(b.Mirror, "worktree", "remove", "--force", path); e != nil {
+				if _, e = s.git(b.Mirror, "worktree", "remove", "--force", path); e != nil {
 					return e
 				}
 				break

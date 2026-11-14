@@ -79,7 +79,7 @@ func (m *Manager) Tick(ctx context.Context, limit int) (Report, error) {
 }
 
 func (m *Manager) archive(ctx context.Context, key string) (*bench.Bench, error) {
-	return m.Store.ArchiveWithCheck(key, archivepolicy.DefaultGrace, func(b *bench.Bench) error {
+	return m.Store.ArchiveContext(ctx, key, archivepolicy.DefaultGrace, func(ctx context.Context, b *bench.Bench) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}

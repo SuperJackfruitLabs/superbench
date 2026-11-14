@@ -5,7 +5,6 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/reap"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -98,7 +97,8 @@ func (i Inspector) Checkout(b *model.Bench) error {
 func (i Inspector) Plan(b *model.Bench) (*reap.Plan, error) {
 	// Compare raw file/link content with HEAD objects, rather than assuming an
 	// index flag or a checkout filter proves that these local bytes recover.
-	rawFiles, e := exec.Command("git", "-C", b.Path, "ls-tree", "-r", "-z", "HEAD").Output()
+	output, e := i.Git(b.Path, "ls-tree", "-r", "-z", "HEAD")
+	rawFiles := []byte(output)
 	if e != nil {
 		return nil, e
 	}

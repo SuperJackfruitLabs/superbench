@@ -1,0 +1,233 @@
+Git control isolation and recovery verification, 2026-11-15
+Uncommitted fix/git-control-hooks candidate on base
+ee403cdae9fcb182ff7f9897c9bbf4bcf236f78f (PR 19 merge).
+Final authoritative state schema: 13.
+Linux 7.0.0-22-generic; go1.26.4 linux/amd64; Git 2.53.0.
+All complete accepted command logs below exited 0.
+
+The dedicated live drill has exactly EIGHT groups:
+1. Retained schema-12 CLI: pre-push and reference-transaction hooks each leave
+   a detached writer outside the execution cgroup; it creates an untracked file
+   after successful checkpoint/release and the lease is already absent.
+2. Fixed control checkpoint/release: neither hook executes, no descendant or
+   delayed file appears, hook/followTags configuration is preserved, unrelated
+   annotated tags remain local despite repository push.followTags=true.
+3. Explicit user Git payload commands still execute both configured hooks;
+   their setsid descendants remain in the execution cgroup and are fenced before
+   successful clean checkpoint/release, with no delayed write.
+4. Server pre-receive and reference-transaction hooks still reject publication;
+   failed checkpoints retain the exact authoritative lease. Removing the server
+   rejection permits explicit checkpoint/release recovery.
+5. Retained schema-12 CLI: a pass-through external clean filter leaves a detached
+   post-release writer even though tracked bytes remained Git-clean.
+6. Managed control Git: the same filter's detached writer is contained/fenced
+   before checkpoint/release; tracked bytes and filter configuration survive.
+7. A paused external filter is running in a scope matched to its durable
+   git-controls intent. SIGKILL of ONLY the CLI controller leaves the known
+   worker alive. Read-only status does not fence; schema-12 CLI refuses schema13.
+   The next mutation recovers/fences and removes that exact intent before held-
+   lease rejection; subsequent explicit checkpoint/release and new grant succeed.
+8. Warm shared-mirror worktree creation suppresses post-checkout hooks while
+   preserving the repository hook configuration.
+
+The reference-transaction fixture supplies the normal tracking refspec
++refs/heads/*:refs/remotes/origin/* so checkpoint push actually updates a local
+tracking ref. The initial missing-marker diagnostic was a fixture issue; all
+accepted runs below use this deterministic positive trigger.
+
+Scope and cleanup:
+Every new live fixture supplied an explicit private Linux cgroup root. All Git
+remotes, state, hooks, filters and targets were disposable local files. Old
+unscoped repro writers were killed only after matching their exact PID, /proc
+start time and unique trial token; their own process groups were used. The
+controller crash deliberately killed one CLI PID, retaining its known scope for
+real recovery. Trial cgroups were killed only under their dedicated root and
+removed after populated=0. Final process/directory inspection found no live
+owned helper, trial directory or trial cgroup root. No deployment occurred.
+
+Source/build chronology:
+Initial isolated source archive SHA256:
+367f517d448510ea2bed95d23a742530ce3d274b986925ecdc081d7d402d74a2
+The following timeout integration files were synchronized before the accepted
+pre-fsync required check, eight-group drill and archive regressions:
+00c114e93f3458556d6b8802b1b6f3fb9d649a3201235f3a31fee68c0c91b142
+  internal/gitcontrol/runner.go (timeout-aware, before parent-fsync correction)
+e98033038a89cbaff9ff66c75c2ff5cb9fd7ce496f592971ad4f117bf85d3a61
+  internal/gitcontrol/runner_test.go
+e50590756ed8c56611ee5fe765a4f1ded1df589f2ec66f3c74bb6bfbbad59c5b
+  internal/bench/controls.go
+The accepted live fixture source in both builds:
+bf124d05f0f192116a1168b41da04c055b7aea1f66762f209599203d87265e6a
+  scripts/test-git-control-hooks.py
+
+Final durability-only overlay (parent State directory fsync, including retry):
+019ddb3580a0d09cc91078c32abd865bf8c0398ca893a51badeda6b7e9c762e2
+  internal/gitcontrol/runner.go
+After that overlay the FULL required Linux check/fresh builds and complete
+EIGHT-group live drill were repeated successfully. Archive regressions were
+already green before this fsync-only overlay and were not repeated.
+
+Pre-fsync regression build SHA256:
+REGRESSION_BENCH 1fe453d582eff6521e15c73a05856178cd20ffd649c9039485ed8e7696692ed2
+REGRESSION_QUOTA 56afe6f26324396b9b7723c4f460a991533e4069f210b166248b0cfae98b4e8a
+REGRESSION_DAEMON bdd3ceebe7aaac534c527a7d27bfe4a71cd5ff0a1a7cc95b37ecd3f93b251082
+
+Final frozen-source build SHA256:
+BENCH c2766c82bb2d00aaf4a3a19c4219af84ede48e6c279d8063dddb20dda2f89589
+BENCH_QUOTA 56afe6f26324396b9b7723c4f460a991533e4069f210b166248b0cfae98b4e8a
+BENCHD 538e474d4e142b4c1f0d1b11c9e4f77d7203dfeb663a080cffd36b8913399e2a
+
+Retained fixture provenance and SHA256:
+OLD_SCHEMA12: previous checkpoint-generation slice, retained unchanged;
+e8407bb5d95e5a19e59985bc4b19e6a805ca099b61987089653c091fe4849320
+SCHEMA11: repository-quota slice f7a915f0a510f97f10185e59a1bd8e52b2296b6d;
+de8429d8cca52de5267ecba53c60ffe298c197858a6681b791286b9bdcd1d728
+SCHEMA8: ec96e2998570288aa9653cfc58076b58c3d8e2eb;
+dacbbeffb3fb019b9a79b492b2369f50028c3147ebc70a11d6c0d889688b857d
+SCHEMA9: 4d9257d783799aeffbcf286b5a8e4570d15ced62;
+97fd3f83142acd2eb36e95108461d59d0b34213e7dd48e6383bc832463c216f1
+
+Archive output-label note:
+The successful automatic-archive regression explicitly asserted persisted
+schema13 at line223. Its old success label still said 'migrates to12'; the
+complete raw log below preserves that label. After success, ONLY that label
+was corrected to 'migrates to13' and synchronized (assertions unchanged):
+dc67d9304249d0184894ab8bbaf6610af9a6a40480a6492ae29c361f2ba0b19e
+  scripts/test-automatic-archive.py
+
+Commands use placeholders for absolute binaries and source paths; machine-
+specific cache paths are omitted. Successful logs are otherwise complete.
+
+Accepted timeout-aware required check and fresh regression builds
+sh scripts/check.sh
+go build -o REGRESSION_BENCH ./cmd/bench
+go build -o REGRESSION_QUOTA ./cmd/bench-quota
+go build -o REGRESSION_DAEMON ./cmd/benchd
+
+....
+----------------------------------------------------------------------
+Ran 4 tests in 0.005s
+
+OK
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/cmd/bench	1.454s
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/cmd/bench-quota	[no test files]
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/cmd/benchd	[no test files]
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/architecture	1.186s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/archivepolicy	1.043s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/autoarchive	7.183s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/bench	17.979s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/cachepolicy	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/checkpointset	10.263s
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/client	[no test files]
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/creation	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/execution	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/gitcontrol	1.512s
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/history	[no test files]
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/integration	5.075s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/maintenance	(cached)
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model	[no test files]
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/output	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/protocol	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotapolicy	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/reap	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/repository	6.421s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/retention	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/service	2.067s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/setup	2.112s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/statepath	(cached)
+
+Accepted timeout-aware eight-group live drill
+python3 -u scripts/test-git-control-hooks.py --bench REGRESSION_BENCH --old-bench OLD_SCHEMA12
+
+PASS: retained old CLI reproduces both pre-push and reference-transaction detached writers creating untracked files after lease release, outside the execution cgroup
+PASS: fixed control checkpoint/release launches neither client hook nor descendant, preserves repository hook/followTags configuration, leaves checkout clean and publishes no unrelated annotated tag
+PASS: explicit user Git commands still execute both configured hooks; detached setsid descendants stay in the execution cgroup and are fenced before clean checkpoint/release
+PASS: server pre-receive and reference-transaction rejection still block checkpoint and retain the same lease; removing the server rejection permits explicit recovery
+PASS: retained schema-12 CLI also releases a Git-clean checkout while an external pass-through clean filter leaves an unfenced delayed writer alive
+PASS: managed control Git contains an external pass-through clean filter and fences its detached writer before checkpoint/release while preserving tracked bytes and filter configuration
+PASS: SIGKILL of a paused control controller leaves a durable schema-13 intent and live known scope; status does not fence, schema-12 CLI refuses, and the next mutation recovers/fences before handoff or a later lease grant
+PASS: a warm shared-mirror worktree creation suppresses configured post-checkout hooks without changing the repository hook configuration
+DONE: Git control-hook isolation and user-command cgroup fencing passed
+
+Automatic archive CLI/daemon regression (private per-fixture cgroup roots)
+python3 -u scripts/test-automatic-archive.py --bench REGRESSION_BENCH --benchd REGRESSION_DAEMON --old-bench SCHEMA11
+
+PASS: periodic daemon ignores fresh/unmerged work, preserves repeated checkpoint proof, then archives a real merge read-only with exact evidence and seven-day grace; repeats are immutable and SIGTERM exits cleanly
+PASS: following a newer default commit without an observed unmerged checkpoint grants no archive authority
+PASS: manual, held, dirty, advanced/deleted remote branches and squash merges stay active; assume-unchanged/skip-worktree edits cannot authorize mismatched or uncommitted policy
+PASS: CLI after-key pagination visits every manual bench once within the requested bound
+PASS: genuine schema-11 CLI state migrates to12 without inventing creation/merge proof; old CLI refuses and legacy work remains active
+PASS: SIGKILL during actual daemon freeze preserves committed intent; restart finishes the same evidence/deadline/tree despite changed default HEAD, without deleting output
+DONE: automatic archive CLI/daemon integration passed
+
+Schema-8 grace and approved deletion recovery regression
+python3 -u scripts/test-archive-grace.py --bench PRIVATE_CGROUP_BENCH_WRAPPER --old-bench SCHEMA8
+
+PASS: schema-8 SIGKILL leaves a genuine superbench.reap.v1 intent; schema-13 migration resumes exact approval and preserves replay/downgrade guards
+PASS: default seven-day grace, pre-effect rejection, immutable retry deadline and forged-plan rejection preserve checkout/artifacts
+PASS: explicit zero grace still requires an exact reviewed v3 manifest; schema 13 is persisted
+
+Schema-9 archive conversion and interrupted permission recovery regression
+python3 -u scripts/test-archive-permissions.py --bench PRIVATE_CGROUP_BENCH_WRAPPER --old-bench SCHEMA9
+
+PASS: schema-9 archives require explicit read-only conversion, preserve the deadline and reject unstarted v2 approvals
+PASS: SIGKILL after a real permission change retains a pending archive, blocks writers/plans and resumes only the original tree
+PASS: SIGKILL after directory thaw retains exact deletion approval; new files are preserved and the same reviewed intent resumes
+
+Final frozen parent-fsync source required check and fresh builds
+sh scripts/check.sh
+go build -o BENCH ./cmd/bench
+go build -o BENCH_QUOTA ./cmd/bench-quota
+go build -o BENCHD ./cmd/benchd
+
+....
+----------------------------------------------------------------------
+Ran 4 tests in 0.004s
+
+OK
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/cmd/bench	1.448s
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/cmd/bench-quota	[no test files]
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/cmd/benchd	[no test files]
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/architecture	1.181s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/archivepolicy	1.037s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/autoarchive	6.751s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/bench	17.250s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/cachepolicy	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/checkpointset	10.257s
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/client	[no test files]
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/creation	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/execution	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/gitcontrol	1.583s
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/history	[no test files]
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/integration	4.833s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/maintenance	(cached)
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model	[no test files]
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/output	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/protocol	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotapolicy	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/reap	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/repository	5.860s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/retention	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/service	2.126s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/setup	2.060s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/statepath	(cached)
+
+Final frozen parent-fsync source COMPLETE eight-group live drill
+python3 -u scripts/test-git-control-hooks.py --bench BENCH --old-bench OLD_SCHEMA12
+
+PASS: retained old CLI reproduces both pre-push and reference-transaction detached writers creating untracked files after lease release, outside the execution cgroup
+PASS: fixed control checkpoint/release launches neither client hook nor descendant, preserves repository hook/followTags configuration, leaves checkout clean and publishes no unrelated annotated tag
+PASS: explicit user Git commands still execute both configured hooks; detached setsid descendants stay in the execution cgroup and are fenced before clean checkpoint/release
+PASS: server pre-receive and reference-transaction rejection still block checkpoint and retain the same lease; removing the server rejection permits explicit recovery
+PASS: retained schema-12 CLI also releases a Git-clean checkout while an external pass-through clean filter leaves an unfenced delayed writer alive
+PASS: managed control Git contains an external pass-through clean filter and fences its detached writer before checkpoint/release while preserving tracked bytes and filter configuration
+PASS: SIGKILL of a paused control controller leaves a durable schema-13 intent and live known scope; status does not fence, schema-12 CLI refuses, and the next mutation recovers/fences before handoff or a later lease grant
+PASS: a warm shared-mirror worktree creation suppresses configured post-checkout hooks without changing the repository hook configuration
+DONE: Git control-hook isolation and user-command cgroup fencing passed
+
+The private-cgroup wrapper used only by the two legacy archive scripts was:
+operation=$1; shift
+exec REGRESSION_BENCH "$operation" --cgroup-root "$PRIVATE_TRIAL_CGROUP" "$@"
+The root was created before those tests and cleaned after both completed.

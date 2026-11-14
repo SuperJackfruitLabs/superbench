@@ -53,7 +53,7 @@ func (s Store) cacheEnvironment(env []string) []string { return execution.Enviro
 
 func (s Store) cacheEnvironmentFor(b *Bench, c *setup.Config, env []string) ([]string, error) {
 	if c.CacheSettings().Private() {
-		tracked, e := git(b.Path, "ls-files", "--", ".bench/cache")
+		tracked, e := s.git(b.Path, "ls-files", "--", ".bench/cache")
 		if e != nil || tracked != "" {
 			return nil, errors.New("checkout-local cache namespace must be untracked and Git-readable")
 		}

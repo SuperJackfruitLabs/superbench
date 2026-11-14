@@ -137,12 +137,12 @@ func TestMergedRejectsFetchAdvertisementRaceAndGitErrors(t *testing.T) {
 			switch kind {
 			case "remote-moved":
 				// Change main after the atomic fetch, before its live advertisement.
-				script = "if [ \"$3\" = ls-remote ] && [ \"$4\" = --symref ]; then " + quote(real) + " -C " + quote(remote) + " update-ref refs/heads/main " + quote(checkpoint) + "; fi\n"
+				script = "if [ \"$fixture_git_verb\" = ls-remote ] && [ \"$fixture_git_first_argument\" = --symref ]; then " + quote(real) + " -C " + quote(remote) + " update-ref refs/heads/main " + quote(checkpoint) + "; fi\n"
 			case "merge-base-error":
-				script = "if [ \"$4\" = merge-base ]; then exit 128; fi\n"
+				script = "if [ \"$fixture_git_verb\" = merge-base ]; then exit 128; fi\n"
 			case "timeout":
 				m.Timeout = 500 * time.Millisecond
-				script = "if [ \"$3\" = ls-remote ]; then exec sleep 30; fi\n"
+				script = "if [ \"$fixture_git_verb\" = ls-remote ]; then exec sleep 30; fi\n"
 			}
 			wrapper(t, script+"exec "+quote(real)+" \"$@\"\n")
 			evidence, err := m.Merged(context.Background(), remote, c, checkpoint)

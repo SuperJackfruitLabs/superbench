@@ -38,13 +38,13 @@ func (s Store) createRegistered(ctx context.Context, key string, o Options, reco
 		if o.Branch == "" {
 			o.Branch = "bench/" + key
 		}
-		if _, err := git(s.State, "check-ref-format", "--branch", o.Branch); err != nil {
+		if _, err := s.git(s.State, "check-ref-format", "--branch", o.Branch); err != nil {
 			return err
 		}
 		if o.Base == "" {
 			o.Base = "main"
 		}
-		if _, err := git(s.State, "check-ref-format", "--branch", o.Base); err != nil {
+		if _, err := s.git(s.State, "check-ref-format", "--branch", o.Base); err != nil {
 			return err
 		}
 		pending, err := s.pending(key, o, recovering)
@@ -106,7 +106,7 @@ func (s Store) createRegistered(ctx context.Context, key string, o Options, reco
 		}
 
 		branchRef := "refs/remotes/origin/" + o.Branch
-		_, remoteErr := git(mirror, "rev-parse", "--verify", branchRef)
+		_, remoteErr := s.git(mirror, "rev-parse", "--verify", branchRef)
 		if recovering && remoteErr != nil {
 			return errors.New("recovery requires an existing remote task branch")
 		}
@@ -114,11 +114,11 @@ func (s Store) createRegistered(ctx context.Context, key string, o Options, reco
 		if remoteErr != nil {
 			source = "refs/remotes/origin/" + o.Base
 		}
-		sha, err := git(mirror, "rev-parse", "--verify", source+"^{commit}")
+		sha, err := s.git(mirror, "rev-parse", "--verify", source+"^{commit}")
 		if err != nil {
 			return err
 		}
-		requested, err := setup.QuotaAt(mirror, sha)
+		requested, err := setup.QuotaAtContext(ctx, mirror, sha)
 		if err != nil {
 			return err
 		}
@@ -216,6 +216,10 @@ func (s Store) acquireLease(ctx context.Context, key, holder string, prepare boo
 	return result, config, err
 }
 func (s Store) Checkpoint(key, token string) (*Bench, error) {
+	s, controlErr := s.reconciliationControls(key)
+	if controlErr != nil {
+		return nil, controlErr
+	}
 	var result *Bench
 	err := s.transaction(func(db database) error {
 		b, err := get(db, key)
@@ -228,21 +232,21 @@ func (s Store) Checkpoint(key, token string) (*Bench, error) {
 		if err = s.ensureStopped(b); err != nil {
 			return err
 		}
-		if err = clean(b); err != nil {
+		if err = s.clean(b); err != nil {
 			return err
 		}
-		sha, err := head(b)
+		sha, err := s.head(b)
 		if err != nil {
 			return err
 		}
-		if _, err = git(b.Path, "push", "origin", "HEAD:refs/heads/"+b.Branch); err != nil {
+		if _, err = s.git(b.Path, "push", "origin", "HEAD:refs/heads/"+b.Branch); err != nil {
 			return err
 		}
-		if err = confirmed(b, sha); err != nil {
+		if err = s.confirmed(b, sha); err != nil {
 			return err
 		}
 		b.Checkpoint = sha
-		archivepolicy.NoteCheckpoint(context.Background(), s.mirrors(), b)
+		archivepolicy.NoteCheckpoint(s.controlContext(), s.mirrors(), b)
 		copy := *b
 		copy.Lease = publicLease(b.Lease)
 		result = &copy
@@ -254,6 +258,10 @@ func (s Store) Release(key, token string) error {
 	return s.release(key, token, false)
 }
 func (s Store) release(key, token string, automatic bool) error {
+	s, controlErr := s.reconciliationControls(key)
+	if controlErr != nil {
+		return controlErr
+	}
 	return s.transactionSQL(func(db database, tx *sql.Tx) error {
 		b, err := get(db, key)
 		if err != nil {
@@ -268,17 +276,17 @@ func (s Store) release(key, token string, automatic bool) error {
 		if err = s.ensureStopped(b); err != nil {
 			return err
 		}
-		if err = clean(b); err != nil {
+		if err = s.clean(b); err != nil {
 			return err
 		}
-		sha, err := head(b)
+		sha, err := s.head(b)
 		if err != nil {
 			return err
 		}
 		if b.Checkpoint == "" || b.Checkpoint != sha {
 			return ErrCheckpoint
 		}
-		if err = confirmed(b, sha); err != nil {
+		if err = s.confirmed(b, sha); err != nil {
 			return err
 		}
 		if b.Lease.Execution != nil {
