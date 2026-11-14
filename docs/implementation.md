@@ -22,8 +22,8 @@ no destructive cleanup is authorized by this implementation plan.
 4. **Host storage management (implemented, validation below).** Fixed-policy quota
    helper, reservation ledger, free-space admission, shared caches, frozen pnpm/npm
    setup, atomic mirror publication, acquisition-time remote-tracking refresh and bounded/reserved logs. A staged Linux service installer is now verified separately. Byte and inode limits are enforced and verified.
-   Explicit and automatic acquisition setup hooks are implemented; creation warm-up and
-   broader cache/journal collection remain pending.
+   Explicit, automatic acquisition and initial creation/recovery setup are implemented
+   on Linux; laptop preparation and broader cache/journal collection remain pending.
 5. **benchd and local CLI (API and reviewed archive/reap implemented).** Kernel peer uid
    authorization, bounded durable request receipts, strict pinned treaty vectors,
    redacted status and crash reconciliation. See [service verification](service.md).
@@ -45,7 +45,7 @@ A core checkpoint does not constitute completion of a phase or the product.
 | Phase | Required outcome | Current evidence |
 |---|---|---|
 | 0 | Host disk alert, reviewed cleanup dry-run, code-stage branch/checkpoint rules | Not implemented by this repository; inspect estate and board settings before changes |
-| 1 | Standalone CLI and host service; durable state/leases; checkpoints/recovery; quotas, shared mirrors/stores; verified archive/reap | CLI, journals, SQLite, fenced Linux execution and host storage tested; local service API added; installer and reviewed archive/reap verified; reviewed log/history collection and approved automatic log retention implemented; explicit/automatic acquisition setup hooks implemented; creation warm-up, cache/journal collection, configuration and integration pending |
+| 1 | Standalone CLI and host service; durable state/leases; checkpoints/recovery; quotas, shared mirrors/stores; verified archive/reap | CLI, journals, SQLite, fenced Linux execution and host storage tested; local service API added; installer and reviewed archive/reap verified; reviewed log/history collection and approved automatic log retention implemented; explicit/automatic acquisition setup hooks implemented; creation/recovery warm-up verified on Linux; laptop preparation, multi-repository layout, cache/journal collection, configuration and integration pending |
 | 2 | Suite adapters, card panel, locality scoring, witness events; read-only web, file/diff/log/timeline views, terminal attach and MCP | Pending; charter/treaty contracts precede consumers; visual mockups before UI |
 | 3 | Remote editor launch/browser IDE; second-host recovery drill; per-bench isolation; Salaam layout and execution-host integration | Pending |
 
@@ -100,6 +100,10 @@ keep that approval distinct from permission to implement the product.
   work. Mirror operations have a configurable deadline; failed refresh grants
   no ordinary acquisition, and local repair stays network-independent.
 
+- Initial creation/recovery preparation: registration reserves ownership before
+  setup, success checkpoints/releases, and failure retains evidence and its lease.
+  Actual Linux canonical cases, CLI/old-service compatibility and interrupted
+  request replay protection passed; see [creation](creation.md).
 
 ## Remaining retention work
 
@@ -122,7 +126,7 @@ Do not implement collection by simply deleting completed receipt rows.
 The original proposal remains the acceptance source; the checkpoints above do
 not replace its scope. Before calling Phase 1 complete, explicitly verify the
 standalone laptop preparation path (supervised hooks currently require Linux),
-creation warm-up, multiple repositories within a bench, archive grace/read-only
+multiple repositories within a bench, archive grace/read-only
 lifecycle and collection, remaining cache/quota/archive configuration, and the
 AgentPod acquisition/prompt/checkpoint pilot on an opt-in board. The review of
 charter/treaty boundaries must precede suite consumers. Source-level progress or

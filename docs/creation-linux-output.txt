@@ -1,0 +1,104 @@
+Linux creation-preparation verification, 2026-11-15
+Disposable state, Git remotes, cgroups, systemd unit and XFS mount namespaces.
+No production installation or policy change.
+Source snapshot SHA256: 2defb335f35c994c306c318fd0969b66afa70ef271900fd777b70e054e98cb04
+Treaty canonical revision: e66ec6098980ca09472440bc6d5aebf241f43a35
+Published pre-initialize producer: 48ab88dcec9eabe39bcfc00954313b4aaa1ddafa
+The final source change after this snapshot is documentation/evidence only.
+
+creation-final-check.log
+....
+----------------------------------------------------------------------
+Ran 4 tests in 0.003s
+
+OK
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/cmd/bench	(cached)
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/cmd/bench-quota	[no test files]
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/cmd/benchd	[no test files]
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/architecture	1.031s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/bench	(cached)
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/client	[no test files]
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/creation	[no test files]
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/execution	[no test files]
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/history	[no test files]
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/integration	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/maintenance	(cached)
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model	[no test files]
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/output	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/protocol	1.030s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/reap	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/repository	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/retention	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/service	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/setup	(cached)
+
+creation-final-runtime.log
+PASS: canonical configured-ready including replay, ownership, output and checkpoint evidence
+PASS: canonical no-setup-ready including replay, ownership, output and checkpoint evidence
+PASS: canonical setup-failure-held including replay, ownership, output and checkpoint evidence
+PASS: canonical dirty-setup-held including replay, ownership, output and checkpoint evidence
+PASS: canonical recovery-ready including replay, ownership, output and checkpoint evidence
+PASS: canonical recovery-failure-held including replay, ownership, output and checkpoint evidence
+PASS: canonical invalid-config-held including replay, ownership, output and checkpoint evidence
+PASS: canonical ambiguous-lockfiles-held including replay, ownership, output and checkpoint evidence
+PASS: old service rejects explicit initialization before effects; new service preserves cold omission and rejects invalid flags
+PASS: local create/recover and socket CLI prepare by default; explicit local cold creation runs no setup
+PASS: socket CLI never falls back to cold creation after old-service rejection
+PASS: initialization blocks competing ownership; SIGKILL retains a fenceable lease and interrupted request never redispatches
+
+creation-setup-regression.log
+PASS: explicit CLI and daemon setup refresh remote tracking while retaining the task HEAD
+PASS: schema-6 state upgrades; old binary refuses; once persists across CLI/daemon and each honors explicit offline environment
+PASS: changed configuration invalidates the successful once receipt
+PASS: failed alternate preparation revokes the prior once receipt before effects; restoring old config reruns once
+PASS: each failure retains a fenced lease and output, records no success, and blocks another setup
+PASS: config mutation during hooks is preserved and refuses a setup success receipt
+PASS: cancellation fences hook descendants, retains the lease and records no successful preparation
+PASS: automatic run and cooperative acquisition refresh remote tracking before preparation
+PASS: automatic run/lease preparation shares ownership, preserves all held logs, and keeps once success after main failure; cooperative handoff retains setup evidence until final release
+PASS: hook-free run/lease acquisition revokes old preparation success before configuration is later restored
+PASS: failed automatic preparation starts neither the requested command nor a cooperative handoff
+PASS: successful administrative stop cancels automatic continuation and fences hook descendants
+PASS: daemon SIGKILL during preparation retains ownership; explicit fencing/release never redispatches the interrupted request
+PASS: failed refresh starts no task and grants no lease; local repair remains usable during a remote outage
+PASS: canceled and expired refresh stop before task/lease creation and never launch the requested command
+DONE: repository setup and automatic preparation integration passed
+
+creation-service-regression.log
+PASS: managed payload staged idempotently; fixed sudo policy validates
+PASS: installed systemd settings start an unprivileged daemon
+PASS: unprivileged service warms creation before returning readiness
+PASS: service delegation launches, fences, checkpoints and releases a Linux run
+PASS: unprivileged service fences preparation before launching the requested command
+PASS: fixed helper sudo works inside service; policy override remains forbidden
+PASS: stopping service removes its socket and delegated execution tree
+DONE: service installation integration passed
+
+creation-final-storage.log
+PASS: managed host config verifies a separate data filesystem and fixed-policy shared caps
+PASS: managed frozen setup, build and warm/offline handoffs work inside project quotas
+PASS: warm creation selects frozen setup without hooks, installs under its quota and confirms the remote checkpoint before release
+PASS: noisy command output is bounded, marked truncated and still checkpointed safely
+/var/tmp/superbench-storage.jqxoBU/data/benches/first/node_modules/storage-fixture/payload.bin:
+ EXT: FILE-OFFSET      BLOCK-RANGE      TOTAL FLAGS
+   0: [0..8191]:       655560..663751    8192 0x2001
+/var/tmp/superbench-storage.jqxoBU/data/benches/second/node_modules/storage-fixture/payload.bin:
+ EXT: FILE-OFFSET      BLOCK-RANGE      TOTAL FLAGS
+   0: [0..8191]:       655560..663751    8192 0x2001
+PASS: package clone mutation leaves the other bench intact
+PASS: bench hard cap refuses writes while the shared store stays writable
+PASS: helper refuses escaping keys, writable/symlink policy and allocation-policy drift
+PASS: disabled project enforcement blocks new work until restored
+PASS: quota enforcement is required and total cap reservations reject overcommit
+PASS: interrupted privileged allocation resumes with the same project and reservation
+PASS: interrupted mirror publication is isolated; retry publishes a complete mirror
+PASS: incomplete privileged ledger fails closed without defaulting to fresh allocations
+PASS: filesystem UUID binding survives remount on a different loop device
+PASS: a different filesystem at the same path is refused
+DONE: managed storage integration passed
+
+Native macOS arm64 checks (cross-compiled on Linux, executed locally):
+internal/bench: PASS
+internal/protocol including canonical hash/vector checks: PASS
+internal/architecture: PASS

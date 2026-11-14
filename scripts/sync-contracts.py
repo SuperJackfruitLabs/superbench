@@ -11,6 +11,7 @@ treaty = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else root.parent / "tr
 files = {
     "schemas/superbench/operation.v1.json": "operation.v1.json",
     "fixtures/superbench-api/operations.json": "operations.json",
+    "fixtures/superbench-api/creation.json": "creation.json",
 }
 revision = subprocess.check_output(
     ["git", "-C", str(treaty), "rev-parse", "HEAD"], text=True

@@ -150,7 +150,7 @@ def main():
         assert (path / ".setup-events").read_text().count("once") == 3
         print("PASS: failed alternate preparation revokes the prior once receipt before effects; restoring old config reruns once", flush=True)
 
-        cli("create", "--repo", remote, "failure")
+        cli("create-cold", "--repo", remote, "failure")
         failed_path = replace_config("failure", "[setup]\nonce='printf once >> .setup-events'\neach='exit 7'\n")
         failed = run(command("setup", "--holder", "failure", "failure"))
         assert failed.returncode == 7, failed.stderr
@@ -161,14 +161,14 @@ def main():
         assert (failed_path / ".setup-events").read_text() == "once"
         print("PASS: each failure retains a fenced lease and output, records no success, and blocks another setup", flush=True)
 
-        cli("create", "--repo", remote, "changed")
+        cli("create-cold", "--repo", remote, "changed")
         changed = replace_config("changed", "[setup]\nonce='printf changed > .bench/config.toml'\n")
         assert run(command("setup", "--holder", "changed", "changed")).returncode != 0
         assert receipt("changed") is None and (changed / ".bench/config.toml").read_text() == "changed"
         assert cli("status", "changed")[0]["Lease"]["Execution"]["Phase"] == "stopped"
         print("PASS: config mutation during hooks is preserved and refuses a setup success receipt", flush=True)
 
-        cli("create", "--repo", remote, "cancel")
+        cli("create-cold", "--repo", remote, "cancel")
         canceled = replace_config("cancel", "[setup]\nonce='sleep 90 & echo $! > .hook-pid; touch .hook-ready; wait'\n")
         process = subprocess.Popen(list(map(str, command("setup", "--holder", "cancel", "cancel"))),
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -182,7 +182,7 @@ def main():
         assert status["Lease"]["Execution"]["Phase"] == "stopped"
         assert not (cg / status["Lease"]["Execution"]["ID"]).exists()
         print("PASS: cancellation fences hook descendants, retains the lease and records no successful preparation", flush=True)
-        cli("create", "--repo", remote, "auto")
+        cli("create-cold", "--repo", remote, "auto")
         auto = data / "benches/auto"
         fresh = advance_remote("before run")
         job = run(command("run", "--holder", "job", "auto", "--", "sh", "-c", "printf job >> .setup-events; exit 7"))
@@ -230,12 +230,12 @@ def main():
         print("PASS: hook-free run/lease acquisition revokes old preparation success before configuration is later restored", flush=True)
 
 
-        cli("create", "--repo", remote, "autoFail")
+        cli("create-cold", "--repo", remote, "autoFail")
         replace_config("autoFail", "[setup]\nonce='exit 7'\n")
         main_marker = root / "forbidden-main"
         failed = run(command("run", "--holder", "blocked", "autoFail", "--", "touch", main_marker))
         assert failed.returncode == 7 and not main_marker.exists() and receipt("autoFail") is None
-        cli("create", "--repo", remote, "leaseFail")
+        cli("create-cold", "--repo", remote, "leaseFail")
         replace_config("leaseFail", "[setup]\neach='exit 7'\n")
         failed_lease = run(command("lease", "--holder", "blocked", "leaseFail"))
         assert failed_lease.returncode == 7
@@ -243,7 +243,7 @@ def main():
         assert receipt("leaseFail") is None
         print("PASS: failed automatic preparation starts neither the requested command nor a cooperative handoff", flush=True)
 
-        cli("create", "--repo", remote, "autoStop")
+        cli("create-cold", "--repo", remote, "autoStop")
         stopped_path = replace_config("autoStop", "[setup]\nonce='sleep 90 & touch .hook-ready; wait'\n")
         process = subprocess.Popen(list(map(str, command("run", "--holder", "stopped", "autoStop", "--", "touch", main_marker))),
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -255,7 +255,7 @@ def main():
         assert stopped["Lease"]["Execution"]["Phase"] == "stopped" and "Continuation" not in stopped["Lease"]
         print("PASS: successful administrative stop cancels automatic continuation and fences hook descendants", flush=True)
 
-        cli("create", "--repo", remote, "autoCrash")
+        cli("create-cold", "--repo", remote, "autoCrash")
         crashed_path = replace_config("autoCrash", "[setup]\nonce='printf partial; touch .hook-ready; sleep 90'\n")
         request = {"version": "superbench.v1", "operation": "run", "key": "autoCrash", "holder": "crashed",
                    "request_id": "automatic-preparation-crash", "arguments": ["touch", str(main_marker)]}
@@ -287,7 +287,7 @@ def main():
         daemon.terminate()
         assert daemon.wait(timeout=15) == 0
         daemon = None
-        cli("create", "--repo", remote, "fetchFail")
+        cli("create-cold", "--repo", remote, "fetchFail")
         remote.rename(root / "remote.offline")
         refused = run(command("run", "--holder", "offline", "fetchFail", "--", "touch", main_marker))
         assert refused.returncode != 0 and not main_marker.exists()
@@ -299,7 +299,7 @@ def main():
         cli("release", "--token", token, "fetchFail")
         print("PASS: failed refresh starts no task and grants no lease; local repair remains usable during a remote outage", flush=True)
 
-        cli("create", "--repo", remote, "fetchCancel")
+        cli("create-cold", "--repo", remote, "fetchCancel")
         wrapper = root / "git-wrapper"
         wrapper.mkdir()
         fetch_ready = root / "fetch-ready"

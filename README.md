@@ -20,6 +20,10 @@ bin/bench lease --holder second-agent fix-login
 bin/bench status fix-login
 ```
 
+Creation and recovery run initial setup before returning readiness; see
+[initial checkout preparation](docs/creation.md) for ownership, failure recovery,
+API compatibility and Linux verification.
+
 `checkpoint` pushes the existing HEAD to `bench/fix-login` and confirms the remote
 has exactly that commit. It never invents a commit or force-pushes. `release`
 requires a clean worktree, current HEAD checkpointed, and the remote still matching.

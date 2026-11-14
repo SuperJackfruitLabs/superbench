@@ -219,8 +219,15 @@ func (s *Server) dispatch(r protocol.Request) (any, error) {
 		h, e := store.HostStatus()
 		return map[string]any{"managed": h.Managed, "data_free_bytes": h.Data.Free, "state_free_bytes": h.State.Free}, e
 	case "create", "recover":
-		b, e := store.Create(r.Key, bench.Options{Repo: r.Repository, Branch: r.Branch, Base: r.Base}, r.Operation == "recover")
-		return map[string]any{"bench": benchView(b, false)}, e
+		var b *bench.Bench
+		var e error
+		options := bench.Options{Repo: r.Repository, Branch: r.Branch, Base: r.Base}
+		if r.Initialize != nil && *r.Initialize {
+			b, e = store.CreateContext(s.ctx, r.Key, options, r.Operation == "recover")
+		} else {
+			b, e = store.CreateColdContext(s.ctx, r.Key, options, r.Operation == "recover")
+		}
+		return map[string]any{"bench": benchView(b, e != nil)}, e
 	case "lease":
 		b, e := store.LeaseContext(s.ctx, r.Key, r.Holder)
 		return map[string]any{"bench": benchView(b, true)}, e

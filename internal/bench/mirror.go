@@ -9,8 +9,8 @@ import (
 func (s Store) mirrors() repository.Mirrors {
 	return repository.Mirrors{State: s.State, Data: s.Data, Timeout: s.MirrorTimeout}
 }
-func (s Store) prepareMirror(repo string) (string, error) {
-	return s.mirrors().Prepare(context.Background(), repo)
+func (s Store) prepareMirror(ctx context.Context, repo string) (string, error) {
+	return s.mirrors().Prepare(ctx, repo)
 }
 func (s Store) refreshMirror(ctx context.Context, b *Bench) error {
 	if b.Mirror != s.mirrorPath(b.Repo) {

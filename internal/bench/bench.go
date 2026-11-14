@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/execution"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/history"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/setup"
 	"os"
 	"path/filepath"
@@ -17,9 +18,11 @@ import (
 
 var keyPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$`)
 
-type Options struct{ Repo, Branch, Base, Holder, Token string }
+type Options = model.Options
 
-func (s Store) Create(key string, o Options, recovering bool) (*Bench, error) {
+func (s Store) createRegistered(ctx context.Context, key string, o Options, recovering, initialize bool) (*Bench, bool, error) {
+	var warming bool
+	var selectionErr error
 	var result *Bench
 	err := s.transaction(func(db database) error {
 		if !keyPattern.MatchString(key) {
@@ -50,23 +53,41 @@ func (s Store) Create(key string, o Options, recovering bool) (*Bench, error) {
 		if e := s.admit(); e != nil {
 			return e
 		}
+		publish := func(b *Bench) error {
+			result = b
+			if initialize {
+				warming, selectionErr = s.creationSetupNeeded(b)
+				if warming || selectionErr != nil {
+					lease, e := newLease("initialization")
+					if e != nil {
+						return e
+					}
+					lease.Continuation, e = nonce()
+					if e != nil {
+						return e
+					}
+					b.Lease = lease
+				}
+			}
+			db[key] = b
+			return nil
+		}
 		if pending != nil {
 			if err = s.applyBenchQuota(pending); err != nil {
 				return err
 			}
-			result, err = finishCreate(pending)
+			result, err = s.finishCreate(pending)
 			if err != nil {
 				return err
 			}
-			db[key] = result
-			return nil
+			return publish(result)
 		}
 		if _, err = os.Lstat(filepath.Join(s.Data, "benches", key)); err == nil {
 			return errors.New("unregistered checkout has no creation journal; refusing adoption")
 		} else if !os.IsNotExist(err) {
 			return err
 		}
-		mirror, err := s.prepareMirror(o.Repo)
+		mirror, err := s.prepareMirror(ctx, o.Repo)
 		if err != nil {
 			return err
 		}
@@ -95,15 +116,17 @@ func (s Store) Create(key string, o Options, recovering bool) (*Bench, error) {
 		if err = s.applyBenchQuota(&intent); err != nil {
 			return err
 		}
-		result, err = finishCreate(&intent)
+		result, err = s.finishCreate(&intent)
 		if err != nil {
 			return err
 		}
 
-		db[key] = result
-		return nil
+		return publish(result)
 	})
-	return result, err
+	if err != nil {
+		return result, false, err
+	}
+	return result, warming, selectionErr
 }
 func get(db database, key string) (*Bench, error) {
 	b := db[key]

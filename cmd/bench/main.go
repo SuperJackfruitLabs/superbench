@@ -29,7 +29,7 @@ func main() {
 }
 func run(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: bench <retention-preview|retention-enable|retention-disable|retention-status|retention-run|retention-ack-pending|inspect-log|adopt-log|history|reconcile-log|plan-collect|collect|resume-collect|cancel-collect|collections|lease-repair|archive|plan-reap|reap|create|recover|lease|checkpoint|release|status|run|stop|migrate|configure-host|host-status|setup> [flags] [key]; flags precede key")
+		return fmt.Errorf("usage: bench <retention-preview|retention-enable|retention-disable|retention-status|retention-run|retention-ack-pending|inspect-log|adopt-log|history|reconcile-log|plan-collect|collect|resume-collect|cancel-collect|collections|lease-repair|create-cold|recover-cold|archive|plan-reap|reap|create|recover|lease|checkpoint|release|status|run|stop|migrate|configure-host|host-status|setup> [flags] [key]; flags precede key")
 	}
 	config, err := os.UserConfigDir()
 	if err != nil {
@@ -93,6 +93,8 @@ func run(args []string) error {
 			r.Repository = *repo
 			r.Branch = *branch
 			r.Base = *base
+			initialize := true
+			r.Initialize = &initialize
 		case "lease":
 			r.Holder = *holder
 		case "checkpoint", "release":
@@ -165,8 +167,16 @@ func run(args []string) error {
 		out, err = s.PlanReap(key)
 	case "reap":
 		out, err = approvedReap(s, key, *planFile, *approval)
-	case "create", "recover":
-		out, err = s.Create(key, bench.Options{Repo: *repo, Branch: *branch, Base: *base}, args[0] == "recover")
+	case "create", "recover", "create-cold", "recover-cold":
+		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer cancel()
+		options := bench.Options{Repo: *repo, Branch: *branch, Base: *base}
+		if strings.HasSuffix(args[0], "-cold") {
+			out, err = s.CreateColdContext(ctx, key, options, args[0] == "recover-cold")
+		} else {
+			out, err = s.CreateContext(ctx, key, options, args[0] == "recover")
+		}
+
 	case "lease":
 		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer cancel()
@@ -207,7 +217,7 @@ func run(args []string) error {
 		return fmt.Errorf("unknown command %q", args[0])
 	}
 	if err != nil {
-		if (args[0] == "run" || args[0] == "setup" || args[0] == "lease") && out != nil {
+		if (args[0] == "run" || args[0] == "setup" || args[0] == "lease" || args[0] == "create" || args[0] == "recover") && out != nil {
 			if e := json.NewEncoder(os.Stdout).Encode(out); e != nil {
 				return e
 			}
