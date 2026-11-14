@@ -19,8 +19,7 @@ The ledger is root-owned and private. The helper uses fixed absolute XFS tools
 and a fixed environment; there is no arbitrary quota-command interface.
 
 The root must be a dedicated XFS filesystem root, not a bound subdirectory. The helper verifies project accounting
-and enforcement, sets the project/inheritance and hard limit, then reads back the
-hard limit. Allocation IDs start at 10000 and are never silently reassigned.
+and enforcement, sets the project/inheritance and byte/inode hard limits, then reads both back. Allocation IDs start at 10000 and are never silently reassigned.
 Shared projects use fixed IDs. The ledger binds to the filesystem UUID, so loop
 device renumbering is tolerated but a different filesystem at the same path is refused. Every allocation is journaled before filesystem
 effects, so retry after a lost reply uses its original reservation. A filesystem
@@ -38,12 +37,16 @@ for the provisioned host; the example requires a suitably sized dedicated volume
   "BenchBytes": 8589934592,
   "StoreBytes": 4294967296,
   "MirrorBytes": 4294967296,
-  "ReserveBytes": 2147483648
+  "ReserveBytes": 2147483648,
+  "BenchInodes": 250000,
+  "StoreInodes": 2000000,
+  "MirrorInodes": 1000000,
+  "ReserveInodes": 250000
 }
 ```
 
 Total bench hard caps plus both shared caps and the filesystem reserve cannot
-exceed filesystem capacity. Unfinished allocations still count. Reservations are
+exceed filesystem capacity, for bytes or inodes. Unfinished allocations still count. Reservations are
 conservative logical quota bytes; physical reflink sharing does not increase the
 admission budget. [Reviewed reap](archive.md) reclaims a logical reservation
 only after approved data is removed and XFS reports zero blocks/inodes. Project
@@ -127,12 +130,14 @@ Budget exhaustion refuses new work instead of deleting logs. Automated retention
 and per-bench history remain part of archive/service work. The limits bound
 supervised output, not arbitrary filesystem writes by the launching uid.
 
-Schema 4 additionally protects archive/reap state from older binaries. Schema 3
-introduced quota and log-limit metadata. Schemas 1/2/3
+Schema 5 additionally pins inode caps; [explicit inode migration](inodes.md)
+upgrades byte-only hosts. Schema 4 protects archive/reap state from older binaries. Schema 3
+introduced quota and log-limit metadata. Schemas 1/2/3/4
 can upgrade through `bench migrate` or a successful mutating operation. Upgrading
 under an active old supervised execution is refused: stop it with the installed
 binary first. Read-only status never changes schema. Stronger uid/mount isolation,
-inode quotas, TOML hooks and automatic cache collection remain pending.
+TOML hooks and automatic cache collection remain pending.
+[Inode quotas](inodes.md) are now enforced for managed allocations.
 Archive/reap is available through a reviewed local administrative plan. A separately verified service installer is documented in [install.md](install.md).
 
 ## Verification

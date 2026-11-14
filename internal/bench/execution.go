@@ -112,6 +112,9 @@ func (s Store) Run(ctx context.Context, key, holder string, args []string, check
 		if original.Lease != nil {
 			return ErrBusy
 		}
+		if e := s.ensureBenchQuota(original); e != nil {
+			return e
+		}
 		limit, e := s.reserveLog(db)
 		if e != nil {
 			return e

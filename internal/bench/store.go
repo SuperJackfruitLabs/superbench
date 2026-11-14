@@ -28,6 +28,7 @@ type Bench struct {
 	ReapedAt      string `json:",omitempty"`
 	ProjectID     uint32
 	QuotaBytes    uint64
+	QuotaInodes   uint64
 	Lease         *Lease `json:",omitempty"`
 }
 type Store struct {

@@ -24,3 +24,8 @@
   reviewed manifest; retry deletes only unchanged remaining approved entries.
   Quota release removes only an empty fixed logical directory and retires its ID
   after XFS reports zero blocks/inodes. Never recursively delete as root.
+
+- Managed policy bounds bytes and inodes explicitly. Never adopt changed caps
+  through normal worker allocation. Inode migration is direct-root only, preserves
+  IDs/byte caps and verifies each target. State 5 pins inode metadata; old active
+  supervisors must be stopped with their installed binary before upgrading.

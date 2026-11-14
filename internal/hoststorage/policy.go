@@ -12,19 +12,25 @@ import (
 )
 
 type Policy struct {
-	Root         string
-	Ledger       string
-	OwnerUID     int
-	OwnerGID     int
-	BenchBytes   uint64
-	StoreBytes   uint64
-	MirrorBytes  uint64
-	ReserveBytes uint64
+	Root            string
+	Ledger          string
+	OwnerUID        int
+	OwnerGID        int
+	BenchBytes      uint64
+	StoreBytes      uint64
+	MirrorBytes     uint64
+	ReserveBytes    uint64
+	BenchInodes     uint64
+	StoreInodes     uint64
+	MirrorInodes    uint64
+	ReserveInodes   uint64
+	upgradingInodes bool
 }
 type Assignment struct {
 	Path      string
 	ProjectID uint32
 	Bytes     uint64
+	Inodes    uint64
 }
 type ledger struct {
 	VolumeID    string
@@ -59,6 +65,11 @@ func (p Policy) Validate() error {
 	for _, size := range []uint64{p.BenchBytes, p.StoreBytes, p.MirrorBytes, p.ReserveBytes} {
 		if size < 1024 || size%1024 != 0 || size > 1<<50 {
 			return errors.New("budgets must be positive whole KiB, at most 1 PiB")
+		}
+	}
+	for _, count := range []uint64{p.BenchInodes, p.StoreInodes, p.MirrorInodes, p.ReserveInodes} {
+		if count == 0 || count > 1<<40 {
+			return errors.New("inode budgets must be explicit positive counts, at most 2^40")
 		}
 	}
 	return nil
@@ -182,17 +193,19 @@ func (p Policy) checkLedger(l ledger) error {
 	seen := map[uint32]bool{}
 	for name, a := range l.Assignments {
 		var path string
-		var bytes uint64
+		var bytes, inodes uint64
 		switch name {
 		case "store":
 			path = filepath.Join(p.Root, "store")
 			bytes = p.StoreBytes
+			inodes = p.StoreInodes
 			if a.ProjectID != 100 {
 				return errors.New("invalid store project")
 			}
 		case "mirrors":
 			path = filepath.Join(p.Root, "mirrors")
 			bytes = p.MirrorBytes
+			inodes = p.MirrorInodes
 			if a.ProjectID != 101 {
 				return errors.New("invalid mirror project")
 			}
@@ -202,11 +215,13 @@ func (p Policy) checkLedger(l ledger) error {
 			}
 			path = filepath.Join(p.Root, "benches", name[6:])
 			bytes = p.BenchBytes
+			inodes = p.BenchInodes
 			if a.Bytes == 0 {
 				bytes = 0
+				inodes = 0
 			} // A zero-byte bench assignment is a permanent retired ID.
 		}
-		if seen[a.ProjectID] || a.Path != path || a.Bytes != bytes {
+		if seen[a.ProjectID] || a.Path != path || a.Bytes != bytes || (!p.upgradingInodes || a.Bytes == 0) && a.Inodes != inodes {
 			return errors.New("ledger allocation conflicts with policy; explicit migration required")
 		}
 		seen[a.ProjectID] = true

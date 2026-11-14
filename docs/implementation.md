@@ -21,7 +21,7 @@ no destructive cleanup is authorized by this implementation plan.
    and full-state behavior are exercised on Linux. Cross-uid isolation remains pending; delegated service installation is verified; cooperative shell leases are not fenced.
 4. **Host storage management (implemented, validation below).** Fixed-policy quota
    helper, reservation ledger, free-space admission, shared caches, frozen pnpm/npm
-   setup, atomic mirror publication and bounded/reserved logs. A staged Linux service installer is now verified separately. Inode limits,
+   setup, atomic mirror publication and bounded/reserved logs. A staged Linux service installer is now verified separately. Byte and inode limits are enforced and verified.
    TOML hooks and automatic collection remain pending.
 5. **benchd and local CLI (API and reviewed archive/reap implemented).** Kernel peer uid
    authorization, bounded durable request receipts, strict pinned treaty vectors,
@@ -44,7 +44,7 @@ A core checkpoint does not constitute completion of a phase or the product.
 | Phase | Required outcome | Current evidence |
 |---|---|---|
 | 0 | Host disk alert, reviewed cleanup dry-run, code-stage branch/checkpoint rules | Not implemented by this repository; inspect estate and board settings before changes |
-| 1 | Standalone CLI and host service; durable state/leases; checkpoints/recovery; quotas, shared mirrors/stores; verified archive/reap | CLI, journals, SQLite, fenced Linux execution and host storage tested; local service API added; installer and reviewed archive/reap verified; retention, inode limits, hooks and integration pending |
+| 1 | Standalone CLI and host service; durable state/leases; checkpoints/recovery; quotas, shared mirrors/stores; verified archive/reap | CLI, journals, SQLite, fenced Linux execution and host storage tested; local service API added; installer and reviewed archive/reap verified; retention, hooks and integration pending |
 | 2 | Suite adapters, card panel, locality scoring, witness events; read-only web, file/diff/log/timeline views, terminal attach and MCP | Pending; charter/treaty contracts precede consumers; visual mockups before UI |
 | 3 | Remote editor launch/browser IDE; second-host recovery drill; per-bench isolation; Salaam layout and execution-host integration | Pending |
 
@@ -74,3 +74,21 @@ keep that approval distinct from permission to implement the product.
 - Reviewed archive/reap: exact file manifests and durable retry intents; managed
   reservations retire only after zero XFS usage. Retained logs, receipts and
   journals still require their own reviewed collection lifecycle.
+- Inode quotas: explicit per-project/host counts, direct-root legacy migration,
+  pinned state metadata and target revalidation before managed acquisition.
+  Actual XFS zero-byte-file limits, migration, overcommit and retirement are verified.
+
+
+## Retention slice still required
+
+Collecting logs must preserve held/failed execution evidence until explicit
+reconciliation. Use a reviewed candidate plan and verify the same files/ownership
+before collection; never treat age as proof that a writer stopped. Shared cache
+and abandoned-clone collection need the same active-writer and namespace checks.
+
+Receipt collection must not make an old request ID executable again. Existing
+v1 opaque IDs need durable tombstones when their response payload is retired.
+Sustainable bounded receipt collection needs a producer-first treaty extension
+with a bounded retry/freshness contract and a persisted monotonic watermark;
+changing the retry window must never expire a bench lease or release a writer.
+Do not implement collection by simply deleting completed receipt rows.
