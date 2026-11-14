@@ -31,7 +31,7 @@
   supervisors must be stopped with their installed binary before upgrading.
 
 - Run history contains no lease tokens or command arguments. Log collection is
-  explicit reviewed approval, restricted to released/sealed owned files, and
+  explicit reviewed file or bounded-policy approval, restricted to released/sealed owned files, and
   journals approval before unlink. Keep writer locks until capture closes.
   Canceling increments approval revisions; never revive a pruned/canceled plan.
   Legacy adoption is separate operator evidence, never a fabricated run outcome.

@@ -60,7 +60,9 @@ bench collect --state /absolute/state --data /absolute/data \
   --plan /private/log-plan.json --approve FULL_REVIEWED_DIGEST
 ```
 
-There is no automatic deletion in this checkpoint. Choosing `--older-than 0s`
+Manual collection uses this exact-file approval. An optional [automatic
+policy](automatic-retention.md) separately approves future bounded batches and
+starts disabled. Choosing `--older-than 0s`
 only makes already released/sealed output eligible for review; it does not bypass
 writer or lease checks. A wrong digest, changed file or stale history record
 refuses before deletion. Unknown files, SQLite databases, lease records, creation
@@ -116,7 +118,8 @@ Adoption requires separate content/ownership approval and cannot target a held
 execution or replace an existing history record. It registers provenance as
 `operator-adopted`, under the `unregistered` history key. Start time and exit code
 remain unknown. It does not checkpoint, release or alter a bench lease. A fresh
-collection plan still needs its own approval before deleting the adopted file.
+collection plan needs approval, or a previously approved automatic policy must
+cover the registered file after its release/seal grace period.
 The acknowledgment records operator responsibility for legacy writers that did
 not participate in the new lock protocol; it is not an API privilege flag.
 
@@ -134,8 +137,8 @@ Missing/corrupt evidence is preserved for inspection rather than guessed away.
 These operations never delete service request receipts. Old opaque request IDs
 still prevent redispatch after log/history collection. Sustainable receipt
 collection needs the separate producer-first retry-window contract described in
-[the implementation plan](implementation.md). Automatic retention policies,
-shared-cache/abandoned-clone collection and creation/reap journal collection remain
+[the implementation plan](implementation.md). Approved automatic log retention is
+documented separately; shared-cache/abandoned-clone collection and creation/reap journal collection remain
 subsequent work. This slice does not claim Phase 1 complete.
 
 ## Verification

@@ -22,4 +22,5 @@ exec /usr/local/bin/benchd \
     --cgroup-root "/sys/fs/cgroup$cgroup_path" \
     --operator-uids "${BENCHD_OPERATOR_UIDS:-0}" \
     --reader-uids "${BENCHD_READER_UIDS:-}" \
-    --max-active "${BENCHD_MAX_ACTIVE:-8}"
+    --max-active "${BENCHD_MAX_ACTIVE:-8}" \
+    --retention-interval "${BENCHD_RETENTION_INTERVAL:-1m}"

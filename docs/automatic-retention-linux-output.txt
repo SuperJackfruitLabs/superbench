@@ -1,0 +1,17 @@
+PASS: daemon defaults to disabled; approved byte bound collects only eligible small log and preserves held failures/unregistered output
+PASS: restart resumes the exact durable automatic batch from before core preparation
+PASS: disabled policy survives restart; changed bounds need fresh approval; failed evidence is collected only after explicit release and age
+DONE: automatic retention daemon integration passed
+PASS: managed payload staged idempotently; fixed sudo policy validates
+PASS: installed systemd settings start an unprivileged daemon
+PASS: service delegation launches, fences, checkpoints and releases a Linux run
+PASS: fixed helper sudo works inside service; policy override remains forbidden
+PASS: stopping service removes its socket and delegated execution tree
+DONE: service installation integration passed
+
+Existing retention regression with the updated daemon:
+PASS: real run history is sealed/released; open writer, wrong approval and changed file refuse; approved collection replays safely
+PASS: failed command evidence remains protected until explicit checkpoint/release
+PASS: unregistered log is preserved until separate ownership approval; adoption invents no outcome or lease transition
+PASS: daemon SIGKILL retains held/unsealed history; fence/release/reconcile permit collection; pruning history never reexecutes an old request
+DONE: run history and reviewed log retention integration passed

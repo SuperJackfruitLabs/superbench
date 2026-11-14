@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/bench"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/service"
@@ -36,6 +37,7 @@ func run() error {
 	cgroup := flag.String("cgroup-root", "/sys/fs/cgroup/superbench", "delegated cgroup-v2 root")
 	operators := flag.String("operator-uids", strconv.Itoa(os.Geteuid())+",0", "comma-separated local operator uids")
 	readers := flag.String("reader-uids", "", "comma-separated local read-only uids")
+	retentionInterval := flag.Duration("retention-interval", time.Minute, "automatic retention check interval; inactive until policy is approved")
 	active := flag.Int("max-active", 8, "maximum active operations")
 	flag.Parse()
 	if flag.NArg() != 0 {
@@ -68,5 +70,5 @@ func run() error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	return service.Serve(ctx, service.Config{Socket: *socket, Store: bench.Store{State: *state, Data: *data, CgroupRoot: *cgroup}, Operators: ops, Readers: read, MaxActive: *active})
+	return service.Serve(ctx, service.Config{Socket: *socket, Store: bench.Store{State: *state, Data: *data, CgroupRoot: *cgroup}, Operators: ops, Readers: read, MaxActive: *active, RetentionInterval: *retentionInterval})
 }
