@@ -1,8 +1,6 @@
 package bench
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"os"
@@ -11,27 +9,12 @@ import (
 	"strings"
 	"time"
 
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/archivepolicy"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/reap"
 )
 
-type ReapPlan struct {
-	Version    string
-	Key        string
-	Path       string
-	Checkpoint string
-	Tree       reap.Tree
-	Digest     string
-}
+type ReapPlan = reap.Plan
 
-func (p ReapPlan) digest() (string, error) {
-	p.Digest = ""
-	raw, e := json.Marshal(p)
-	if e != nil {
-		return "", e
-	}
-	sum := sha256.Sum256(raw)
-	return hex.EncodeToString(sum[:]), nil
-}
 func archivePaths(s Store, b *Bench) error {
 	if !keyPattern.MatchString(b.Key) || b.Path != filepath.Join(s.Data, "benches", b.Key) || b.Mirror != s.mirrorPath(b.Repo) {
 		return errors.New("bench paths conflict with store")
@@ -107,6 +90,12 @@ func archiveCheckout(b *Bench) error {
 	return archiveRemote(b)
 }
 func (s Store) Archive(key string) (*Bench, error) {
+	return s.ArchiveWithGrace(key, archivepolicy.DefaultGrace)
+}
+func (s Store) ArchiveWithGrace(key string, grace time.Duration) (*Bench, error) {
+	if e := archivepolicy.Duration(grace); e != nil {
+		return nil, e
+	}
 	var out *Bench
 	e := s.transaction(func(db database) error {
 		b, e := get(db, key)
@@ -124,6 +113,10 @@ func (s Store) Archive(key string) (*Bench, error) {
 				return e
 			}
 			b.ArchivedAt = time.Now().UTC().Format(time.RFC3339Nano)
+			b.ReapAfter, e = archivepolicy.Deadline(b.ArchivedAt, grace)
+			if e != nil {
+				return e
+			}
 		}
 		copy := *b
 		out = &copy
@@ -170,8 +163,8 @@ func (s Store) makeReapPlan(b *Bench) (*ReapPlan, error) {
 		oid, ok := objects[v.Path]
 		v.Recoverable = ok && (oid == v.GitSHA1 || oid == v.GitSHA256)
 	}
-	p := &ReapPlan{Version: "superbench.reap.v1", Key: b.Key, Path: b.Path, Checkpoint: b.Checkpoint, Tree: tree}
-	p.Digest, e = p.digest()
+	p := &ReapPlan{Version: "superbench.reap.v2", ReapAfter: b.ReapAfter, Key: b.Key, Path: b.Path, Checkpoint: b.Checkpoint, Tree: tree}
+	p.Digest, e = p.DigestValue()
 	return p, e
 }
 func (s Store) PlanReap(key string) (*ReapPlan, error) {
@@ -191,11 +184,11 @@ func (s Store) reapJournal(key string) string { return filepath.Join(s.State, "r
 // Reap requires the concrete reviewed manifest. It journals approval before any
 // deletion. Retry accepts only unchanged remaining entries, never new files.
 func (s Store) Reap(p ReapPlan) (*Bench, error) {
-	digest, e := p.digest()
+	digest, e := p.DigestValue()
 	if e != nil {
 		return nil, e
 	}
-	if !keyPattern.MatchString(p.Key) || p.Version != "superbench.reap.v1" || p.Digest != digest {
+	if !keyPattern.MatchString(p.Key) || (p.Version != "superbench.reap.v1" && p.Version != "superbench.reap.v2") || p.Digest != digest {
 		return nil, errors.New("invalid approved reap plan")
 	}
 	e = s.transaction(func(db database) error {
@@ -209,11 +202,20 @@ func (s Store) Reap(p ReapPlan) (*Bench, error) {
 		if b.Path != p.Path || b.Checkpoint != p.Checkpoint || b.ArchivedAt == "" || b.Lease != nil {
 			return errors.New("reap plan conflicts with bench state")
 		}
+		if p.Version == "superbench.reap.v2" && p.ReapAfter != b.ReapAfter {
+			return errors.New("reap plan grace deadline conflicts with bench state")
+		}
 		if b.ReapingDigest != "" {
 			if b.ReapingDigest != p.Digest {
 				return errors.New("another reap intent is retained")
 			}
 			return nil
+		}
+		if p.Version != "superbench.reap.v2" {
+			return errors.New("legacy reap approval requires a fresh review")
+		}
+		if e = archivepolicy.Eligible(b.ArchivedAt, b.ReapAfter, time.Now()); e != nil {
+			return e
 		}
 		current, e := s.makeReapPlan(b)
 		if e != nil {
@@ -267,7 +269,7 @@ func (s Store) Reap(p ReapPlan) (*Bench, error) {
 		if e = json.Unmarshal(raw, &saved); e != nil {
 			return e
 		}
-		savedDigest, e := saved.digest()
+		savedDigest, e := saved.DigestValue()
 		if e != nil {
 			return e
 		}

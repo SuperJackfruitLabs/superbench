@@ -105,6 +105,11 @@ keep that approval distinct from permission to implement the product.
   Actual Linux canonical cases, CLI/old-service compatibility and interrupted
   request replay protection passed; see [creation](creation.md).
 
+- Archive grace: a persisted seven-day default deadline binds reviewed v2 plans;
+  early reap and caller-shortened deadlines are refused before effects. Schema-8
+  SIGKILL intent recovery and managed XFS retirement regressions passed. Read-only
+  filesystem enforcement and automatic completion archive remain pending.
+
 ## Remaining retention work
 
 Reviewed log collection and history are implemented in [retention.md](retention.md),
@@ -126,7 +131,7 @@ Do not implement collection by simply deleting completed receipt rows.
 The original proposal remains the acceptance source; the checkpoints above do
 not replace its scope. Before calling Phase 1 complete, explicitly verify the
 standalone laptop preparation path (supervised hooks currently require Linux),
-multiple repositories within a bench, archive grace/read-only
+multiple repositories within a bench, archive read-only filesystem
 lifecycle and collection, remaining cache/quota/archive configuration, and the
 AgentPod acquisition/prompt/checkpoint pilot on an opt-in board. The review of
 charter/treaty boundaries must precede suite consumers. Source-level progress or

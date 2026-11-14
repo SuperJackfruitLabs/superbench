@@ -1,8 +1,9 @@
 # Archive and reviewed reap
 
-Archive freezes a released, clean, remote-confirmed task checkout. It preserves
-all files, including ignored build artifacts, and prevents new leases/runs. Reap
-then removes only the files in an explicitly reviewed plan. Neither operation is
+Archive records a released, clean, remote-confirmed task checkout as unavailable
+for new leases/runs. It preserves all files, including ignored build artifacts.
+A persisted grace deadline blocks new deletion intents for seven days by default.
+After that deadline, reap removes only the files in an explicitly reviewed plan. Neither operation is
 a time-based lease takeover or an automatic card-completion policy.
 
 These commands are currently local administrative CLI operations. They are not
@@ -28,6 +29,30 @@ returns the retained record. An archived key cannot be reused; recover the branc
 under a new key to resume work. Automatic merged-branch/card archive is later work.
 A branch deleted after merge is not sufficient evidence here: the current
 implementation requires the recorded remote task branch and exact checkpoint.
+
+## Grace period
+
+The first archive records `ArchivedAt` and `ReapAfter` in authoritative state.
+The default grace is seven days. A trusted local operator can choose a duration
+from zero to 365 days on that first archive, for example:
+
+```sh
+bench archive --archive-grace 336h --state /absolute/state --data /absolute/data task
+```
+
+Explicit `--archive-grace 0s` waives the time delay for that new archive, but still
+requires the reviewed file manifest and exact digest before deletion. Repeating
+archive never changes an existing deadline, even if a different duration is
+supplied. There is no reap flag to override it. You can inspect a plan during the
+grace period; an early reap is refused before publishing an approval journal or
+removing files. A new plan binds the persisted deadline into its `Digest`.
+
+The clock boundary uses the host's UTC clock. This is not protection against an
+operator changing that clock or private state, nor is it permission to expire a
+lease. Deadline passage alone does not schedule deletion. Automatic completion/
+merged-branch archive and read-only filesystem enforcement remain unfinished:
+archive currently prevents SuperBench acquisition but does not remove filesystem
+write permission from the trusted owner or other existing processes.
 
 ## Review and approve deletion
 
@@ -63,10 +88,27 @@ The CLI requires both the bounded JSON plan and matching digest. Duplicate JSON
 fields, trailing documents, invalid UTF-8 and unknown plan fields are refused. The engine checks
 that the entire current snapshot still matches, then fsyncs an approval journal
 outside bench data and commits its reaping intent before deleting files. State
-schema 4 makes earlier binaries refuse archived state. Reap never resets a dirty
+schema 9 makes earlier binaries refuse this archive policy. New plans use
+`superbench.reap.v2` and bind `ReapAfter`; a changed deadline invalidates approval. Reap never resets a dirty
 checkout to make its checks succeed. The current stopped/released-writer boundary
 remains cooperative for processes launched outside SuperBench; stop those writers
 before approving a plan. This is not uid/mount isolation against a hostile writer.
+
+## Upgrade from earlier state
+
+Stop active supervised executions with the installed binary before upgrading;
+the existing migration guard refuses an active old supervisor. Read-only status
+does not migrate. Use the new CLI's `migrate` command or a mutating operation to
+upgrade to schema 9. Existing archives without deadlines receive seven days from
+their original archive timestamp, so an already-old archive is not reset to a
+new seven-day clock. Invalid timestamps refuse migration.
+
+An unstarted v1 plan needs a fresh v2 review after upgrade. A v1 deletion intent
+already committed in the old state may resume only with its exact saved journal
+and digest. That exception preserves recovery of already-approved partial deletion;
+it does not admit a fresh v1 approval. New or changed files still stop that retry,
+and a completed retained intent remains idempotent. Earlier binaries refuse the
+new state rather than ignoring its deadline.
 
 ## Retry, quota and evidence
 
@@ -112,3 +154,12 @@ volume is a test target.
 Recorded kernel results: [archive-linux-output.txt](archive-linux-output.txt).
 CLI JSON admission is also exercised end-to-end by the regular suite, including
 duplicate authority fields, missing/wrong approval and successful reviewed deletion.
+
+Archive-grace verification: [archive-grace-output.txt](archive-grace-output.txt).
+`test-archive-grace.py` uses the published schema-8 CLI to begin a genuine v1
+reap, kills it after approved data removal but before finalization, then migrates
+and resumes the original journal. It also checks default timing, immutable archive
+retry, forged deadlines, explicit zero grace and downgrade refusal. Race tests
+cover the exact expiry boundary, malformed/missing timestamps, migration from the
+original time, rejection of fresh v1 approvals and preservation of new files on
+an old-intent retry.

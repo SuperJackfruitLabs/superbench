@@ -63,7 +63,7 @@ def archived(key):
     token=lease["Lease"]["Token"]
     cli("checkpoint","--token",token,key);cli("release","--token",token,key)
     build=Path(b["Path"]) / "build";build.mkdir();(build / "artifact").write_bytes(b"x"*(2<<20))
-    b=cli("archive",key)
+    b=cli("archive","--archive-grace","0s",key)
     plan=cli("plan-reap",key);planfile=root / (key+".json");planfile.write_text(json.dumps(plan));planfile.chmod(0o600)
     return b,plan,planfile
 

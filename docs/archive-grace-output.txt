@@ -1,0 +1,75 @@
+Archive grace verification, 2026-11-15
+Disposable state, Git remotes and private XFS mount namespace only.
+No existing bench, production service or quota policy changed.
+Previous CLI: schema 8, ec96e2998570288aa9653cfc58076b58c3d8e2eb.
+New CLI: schema 9, feat/archive-grace working candidate.
+
+grace-check.log
+....
+----------------------------------------------------------------------
+Ran 4 tests in 0.003s
+
+OK
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/cmd/bench	1.336s
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/cmd/bench-quota	[no test files]
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/cmd/benchd	[no test files]
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/architecture	1.032s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/archivepolicy	1.013s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/bench	16.183s
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/client	[no test files]
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/creation	[no test files]
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/execution	[no test files]
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/history	[no test files]
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage	1.016s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/integration	3.078s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/maintenance	1.166s
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model	[no test files]
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/output	1.020s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/protocol	1.033s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/reap	1.046s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/repository	2.468s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/retention	1.319s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/service	2.018s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/setup	1.046s
+
+grace-runtime.log
+PASS: schema-8 SIGKILL leaves a genuine v1 intent; schema-9 migration resumes that exact approved deletion and preserves replay/downgrade guards
+PASS: default seven-day grace, pre-effect rejection, immutable retry deadline and forged-plan rejection preserve checkout/artifacts
+PASS: explicit zero grace still requires an exact reviewed v2 manifest; schema 9 is persisted
+
+grace-archive-regression.log
+PASS: same-filesystem nested bind mount is refused without deleting its contents
+PASS: explicit approval required; open unlinked data retains quota until close; retry retires project
+PASS: zero-block open inode independently prevents reservation release
+PASS: wrong project IDs and symlink targets refuse privileged empty-directory retirement
+PASS: previous binaries refuse archive schema and retired-project ledger
+PASS: SIGKILL after quota retirement retains approval; retry finalizes only once; checkpoint recovers
+DONE: managed archive/reap integration passed
+
+Native macOS required checks (sh scripts/check.sh):
+....
+----------------------------------------------------------------------
+Ran 4 tests in 0.007s
+
+OK
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/cmd/bench	2.356s
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/cmd/bench-quota	[no test files]
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/cmd/benchd	[no test files]
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/architecture	1.331s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/archivepolicy	1.342s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/bench	32.932s
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/client	[no test files]
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/creation	[no test files]
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/execution	[no test files]
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/history	[no test files]
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage	1.324s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/integration	7.138s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/maintenance	1.745s
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model	[no test files]
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/output	1.338s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/protocol	1.295s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/reap	1.293s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/repository	8.413s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/retention	1.477s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/service	2.689s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/setup	1.561s
