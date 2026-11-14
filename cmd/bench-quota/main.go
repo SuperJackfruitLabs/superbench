@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage"
 	"os"
+	"strconv"
 )
 
 func main() {
@@ -24,14 +25,23 @@ func run(args []string) error {
 	if *policy != "/etc/superbench/storage.json" && (os.Getuid() != 0 || os.Geteuid() != 0 || os.Getenv("SUDO_UID") != "") {
 		return fmt.Errorf("policy override requires a direct root caller")
 	}
-	if f.NArg() != 3 || f.Arg(0) != "apply" {
-		return fmt.Errorf("usage: bench-quota [--policy ROOT_POLICY] apply <bench|shared> KEY")
+	if (f.NArg() != 3 || f.Arg(0) != "apply") && (f.NArg() != 4 || f.Arg(0) != "release" || f.Arg(1) != "bench") {
+		return fmt.Errorf("usage: bench-quota [--policy ROOT_POLICY] apply <bench|shared> KEY | release bench KEY PROJECT_ID")
 	}
 	p, e := hoststorage.Load(*policy)
 	if e != nil {
 		return e
 	}
-	assignment, e := p.Apply(f.Arg(1), f.Arg(2))
+	var assignment hoststorage.Assignment
+	if f.Arg(0) == "release" {
+		id, parseErr := strconv.ParseUint(f.Arg(3), 10, 32)
+		if parseErr != nil {
+			return parseErr
+		}
+		assignment, e = p.Release(f.Arg(2), uint32(id))
+	} else {
+		assignment, e = p.Apply(f.Arg(1), f.Arg(2))
+	}
 	if e != nil {
 		return e
 	}

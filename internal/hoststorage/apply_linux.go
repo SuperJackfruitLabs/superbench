@@ -138,6 +138,9 @@ func (p Policy) Apply(kind, key string) (Assignment, error) {
 
 	a, known := l.Assignments[name]
 	if known {
+		if a.Bytes == 0 {
+			return zero, errors.New("bench project is retired; use another key")
+		}
 		if a.Path != path || a.Bytes != size {
 			return zero, errors.New("existing allocation differs from policy; explicit migration required")
 		}

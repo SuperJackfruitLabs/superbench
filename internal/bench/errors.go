@@ -3,6 +3,7 @@ package bench
 import "errors"
 
 var (
+	ErrArchived   = errors.New("bench is archived; recover its checkpoint under a new key")
 	ErrNotFound   = errors.New("unknown bench")
 	ErrBusy       = errors.New("bench already leased")
 	ErrExists     = errors.New("bench already exists")

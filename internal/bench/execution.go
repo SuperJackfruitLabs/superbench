@@ -106,6 +106,9 @@ func (s Store) Run(ctx context.Context, key, holder string, args []string, check
 		if e != nil {
 			return e
 		}
+		if original.ArchivedAt != "" {
+			return ErrArchived
+		}
 		if original.Lease != nil {
 			return ErrBusy
 		}

@@ -59,6 +59,13 @@ for supervised process-tree fencing. Success checkpoints and releases; failures
 retain the lease. See [execution and recovery](docs/execution.md) for provisioning,
 log output, schema upgrades, local administration and the isolation boundary.
 
+## Archive and reap
+
+A released, clean, remote-confirmed bench can be archived, then deleted only after
+reviewing and explicitly approving its complete file manifest. See
+[archive and reap](docs/archive.md) for retained artifacts, retry rules and managed
+quota retirement. Archive/reap are local administrative commands in this checkpoint.
+
 ## Recovery
 
 On a replacement host with empty state/data directories:
@@ -101,12 +108,13 @@ atomic transaction.
   prototype JSON is imported once on the next successful write and preserved as
   a historical snapshot; SQLite is authoritative thereafter. Status is read-only.
   All commands serialize, including git calls. Use local filesystems only.
-- Git/network failures may block; there are no service timeouts yet. Git and state
+- Git/network calls may still block without an application deadline; transport
+  deadlines do not prove a core operation stopped. Git and state
   updates are not one transaction: journaled worktree creation can be resumed,
   while conflicting files require review and a pushed checkpoint may need retrying
   if saving state failed.
   No automatic deletion/reset is attempted.
-- Archive/retention, remote authentication, UI and suite
+- Automatic retention, remote authentication, UI and suite
   integrations are not implemented. The local API authenticates Unix peer uids.
 - Only trusted repositories are suitable. Local git configuration and hooks apply.
   Verification should use a separate clean checkout of the pushed checkpoint.

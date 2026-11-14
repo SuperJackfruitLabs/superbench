@@ -71,3 +71,15 @@ func TestPolicyLoadRejectsRelativePathBeforeFilesystemWalk(t *testing.T) {
 		t.Fatal("relative policy not rejected before ancestor traversal", e)
 	}
 }
+
+func TestRetiredBenchKeepsItsProjectAndCannotRetireSharedCaps(t *testing.T) {
+	p := testPolicy()
+	l := ledger{VolumeID: "11111111-1111-1111-1111-111111111111", Root: p.Root, Next: 10001, Assignments: map[string]Assignment{"bench:task": {Path: "/bench/benches/task", ProjectID: 10000, Bytes: 0}}}
+	if e := p.checkLedger(l); e != nil {
+		t.Fatal("retired bench rejected", e)
+	}
+	l.Assignments["store"] = Assignment{Path: "/bench/store", ProjectID: 100, Bytes: 0}
+	if e := p.checkLedger(l); e == nil {
+		t.Fatal("shared budget could be silently removed")
+	}
+}

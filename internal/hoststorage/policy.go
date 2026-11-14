@@ -202,6 +202,9 @@ func (p Policy) checkLedger(l ledger) error {
 			}
 			path = filepath.Join(p.Root, "benches", name[6:])
 			bytes = p.BenchBytes
+			if a.Bytes == 0 {
+				bytes = 0
+			} // A zero-byte bench assignment is a permanent retired ID.
 		}
 		if seen[a.ProjectID] || a.Path != path || a.Bytes != bytes {
 			return errors.New("ledger allocation conflicts with policy; explicit migration required")

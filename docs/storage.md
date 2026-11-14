@@ -9,7 +9,9 @@ quotas. No filesystem is formatted or mounted by the quota helper.
 ## Fixed-policy helper
 
 `bench-quota` accepts only `apply bench KEY`, `apply shared store`, or
-`apply shared mirrors`. Paths, byte caps and worker ownership come from a
+`apply shared mirrors`. The `release bench KEY PROJECT_ID` operation removes
+only an empty allocated directory and confirms zero usage before retiring its
+reservation. Paths, byte caps and worker ownership come from a
 root-owned policy, not caller arguments. The policy and its ancestors cannot be
 replaced through writable non-sticky directories or symlinks. Data parents stay
 root-owned; the worker owns only assigned bench/cache/mirror directories.
@@ -43,9 +45,9 @@ for the provisioned host; the example requires a suitably sized dedicated volume
 Total bench hard caps plus both shared caps and the filesystem reserve cannot
 exceed filesystem capacity. Unfinished allocations still count. Reservations are
 conservative logical quota bytes; physical reflink sharing does not increase the
-admission budget. A later archive/reap operation must reclaim a reservation only
-after its data is safely removed. This slice intentionally does not release IDs
-or delete old data automatically.
+admission budget. [Reviewed reap](archive.md) reclaims a logical reservation
+only after approved data is removed and XFS reports zero blocks/inodes. Project
+IDs and keys are retired permanently; no data is deleted automatically.
 
 Install the helper root-owned and non-writable by the service account, with sudo
 permission only for that fixed executable. Do not grant generic shell/XFS-tool
@@ -125,12 +127,13 @@ Budget exhaustion refuses new work instead of deleting logs. Automated retention
 and per-bench history remain part of archive/service work. The limits bound
 supervised output, not arbitrary filesystem writes by the launching uid.
 
-Schema 3 protects quota and log-limit metadata from older binaries. Schemas 1/2
+Schema 4 additionally protects archive/reap state from older binaries. Schema 3
+introduced quota and log-limit metadata. Schemas 1/2/3
 can upgrade through `bench migrate` or a successful mutating operation. Upgrading
 under an active old supervised execution is refused: stop it with the installed
 binary first. Read-only status never changes schema. Stronger uid/mount isolation,
-inode quotas, TOML hooks, automatic cache collection and archive/reap remain
-pending. A separately verified service installer is documented in [install.md](install.md).
+inode quotas, TOML hooks and automatic cache collection remain pending.
+Archive/reap is available through a reviewed local administrative plan. A separately verified service installer is documented in [install.md](install.md).
 
 ## Verification
 

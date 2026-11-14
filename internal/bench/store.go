@@ -17,22 +17,26 @@ type Lease struct {
 	Execution *Execution `json:",omitempty"`
 }
 type Bench struct {
-	Key        string
-	Repo       string
-	Branch     string
-	Path       string
-	Mirror     string
-	Checkpoint string
-	ProjectID  uint32
-	QuotaBytes uint64
-	Lease      *Lease `json:",omitempty"`
+	Key           string
+	Repo          string
+	Branch        string
+	Path          string
+	Mirror        string
+	Checkpoint    string
+	ArchivedAt    string `json:",omitempty"`
+	ReapingDigest string `json:",omitempty"`
+	ReapedAt      string `json:",omitempty"`
+	ProjectID     uint32
+	QuotaBytes    uint64
+	Lease         *Lease `json:",omitempty"`
 }
 type Store struct {
-	State, Data string
-	CgroupRoot  string
-	executor    executionBackend
-	spaceProbe  func(string) (Space, error)
-	quotaApply  func(HostConfig, string, string) (hoststorage.Assignment, error)
+	State, Data     string
+	CgroupRoot      string
+	reapAfterDelete func() error
+	executor        executionBackend
+	spaceProbe      func(string) (Space, error)
+	quotaApply      func(HostConfig, string, string) (hoststorage.Assignment, error)
 }
 type database map[string]*Bench
 

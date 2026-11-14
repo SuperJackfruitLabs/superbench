@@ -3,7 +3,8 @@
 `benchd` owns one host-local Unix socket and one private state store. It exposes
 no TCP listener. This remains a prototype. The reviewed
 [Linux service installation](install.md) payload is available;
-archive/reap, retention and suite adapters are subsequent work.
+archive/reap is available through the local administrative CLI, while automatic
+retention and suite adapters remain pending.
 
 ## Start and connect
 
@@ -42,8 +43,9 @@ Treat operation output and saved state as private.
 
 CLI remote output uses versioned snake-case API result objects; direct local CLI
 output retains its original engine format. A failed command preserves its exit
-status and emits retained run metadata. `migrate` and `configure-host` remain
-local administrative commands. Keep host configuration consistent with the
+status and emits retained run metadata. `migrate`, `configure-host`, `archive`, `plan-reap` and `reap` remain local
+administrative commands. Archive state is visible in status; new archive RPC
+operations await a treaty extension. Keep host configuration consistent with the
 state/data/cgroup paths used by the daemon. Do not run competing direct writers
 while benchd serves that state; direct core commands do not enforce the socket's
 uid policy. The daemon's lifetime lock prevents a second daemon from serving the

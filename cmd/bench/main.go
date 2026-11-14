@@ -26,7 +26,7 @@ func main() {
 }
 func run(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: bench <create|recover|lease|checkpoint|release|status|run|stop|migrate|configure-host|host-status|setup> [flags] [key]; flags precede key")
+		return fmt.Errorf("usage: bench <archive|plan-reap|reap|create|recover|lease|checkpoint|release|status|run|stop|migrate|configure-host|host-status|setup> [flags] [key]; flags precede key")
 	}
 	config, err := os.UserConfigDir()
 	if err != nil {
@@ -37,6 +37,8 @@ func run(args []string) error {
 		return err
 	}
 	f := flag.NewFlagSet(args[0], flag.ContinueOnError)
+	planFile := f.String("plan", "", "private reviewed reap plan JSON")
+	approval := f.String("approve", "", "exact Digest of the reviewed reap plan")
 	socket := f.String("socket", "", "local benchd Unix socket (operation output uses the versioned API shape)")
 	requestID := f.String("request-id", "", "stable id for replaying an accepted service request")
 	state := f.String("state", filepath.Join(config, "superbench", "state"), "authoritative state, outside bench data")
@@ -109,6 +111,12 @@ func run(args []string) error {
 	s := bench.Store{State: *state, Data: *data, CgroupRoot: *cgroupRoot}
 	var out any
 	switch args[0] {
+	case "archive":
+		out, err = s.Archive(key)
+	case "plan-reap":
+		out, err = s.PlanReap(key)
+	case "reap":
+		out, err = approvedReap(s, key, *planFile, *approval)
 	case "create", "recover":
 		out, err = s.Create(key, bench.Options{Repo: *repo, Branch: *branch, Base: *base}, args[0] == "recover")
 	case "lease":
