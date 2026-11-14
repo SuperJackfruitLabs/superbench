@@ -28,13 +28,14 @@ type Request struct {
 	LeaseToken string   `json:"lease_token,omitempty"`
 	Arguments  []string `json:"arguments,omitempty"`
 	Checkpoint *bool    `json:"checkpoint,omitempty"`
+	Initialize *bool    `json:"initialize,omitempty"`
 	Offline    *bool    `json:"offline,omitempty"`
 }
 type shape struct{ required, optional []string }
 
 var shapes = map[string]shape{
-	"create":  {[]string{"key", "repository", "request_id"}, []string{"branch", "base"}},
-	"recover": {[]string{"key", "repository", "branch", "request_id"}, []string{"base"}},
+	"create":  {[]string{"key", "repository", "request_id"}, []string{"branch", "base", "initialize"}},
+	"recover": {[]string{"key", "repository", "branch", "request_id"}, []string{"base", "initialize"}},
 	"status":  {nil, []string{"key"}}, "host_status": {},
 	"lease":      {[]string{"key", "holder", "request_id"}, nil},
 	"checkpoint": {[]string{"key", "lease_token"}, nil}, "release": {[]string{"key", "lease_token"}, nil},
@@ -97,6 +98,9 @@ func Parse(raw []byte) (Request, error) {
 	}
 	if e = json.Unmarshal(raw, &r); e != nil {
 		return Request{}, invalid
+	}
+	if r.Initialize != nil && !*r.Initialize {
+		return r, invalid
 	}
 	if r.Version != Version {
 		return r, invalid

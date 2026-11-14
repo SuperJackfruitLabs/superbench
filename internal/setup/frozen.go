@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 )
 
+var ErrNoLockfile = errors.New("no supported frozen lockfile; use bench run with the repository's explicit setup command")
+
 func FrozenCommand(path, data string, offline bool) ([]string, error) {
 	candidates := map[string][]string{
 		"pnpm-lock.yaml":    {"pnpm", "install", "--frozen-lockfile", "--store-dir", filepath.Join(data, "store", "pnpm"), "--package-import-method", "clone"},
@@ -23,7 +25,7 @@ func FrozenCommand(path, data string, offline bool) ([]string, error) {
 		}
 	}
 	if selected == nil {
-		return nil, errors.New("no supported frozen lockfile; use bench run with the repository's explicit setup command")
+		return nil, ErrNoLockfile
 	}
 	if offline {
 		selected = append(selected, "--offline")

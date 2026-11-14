@@ -9,19 +9,22 @@ import (
 
 func (s Store) Setup(ctx context.Context, key, holder string, offline bool) (*RunResult, error) {
 	return s.run(ctx, key, holder, nil, true, func(b *Bench, tx *sql.Tx) ([]string, func(*sql.Tx, string) error, error) {
-		c, e := setup.Read(b.Path)
-		if e != nil {
+		return s.setupPlan(b, tx, offline)
+	})
+}
+func (s Store) setupPlan(b *Bench, tx *sql.Tx, offline bool) ([]string, func(*sql.Tx, string) error, error) {
+	c, e := setup.Read(b.Path)
+	if e != nil {
+		return nil, nil, e
+	}
+	if c == nil || !c.Hooks() {
+		if e = setup.Invalidate(tx, b.Key); e != nil {
 			return nil, nil, e
 		}
-		if c == nil || !c.Hooks() {
-			if e = setup.Invalidate(tx, key); e != nil {
-				return nil, nil, e
-			}
-			args, e := s.setupCommand(b.Path, offline)
-			return args, nil, e
-		}
-		return s.configuredSetup(b, tx, c, offline)
-	})
+		args, e := s.setupCommand(b.Path, offline)
+		return args, nil, e
+	}
+	return s.configuredSetup(b, tx, c, offline)
 }
 func (s Store) configuredSetup(b *Bench, tx *sql.Tx, c *setup.Config, offline bool) ([]string, func(*sql.Tx, string) error, error) {
 	key := b.Key

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,29 +14,8 @@ import (
 	"time"
 )
 
-type Lease struct {
-	Token         string
-	Holder        string
-	Execution     *Execution `json:",omitempty"`
-	Continuation  string     `json:",omitempty"`
-	RetainedRuns  []string   `json:",omitempty"`
-	StopRequested bool       `json:",omitempty"`
-}
-type Bench struct {
-	Key           string
-	Repo          string
-	Branch        string
-	Path          string
-	Mirror        string
-	Checkpoint    string
-	ArchivedAt    string `json:",omitempty"`
-	ReapingDigest string `json:",omitempty"`
-	ReapedAt      string `json:",omitempty"`
-	ProjectID     uint32
-	QuotaBytes    uint64
-	QuotaInodes   uint64
-	Lease         *Lease `json:",omitempty"`
-}
+type Lease = model.Lease
+type Bench = model.Bench
 type Store struct {
 	State, Data        string
 	CgroupRoot         string

@@ -67,16 +67,23 @@ seed=root/'seed';remote=root/'remote.git';git(root,'init','--bare',remote);git(r
 good(['pnpm','install','--lockfile-only','--ignore-scripts','--store-dir',root/'generation-store'],cwd=seed,env={**os.environ,'CI':'true'})
 git(seed,'add','.');git(seed,'-c','user.name=Test','-c','user.email=test@example.invalid','commit','-m','fixture')
 git(seed,'remote','add','origin',remote);git(seed,'push','origin','main');git(remote,'symbolic-ref','HEAD','refs/heads/main')
-first=cli('create','--repo',remote,'first');assert first['ProjectID']>=10000 and first['QuotaBytes']==16<<20
+first=cli('create-cold','--repo',remote,'first');assert first['ProjectID']>=10000 and first['QuotaBytes']==16<<20
 setup=cli('setup','--holder','installer','first');assert setup['ExitCode']==0 and setup['Bench'].get('Lease') is None
 built=cli('run','--holder','builder','first','--','pnpm','run','build');assert built['ExitCode']==0
 assert (Path(first['Path'])/'build.out').read_text()==str(4<<20)
 cli('setup','--holder','warm-installer','--offline','first')
-second=cli('create','--repo',remote,'second');cli('setup','--holder','second-installer','--offline','second')
+second=cli('create-cold','--repo',remote,'second');cli('setup','--holder','second-installer','--offline','second')
 assert second['ProjectID']!=first['ProjectID']
 pa=Path(first['Path'])/'node_modules/storage-fixture/payload.bin';pb=Path(second['Path'])/'node_modules/storage-fixture/payload.bin'
 assert pa.read_bytes()==payload and pb.read_bytes()==payload
 print('PASS: managed frozen setup, build and warm/offline handoffs work inside project quotas',flush=True)
+warm=cli('create','--repo',remote,'warm-create')
+assert warm.get('Lease') is None and warm['Checkpoint']
+assert (Path(warm['Path'])/'node_modules/storage-fixture/payload.bin').read_bytes()==payload
+assert git(remote,'rev-parse','refs/heads/'+warm['Branch'])==warm['Checkpoint']
+initial=cli('history','warm-create')
+assert len(initial)==1 and initial[0]['ExitCode']==0 and not initial[0]['ReleasedAt'].startswith('0001-')
+print('PASS: warm creation selects frozen setup without hooks, installs under its quota and confirms the remote checkpoint before release',flush=True)
 noisy=cli('run','--holder','noisy-command','first','--','sh','-c','head -c 2097152 /dev/zero')
 assert noisy['LogTruncated'] and Path(noisy['Execution']['Log']).stat().st_size<=1<<20
 assert noisy['Bench'].get('Lease') is None
@@ -126,7 +133,7 @@ print('PASS: quota enforcement is required and total cap reservations reject ove
 
 # Kill the caller after helper assignment but before receiving the reply.
 marker=root/'allocation-ready';env={**os.environ,'SUPERBENCH_PAUSE_KEY':'allocation-crash','SUPERBENCH_MARKER':str(marker)}
-p=subprocess.Popen(command('create','--repo',remote,'allocation-crash'),env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,start_new_session=True,text=True)
+p=subprocess.Popen(command('create-cold','--repo',remote,'allocation-crash'),env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,start_new_session=True,text=True)
 for _ in range(400):
  if marker.exists():break
  if p.poll() is not None:raise AssertionError(p.communicate())
@@ -134,7 +141,7 @@ for _ in range(400):
 else:raise AssertionError('quota boundary not reached')
 os.killpg(p.pid,signal.SIGKILL);p.communicate(timeout=10)
 ledger=json.loads((root/'quota-ledger/assignments.json').read_text());assigned=ledger['Assignments']['bench:allocation-crash']['ProjectID'];counter=ledger['Next']
-resumed=cli('create','--repo',remote,'allocation-crash')
+resumed=cli('create-cold','--repo',remote,'allocation-crash')
 assert resumed['ProjectID']==assigned and json.loads((root/'quota-ledger/assignments.json').read_text())['Next']==counter
 print('PASS: interrupted privileged allocation resumes with the same project and reservation',flush=True)
 
@@ -151,7 +158,7 @@ fi
 exit "$status"
 ''');(gitwrapper/'git').chmod(0o700)
 env={**os.environ,'PATH':str(gitwrapper)+':'+os.environ['PATH'],'SUPERBENCH_REAL_GIT':real_git,'SUPERBENCH_MARKER':str(marker)}
-p=subprocess.Popen(command('create','--repo',otherremote,'clone-crash'),env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,start_new_session=True,text=True)
+p=subprocess.Popen(command('create-cold','--repo',otherremote,'clone-crash'),env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,start_new_session=True,text=True)
 for _ in range(400):
  if marker.exists():break
  if p.poll() is not None:raise AssertionError(p.communicate())
@@ -159,7 +166,7 @@ for _ in range(400):
 else:raise AssertionError('clone boundary not reached')
 os.killpg(p.pid,signal.SIGKILL);p.communicate(timeout=10)
 orphans=list((data/'mirrors').glob('.clone-*'));assert orphans
-recovered=cli('create','--repo',otherremote,'clone-crash')
+recovered=cli('create-cold','--repo',otherremote,'clone-crash')
 assert not any(str(path) in recovered['Mirror'] for path in orphans)
 assert git(recovered['Mirror'],'rev-parse','--is-bare-repository')=='true'
 print('PASS: interrupted mirror publication is isolated; retry publishes a complete mirror',flush=True)

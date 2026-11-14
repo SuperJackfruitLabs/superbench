@@ -143,8 +143,9 @@ once reuse under the unprivileged service uid. The extracted execution backend k
 shape and is exercised by the execution failure drill.
 
 The parser is pinned to [go-toml v2.4.3](https://github.com/pelletier/go-toml/releases/tag/v2.4.3)
-in the configuration adapter only. Creation warm-up, cache/quota/archive
-configuration, suite pilots and broader collection remain Phase 1 work.
+in the configuration adapter only. [Creation warm-up](creation.md) is verified
+on Linux. Laptop preparation, cache/quota/archive configuration, suite pilots and
+broader collection remain Phase 1 work.
 
 Recorded results: [Linux setup and execution failure drills](setup-linux-output.txt)
 and [frozen setup/storage regressions](setup-storage-output.txt).

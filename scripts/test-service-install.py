@@ -142,13 +142,14 @@ def main():
                     print("local diagnostic:", diagnostic.stderr, flush=True)
                 raise AssertionError((r.status, result.get("error")))
             return result["result"]
-        request("create", key="task", repository=str(remote), request_id="create")
-        request("run", key="task", holder="service-test", request_id="run", arguments=["sh", "-c", 'test "$(cat .setup-events)" = onceeach'])
+        request("create", key="task", repository=str(remote), request_id="create", initialize=True)
+        print("PASS: unprivileged service warms creation before returning readiness", flush=True)
+        request("run", key="task", holder="service-test", request_id="run", arguments=["sh", "-c", 'test "$(cat .setup-events)" = onceeacheach'])
         assert "lease" not in request("status", key="task")["benches"][0]
         print("PASS: service delegation launches, fences, checkpoints and releases a Linux run", flush=True)
         print("PASS: unprivileged service fences preparation before launching the requested command", flush=True)
         # Fail closed if any unit hardening silently prevents the narrow sudo path.
-        check = f"test \"$(cat .setup-events)\" = onceeacheach || exit 9; sudo -n {helper} --policy /invalid apply bench task 2>quota-error; code=$?; test $code -ne 0 && grep -q 'policy override requires a direct root caller' quota-error && rm quota-error"
+        check = f"test \"$(cat .setup-events)\" = onceeacheacheach || exit 9; sudo -n {helper} --policy /invalid apply bench task 2>quota-error; code=$?; test $code -ne 0 && grep -q 'policy override requires a direct root caller' quota-error && rm quota-error"
         request("run", key="task", holder="helper-test", request_id="helper", arguments=["sh", "-c", check])
         print("PASS: fixed helper sudo works inside service; policy override remains forbidden", flush=True)
         service_cgroup = Path("/sys/fs/cgroup") / command("systemctl", "show", "-p", "ControlGroup", "--value", unit.name).stdout.decode().strip().lstrip("/")
