@@ -46,7 +46,7 @@ func TestArchitecture(t *testing.T) {
 			if err != nil {
 				return err
 			}
-			if strings.Contains(strings.Split(p, "/")[0], ".") && !(filepath.Base(path) == "sqlite.go" && p == "modernc.org/sqlite") && !(strings.HasSuffix(filepath.Dir(path), filepath.Join("cmd", "bench")) && p == "forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/bench") {
+			if strings.Contains(strings.Split(p, "/")[0], ".") && !(strings.Contains(path, filepath.Join("internal", "bench")) && p == "forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage") && !(strings.HasSuffix(filepath.Dir(path), filepath.Join("cmd", "bench-quota")) && p == "forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage") && !(filepath.Base(path) == "sqlite.go" && p == "modernc.org/sqlite") && !(strings.HasSuffix(filepath.Dir(path), filepath.Join("cmd", "bench")) && p == "forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/bench") {
 				t.Errorf("%s: forbidden runtime dependency %s", path, p)
 			}
 		}

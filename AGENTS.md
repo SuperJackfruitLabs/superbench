@@ -1,6 +1,8 @@
 # SuperBench prototype
 
-- Engine in internal/bench; cmd/bench parses CLI flags and renders JSON only.
+- Engine in internal/bench; host quota policy in internal/hoststorage; CLI front
+  doors in cmd/bench and cmd/bench-quota. The helper accepts fixed-policy logical
+  allocations only, never arbitrary filesystem paths, limits or XFS commands.
 - State stays outside bench data. Never expire a lease just because time passed.
 - Leases coordinate trusted callers; do not claim filesystem isolation.
 - Checkpoints require clean committed work and remote confirmation. Never force-push,

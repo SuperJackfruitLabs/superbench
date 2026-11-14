@@ -162,7 +162,40 @@ func TestExecutionSchemaRequiresExplicitOrMutatingUpgrade(t *testing.T) {
 	if e = db.QueryRow("PRAGMA user_version").Scan(&version); e != nil {
 		t.Fatal(e)
 	}
-	if version != 2 {
+	if version != schemaVersion {
 		t.Fatal("execution metadata not protected by schema version")
+	}
+}
+
+func TestStorageUpgradeRefusesActiveOldSupervisor(t *testing.T) {
+	s, r := fixture(t)
+	if _, e := s.Create("task", Options{Repo: r}, false); e != nil {
+		t.Fatal(e)
+	}
+	if e := s.transaction(func(db database) error {
+		db["task"].Lease = &Lease{Holder: "writer", Token: "fixture", Execution: &Execution{Phase: "running"}}
+		return nil
+	}); e != nil {
+		t.Fatal(e)
+	}
+	db, e := s.openSQL(false)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.Exec("PRAGMA user_version=2"); e != nil {
+		t.Fatal(e)
+	}
+	db.Close()
+	if e = s.Migrate(); e == nil {
+		t.Fatal("upgraded underneath an active old supervisor")
+	}
+	db, e = s.openSQL(true)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+	var version int
+	if e = db.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 2 {
+		t.Fatal("failed upgrade changed schema", version, e)
 	}
 }

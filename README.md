@@ -34,6 +34,13 @@ They cannot overlap, including via symlinks. Use the same paths on every invocat
 Mirrors share git objects across benches; fetches update remote-tracking refs, never
 branches another bench has checked out. Do not manually prune mirrors or alter refs.
 
+## Managed storage
+
+Linux hosts can configure a dedicated XFS data mount with per-bench and shared
+caps, fixed-policy root allocation, free-space admission and bounded run logs.
+`bench setup` supports frozen pnpm/npm installs. See [storage management](docs/storage.md)
+for provisioning prerequisites, budgets, compatibility and verification.
+
 ## Supervised runs
 
 Linux hosts with a delegated cgroup-v2 root can use `bench run` and `bench stop`
@@ -86,7 +93,7 @@ filesystems.
   while conflicting files require review and a pushed checkpoint may need retrying
   if saving state failed.
   No automatic deletion/reset is attempted.
-- Quotas, package setup, archive/retention, host admission checks, service APIs,
+- Archive/retention, service provisioning/APIs,
   authentication, UI and suite integrations are not implemented.
 - Only trusted repositories are suitable. Local git configuration and hooks apply.
   Verification should use a separate clean checkout of the pushed checkpoint.

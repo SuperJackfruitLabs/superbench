@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add fixed-policy XFS allocation, host admission and shared store caps, frozen
+  pnpm/npm setup, atomic mirror publication and bounded/reserved run logs.
+
 - Add Linux cgroup-backed run/stop commands, retained leases on supervisor failure,
   local administrative fencing and schema-2 protection for execution metadata.
 

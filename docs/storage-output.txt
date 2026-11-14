@@ -1,0 +1,20 @@
+PASS: managed host config verifies a separate data filesystem and fixed-policy shared caps
+PASS: managed frozen setup, build and warm/offline handoffs work inside project quotas
+PASS: noisy command output is bounded, marked truncated and still checkpointed safely
+/var/tmp/superbench-storage.76q65O/data/benches/first/node_modules/storage-fixture/payload.bin:
+ EXT: FILE-OFFSET      BLOCK-RANGE      TOTAL FLAGS
+   0: [0..8191]:       655560..663751    8192 0x2001
+/var/tmp/superbench-storage.76q65O/data/benches/second/node_modules/storage-fixture/payload.bin:
+ EXT: FILE-OFFSET      BLOCK-RANGE      TOTAL FLAGS
+   0: [0..8191]:       655560..663751    8192 0x2001
+PASS: package clone mutation leaves the other bench intact
+PASS: bench hard cap refuses writes while the shared store stays writable
+PASS: helper refuses escaping keys, writable/symlink policy and allocation-policy drift
+PASS: disabled project enforcement blocks new work until restored
+PASS: quota enforcement is required and total cap reservations reject overcommit
+PASS: interrupted privileged allocation resumes with the same project and reservation
+PASS: interrupted mirror publication is isolated; retry publishes a complete mirror
+PASS: incomplete privileged ledger fails closed without defaulting to fresh allocations
+PASS: filesystem UUID binding survives remount on a different loop device
+PASS: a different filesystem at the same path is refused
+DONE: managed storage integration passed
