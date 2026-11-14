@@ -11,6 +11,7 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/history"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/output"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/retention"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/setup"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -75,7 +76,7 @@ func (s Store) executionGate(key string, fn func() error) error {
 	return fn()
 }
 
-type commandPlan func(*Bench, *sql.Tx) ([]string, func(*sql.Tx, string) error, error)
+type commandPlan func(*Bench, *sql.Tx, *setup.Config) ([]string, func(*sql.Tx, string) error, error)
 
 func (s Store) run(ctx context.Context, key, holder string, args []string, checkpoint bool, plan commandPlan) (*RunResult, error) {
 	return s.runStage(ctx, key, holder, args, checkpoint, plan, stageOptions{})
@@ -102,6 +103,7 @@ func (s Store) runStage(ctx context.Context, key, holder string, args []string, 
 	}
 	execution := &Execution{ID: id, Root: root, BootID: identity.BootID, HostID: identity.HostID, Phase: "starting", Log: filepath.Join(s.State, "run-"+id+".log")}
 	var b *Bench
+	var environment []string
 	acquire := func() error {
 		return s.transactionSQL(func(db database, tx *sql.Tx) error {
 			if e := retention.Directory(s.State); e != nil {
@@ -141,14 +143,22 @@ func (s Store) runStage(ctx context.Context, key, holder string, args []string, 
 				return e
 			}
 			execution.LogLimitBytes = limit
+			configuration, e := setup.Read(original.Path)
+			if e != nil {
+				return e
+			}
 			if plan != nil {
-				args, finish, e = plan(original, tx)
+				args, finish, e = plan(original, tx, configuration)
 				if e != nil {
 					return e
 				}
 				if len(args) == 0 {
 					return errors.New("command plan is empty")
 				}
+			}
+			environment, e = s.cacheEnvironmentFor(original, configuration, os.Environ())
+			if e != nil {
+				return e
 			}
 			lease := original.Lease
 			if lease == nil {
@@ -203,7 +213,7 @@ func (s Store) runStage(ctx context.Context, key, holder string, args []string, 
 	cmd.Dir = b.Path
 	cmd.Stdout = capture.Writer
 	cmd.Stderr = capture.Writer
-	cmd.Env = s.cacheEnvironment(os.Environ())
+	cmd.Env = environment
 	// Persist intent before launch; stop and launch share this gate so a delayed
 	// supervisor cannot create a new writer after another caller fenced the lease.
 	err = s.startExecution(ctx, key, b, cmd, execution)

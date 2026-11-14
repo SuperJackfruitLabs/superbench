@@ -2,6 +2,7 @@ package setup
 
 import (
 	"errors"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/cachepolicy"
 	"os"
 	"path/filepath"
 )
@@ -9,9 +10,16 @@ import (
 var ErrNoLockfile = errors.New("no supported frozen lockfile; use bench run with the repository's explicit setup command")
 
 func FrozenCommand(path, data string, offline bool) ([]string, error) {
+	config, e := Read(path)
+	if e != nil {
+		return nil, e
+	}
+	return FrozenCommandFor(path, cachepolicy.Select(data, path, config.CacheSettings()), offline)
+}
+func FrozenCommandFor(path string, paths cachepolicy.Paths, offline bool) ([]string, error) {
 	candidates := map[string][]string{
-		"pnpm-lock.yaml":    {"pnpm", "install", "--frozen-lockfile", "--store-dir", filepath.Join(data, "store", "pnpm"), "--package-import-method", "clone"},
-		"package-lock.json": {"npm", "ci", "--cache", filepath.Join(data, "store", "npm"), "--no-audit", "--no-fund"},
+		"pnpm-lock.yaml":    {"pnpm", "install", "--frozen-lockfile", "--store-dir", paths.Pnpm, "--package-import-method", "clone"},
+		"package-lock.json": {"npm", "ci", "--cache", paths.Npm, "--no-audit", "--no-fund"},
 	}
 	var selected []string
 	for lock, args := range candidates {

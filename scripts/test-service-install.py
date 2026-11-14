@@ -114,8 +114,8 @@ def main():
         (seed / "file").write_text("base\n")
         # The fixture verifies both preparation stages under the service uid.
         (seed / ".bench").mkdir()
-        (seed / ".bench/config.toml").write_text("[setup]\nonce='printf once >> .setup-events'\neach='printf each >> .setup-events'\n")
-        (seed / ".gitignore").write_text(".setup-events\n")
+        (seed / ".bench/config.toml").write_text("[setup]\nonce='printf once >> .setup-events'\neach='printf each >> .setup-events'\n[caches]\npnpm=false\nnpm=false\nplaywright=false\n")
+        (seed / ".gitignore").write_text(".setup-events\n.bench/cache/\n")
         command("git", "-C", str(seed), "add", ".")
         command("git", "-C", str(seed), "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-m", "base")
         command("git", "-C", str(seed), "remote", "add", "origin", str(remote))
@@ -144,10 +144,10 @@ def main():
             return result["result"]
         request("create", key="task", repository=str(remote), request_id="create", initialize=True)
         print("PASS: unprivileged service warms creation before returning readiness", flush=True)
-        request("run", key="task", holder="service-test", request_id="run", arguments=["sh", "-c", 'test "$(cat .setup-events)" = onceeacheach'])
+        request("run", key="task", holder="service-test", request_id="run", arguments=["sh", "-c", 'test "$(cat .setup-events)" = onceeacheach && test "$npm_config_store_dir" = "$PWD/.bench/cache/pnpm" && test "$PLAYWRIGHT_BROWSERS_PATH" = "$PWD/.bench/cache/playwright"'])
         assert "lease" not in request("status", key="task")["benches"][0]
         print("PASS: service delegation launches, fences, checkpoints and releases a Linux run", flush=True)
-        print("PASS: unprivileged service fences preparation before launching the requested command", flush=True)
+        print("PASS: unprivileged service fences preparation and applies repository private-cache settings before the requested command", flush=True)
         # Fail closed if any unit hardening silently prevents the narrow sudo path.
         check = f"test \"$(cat .setup-events)\" = onceeacheacheach || exit 9; sudo -n {helper} --policy /invalid apply bench task 2>quota-error; code=$?; test $code -ne 0 && grep -q 'policy override requires a direct root caller' quota-error && rm quota-error"
         request("run", key="task", holder="helper-test", request_id="helper", arguments=["sh", "-c", check])

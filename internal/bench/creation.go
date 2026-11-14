@@ -32,8 +32,8 @@ func (s Store) CreateContext(ctx context.Context, key string, o Options, recover
 	if e = ctx.Err(); e != nil {
 		return b, fmt.Errorf("checkout registered; initial setup still holds its lease: %w", e)
 	}
-	r, e := s.runStage(ctx, key, b.Lease.Holder, nil, true, func(b *Bench, tx *sql.Tx) ([]string, func(*sql.Tx, string) error, error) {
-		return s.setupPlan(b, tx, false)
+	r, e := s.runStage(ctx, key, b.Lease.Holder, nil, true, func(b *Bench, tx *sql.Tx, c *setup.Config) ([]string, func(*sql.Tx, string) error, error) {
+		return s.setupPlan(b, tx, c, false)
 	}, stageOptions{prior: permit(b)})
 	if r != nil {
 		b = r.Bench
