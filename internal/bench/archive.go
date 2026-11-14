@@ -28,78 +28,25 @@ func (s Store) Archive(key string) (*Bench, error) {
 	return s.ArchiveWithGrace(key, archivepolicy.DefaultGrace)
 }
 func (s Store) ArchiveWithGrace(key string, grace time.Duration) (*Bench, error) {
-	if e := archivepolicy.Duration(grace); e != nil {
-		return nil, e
-	}
-	var out *Bench
-	e := s.transaction(func(db database) error {
-		b, e := get(db, key)
-		if e != nil {
-			return e
-		}
-		if e = archivePaths(s, b); e != nil {
-			return e
-		}
-		if b.Lease != nil {
-			return ErrBusy
-		}
-		if b.ArchiveFreezeDigest == "" && b.ReapingDigest == "" && b.ReapedAt == "" {
-			if e = archiveCheckout(b); e != nil {
-				return e
-			}
-			plan, e := reap.NewFreeze(b.Key, b.Path, b.Checkpoint)
-			if e != nil {
-				return e
-			}
-			raw, e := plan.Bytes()
-			if e != nil {
-				return e
-			}
-			if e = s.saveLifecycleIntent(s.freezeJournal(b.Key), raw); e != nil {
-				return e
-			}
-			b.ArchiveFreezeDigest = plan.Digest
-		}
-		if b.ArchivedAt == "" {
-			b.ArchivedAt = time.Now().UTC().Format(time.RFC3339Nano)
-			b.ReapAfter, e = archivepolicy.Deadline(b.ArchivedAt, grace)
-			if e != nil {
-				return e
-			}
-		}
-		copy := *b
-		out = &copy
-		return nil
-	})
-	if e != nil || out.ReapingDigest != "" || out.ReapedAt != "" {
-		return out, e
-	}
-	e = s.transaction(func(db database) error {
-		b, e := get(db, key)
-		if e != nil {
-			return e
-		}
-		if b.ArchiveFreezeDigest != out.ArchiveFreezeDigest || b.Lease != nil || b.ReapingDigest != "" {
-			return errors.New("archive permission intent changed")
-		}
-		plan, e := reap.ReadFreeze(s.freezeJournal(key), b.Key, b.Path, b.Checkpoint, b.ArchiveFreezeDigest)
-		if e != nil {
-			return e
-		}
-		if e = reap.Freeze(b.Path, plan.Tree); e != nil {
-			return e
-		}
-		if e = archiveCheckout(b); e != nil {
-			return e
-		}
-		if b.ArchiveFrozenAt == "" {
-			b.ArchiveFrozenAt = time.Now().UTC().Format(time.RFC3339Nano)
-		}
-		copy := *b
-		out = &copy
-		return nil
-	})
-	return out, e
+	return s.ArchiveWithCheck(key, grace, nil)
+}
+
+// ArchiveWithCheck gates a new archive while holding its durable state lock.
+// Retried archives preserve the original intent without rerunning check.
+func (s Store) ArchiveWithCheck(key string, grace time.Duration, check func(*Bench) error) (*Bench, error) {
+	return (archivepolicy.Archiver{
+		Update: func(key string, action func(*Bench) error) error {
+			return s.transaction(func(db database) error {
+				b, e := get(db, key)
+				if e != nil {
+					return e
+				}
+				return action(b)
+			})
+		},
+		Inspector: s.archiveInspector(), Journal: s.freezeJournal,
+		SaveIntent: s.saveLifecycleIntent, Busy: ErrBusy,
+	}).Archive(key, grace, check)
 }
 func (s Store) makeReapPlan(b *Bench) (*ReapPlan, error) {
 	if e := archivePaths(s, b); e != nil {

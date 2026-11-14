@@ -10,6 +10,9 @@ import (
 )
 
 func ValidateArchive(b *model.Bench) error {
+	if e := validateMerge(b); e != nil {
+		return e
+	}
 	if e := Validate(b.ArchivedAt, b.ReapAfter); e != nil {
 		return e
 	}

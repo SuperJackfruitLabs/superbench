@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/autoarchive"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/bench"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/maintenance"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/protocol"
@@ -23,6 +24,7 @@ type Config struct {
 	Operators, Readers map[uint32]bool
 	MaxActive          int
 	RetentionInterval  time.Duration
+	ArchiveInterval    time.Duration
 }
 type Server struct {
 	config    Config
@@ -47,6 +49,12 @@ func Serve(ctx context.Context, c Config) error {
 	if c.RetentionInterval < time.Second || c.RetentionInterval > 24*time.Hour {
 		return errors.New("invalid retention interval")
 	}
+	if c.ArchiveInterval == 0 {
+		c.ArchiveInterval = time.Minute
+	}
+	if c.ArchiveInterval < time.Second || c.ArchiveInterval > 24*time.Hour {
+		return errors.New("invalid archive interval")
+	}
 	listener, lock, e := listen(c.Socket, c.Store.State)
 	if e != nil {
 		return e
@@ -69,6 +77,21 @@ func Serve(ctx context.Context, c Config) error {
 		defer close(maintenanceDone)
 		maintenance.Manager{Root: c.Store.State, Store: c.Store}.Run(lifetime, c.RetentionInterval, func(e error) { log.Printf("retention blocked: %v", e) })
 	}()
+	archiveDone := make(chan struct{})
+	go func() {
+		defer close(archiveDone)
+		manager := autoarchive.Manager{Store: c.Store}
+		manager.Run(lifetime, c.ArchiveInterval, func(r autoarchive.Report, err error) {
+			if err != nil {
+				log.Printf("automatic archive blocked: %v", err)
+			}
+			for _, result := range r.Results {
+				if result.Error != "" {
+					log.Printf("automatic archive %s blocked: %s", result.Key, result.Error)
+				}
+			}
+		})
+	}()
 	httpServer := &http.Server{Handler: s, ConnContext: connContext, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 << 10}
 	shutdownDone := make(chan error, 1)
 	go func() {
@@ -90,6 +113,7 @@ func Serve(ctx context.Context, c Config) error {
 	}
 	s.handlers.Wait()
 	<-maintenanceDone
+	<-archiveDone
 	if e == http.ErrServerClosed {
 		return shutdownErr
 	}

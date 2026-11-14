@@ -36,6 +36,9 @@ func (s Files) Pending(key string, o model.Options, recovering bool) (*Intent, e
 	if err = json.Unmarshal(raw, &c); err != nil {
 		return nil, fmt.Errorf("invalid creation journal: %w", err)
 	}
+	if c.Bench.CreatedFrom != "" && c.Bench.CreatedFrom != c.Source {
+		return nil, errors.New("creation provenance differs from the pinned source")
+	}
 	if c.Bench.Key != key || c.Bench.Repo != o.Repo || c.Bench.Branch != o.Branch || c.Base != o.Base || c.Recovering != recovering || c.Source == "" || c.Bench.Lease != nil || c.Bench.Path != filepath.Join(s.Data, "benches", key) || c.Bench.Mirror != repository.Path(s.Data, o.Repo) {
 		return nil, errors.New("creation journal conflicts with request; preserve files and reconcile manually")
 	}

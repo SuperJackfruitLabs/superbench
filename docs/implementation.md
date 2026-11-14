@@ -124,8 +124,7 @@ PRs describe their publication history.
 - Repository cache settings: typed sharing flags select fixed shared or
   checkout-local pnpm/npm/Bun/Playwright/Go paths across setup and supervised
   commands. Actual pnpm, daemon handoff, once invalidation, unprivileged service
-  and XFS private-cache cap checks passed; see [caches](caches.md). Archive
-  repository configuration remains pending.
+  and XFS private-cache cap checks passed; see [caches](caches.md).
 
 - Repository quota requests: creation pins a byte request from its source commit;
   managed hosts enforce it within the root ceiling without resizing existing
@@ -133,6 +132,12 @@ PRs describe their publication history.
   refuse old binaries after upgrade. Request drift blocks new work while repair,
   checkpoint and release remain available. See [quota requests](quotas.md) for
   compatibility and verification.
+
+- Repository archive policy: explicit `branch-merged` policy and recorded
+  unmerged-to-merged checkpoint evidence gate the same durable read-only archive
+  transition. A bounded daemon loop and local sweep command inspect candidates;
+  missing history, uncertain merge state and held/dirty work remain preserved.
+  Reviewed reap is still separate. See [automatic archive](automatic-archive.md).
 
 ## Remaining retention work
 
@@ -156,7 +161,7 @@ The original proposal remains the acceptance source; the checkpoints above do
 not replace its scope. Before calling Phase 1 complete, explicitly verify the
 standalone laptop preparation path (supervised hooks currently require Linux),
 multiple repositories within a bench, automatic completion/archive
-lifecycle and broader collection, remaining archive repository configuration, and the
+lifecycle and broader collection, and the
 AgentPod acquisition/prompt/checkpoint pilot on an opt-in board. The review of
 charter/treaty boundaries must precede suite consumers. Source-level progress or
 passing single-host drills alone is not evidence that those outcomes are done.

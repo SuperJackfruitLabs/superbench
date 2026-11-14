@@ -19,10 +19,15 @@ import (
 
 const MaxConfig = 64 << 10
 
+type ArchiveSettings struct {
+	When *string `toml:"when"`
+}
+
 type Config struct {
-	Quota  quotapolicy.Request  `toml:"quota"`
-	Caches cachepolicy.Settings `toml:"caches"`
-	Setup  struct {
+	Archive ArchiveSettings      `toml:"archive"`
+	Quota   quotapolicy.Request  `toml:"quota"`
+	Caches  cachepolicy.Settings `toml:"caches"`
+	Setup   struct {
 		Once string `toml:"once"`
 		Each string `toml:"each"`
 	} `toml:"setup"`
@@ -50,6 +55,13 @@ func (c *Config) CacheSettings() cachepolicy.Settings {
 		return cachepolicy.Settings{}
 	}
 	return c.Caches
+}
+
+func (c *Config) ArchiveWhen() string {
+	if c == nil || c.Archive.When == nil {
+		return "manual"
+	}
+	return *c.Archive.When
 }
 
 // Read never follows the configuration directory/file outside the checkout.
@@ -94,11 +106,15 @@ func Read(path string) (*Config, error) {
 	if e != nil {
 		return nil, e
 	}
+	return parseConfig(raw)
+}
+
+func parseConfig(raw []byte) (*Config, error) {
 	if len(raw) > MaxConfig || !utf8.Valid(raw) {
 		return nil, errors.New("setup config exceeds bounds or is not UTF-8")
 	}
 	var c Config
-	if e = toml.NewDecoder(bytes.NewReader(raw)).DisallowUnknownFields().Decode(&c); e != nil {
+	if e := toml.NewDecoder(bytes.NewReader(raw)).DisallowUnknownFields().Decode(&c); e != nil {
 		// Parser diagnostics can contain command text; keep it out of service errors.
 		return nil, errors.New("invalid setup TOML or unsupported configuration field")
 	}
@@ -107,8 +123,11 @@ func Read(path string) (*Config, error) {
 			return nil, errors.New("setup commands must be at most 16 KiB without NUL")
 		}
 	}
-	if _, e = c.Quota.Bytes(); e != nil {
+	if _, e := c.Quota.Bytes(); e != nil {
 		return nil, e
+	}
+	if when := c.ArchiveWhen(); when != "manual" && when != "branch-merged" {
+		return nil, errors.New("archive when must be manual or branch-merged")
 	}
 	sum := sha256.Sum256(raw)
 	c.Digest = hex.EncodeToString(sum[:])
