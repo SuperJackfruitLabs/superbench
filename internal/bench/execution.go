@@ -147,6 +147,9 @@ func (s Store) runStage(ctx context.Context, key, holder string, args []string, 
 			if e != nil {
 				return e
 			}
+			if e = setup.MatchQuota(configuration, original.RequestedQuotaBytes); e != nil {
+				return e
+			}
 			if plan != nil {
 				args, finish, e = plan(original, tx, configuration)
 				if e != nil {

@@ -73,6 +73,15 @@ func (s Store) createRegistered(ctx context.Context, key string, o Options, reco
 			return nil
 		}
 		if pending != nil {
+			if !pending.QuotaRequestPinned {
+				// Even without a recorded reply, an older helper may have allocated
+				// its default cap. Never reinterpret a legacy creation request.
+				pending.Bench.RequestedQuotaBytes = 0
+				pending.QuotaRequestPinned = true
+				if err = s.record(*pending); err != nil {
+					return err
+				}
+			}
 			if err = s.applyBenchQuota(pending); err != nil {
 				return err
 			}
@@ -105,11 +114,15 @@ func (s Store) createRegistered(ctx context.Context, key string, o Options, reco
 		if err != nil {
 			return err
 		}
-		b := Bench{Key: key, Repo: o.Repo, Branch: o.Branch, Path: filepath.Join(s.Data, "benches", key), Mirror: mirror}
+		requested, err := setup.QuotaAt(mirror, sha)
+		if err != nil {
+			return err
+		}
+		b := Bench{RequestedQuotaBytes: requested, Key: key, Repo: o.Repo, Branch: o.Branch, Path: filepath.Join(s.Data, "benches", key), Mirror: mirror}
 		if remoteErr == nil {
 			b.Checkpoint = sha
 		}
-		intent := creation{Bench: b, Source: sha, Base: o.Base, Recovering: recovering}
+		intent := creation{QuotaRequestPinned: true, Bench: b, Source: sha, Base: o.Base, Recovering: recovering}
 		if err = s.record(intent); err != nil {
 			return err
 		}
@@ -171,6 +184,9 @@ func (s Store) acquireLease(ctx context.Context, key, holder string, prepare boo
 			}
 			config, err = setup.Read(b.Path)
 			if err != nil {
+				return err
+			}
+			if err = setup.MatchQuota(config, b.RequestedQuotaBytes); err != nil {
 				return err
 			}
 			if config != nil && config.Hooks() {

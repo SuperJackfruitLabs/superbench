@@ -1,0 +1,154 @@
+Repository quota Linux verification, 2026-11-15
+Candidate: feat/repository-quota-settings, uncommitted working snapshot;
+state schema 11, root quota ledger format 2. Linux 7.0.0-22-generic,
+go1.26.4 linux/amd64. All commands below exited 0.
+
+Disposable local Git remotes, private mount namespaces, loop-backed XFS
+images, unique cgroup subtrees and temporary state only. Cleanup verified:
+no remaining test directories or quota cgroup roots.
+
+Snapshot archive SHA256 (compiled Go source, before commit):
+0a9296cb6de51baf69e892eca81400e2f2b5412deb16f0418e29fbef9ef171de
+Only Python drill fixture corrections followed the full Go check/build.
+
+Fixture provenance:
+CACHE_BENCH/CACHE_HELPER: 5c2b316cea04788704aa95173c1ecd12b74b5b02,
+published schema-10 CLI and legacy ledger helper (bin-caches).
+BYTE_BENCH/BYTE_HELPER: retained published pre-inode fixtures, schema 4,
+byte-only quotas; exact binary digests below identify these older artifacts.
+PREARCHIVE_BENCH/PREARCHIVE_HELPER: retained published pre-archive fixtures.
+SCHEMA8_BENCH: ec96e2998570288aa9653cfc58076b58c3d8e2eb.
+SCHEMA9_BENCH: 4d9257d783799aeffbcf286b5a8e4570d15ced62.
+
+Binary SHA256:
+NEW_BENCH de8429d8cca52de5267ecba53c60ffe298c197858a6681b791286b9bdcd1d728
+NEW_HELPER cc7ee0809dc99f25205eecb234e9ce44001c56b9f50ce8bd22b01625556e4790
+NEW_DAEMON 9371e46530c5761951faf8d3deaf613ec83165bc7736cfb9d79711f8d6fc69f9
+CACHE_BENCH 6d567ed2cc33cbc67b40115533b7b6d390eebd342b9ceac6079daedfbe068b4f
+CACHE_HELPER 2e49ad33fd4c4d6511007c472091023393e48148899a35662822da3ed46b97dd
+BYTE_BENCH 7a097203e48f9751ed32e6fe1bbe25275ed7fa410be6458dd27749ae0ccceeeb
+BYTE_HELPER bb7627e1ccc61115a96cceba745910dfd25f79cba6e4a664fa496f4defeb1fc0
+PREARCHIVE_BENCH 928ff81d65e7658efa20aa35bacad6e1e0439d53e923b286122853c47b7afb17
+PREARCHIVE_HELPER 16424ad113035059b2a474516d5ad016e2c0808d6ba2ef2ff67ac9a718cd42d9
+SCHEMA8_BENCH dacbbeffb3fb019b9a79b492b2369f50028c3147ebc70a11d6c0d889688b857d
+SCHEMA9_BENCH 97fd3f83142acd2eb36e95108461d59d0b34213e7dd48e6383bc832463c216f1
+
+Commands use placeholders for absolute binaries and current source paths;
+PATH included Go, Node v24.22.3 and the installed Bun runtime. Root mount wrappers were
+always invoked with unshare -m. Output below is complete for each final run;
+random disposable paths are normalized to <trial>.
+
+Full Linux checks and fresh builds
+sh scripts/check.sh
+go build -o NEW_BENCH ./cmd/bench
+go build -o NEW_HELPER ./cmd/bench-quota
+go build -o NEW_DAEMON ./cmd/benchd
+
+....
+----------------------------------------------------------------------
+Ran 4 tests in 0.003s
+
+OK
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/cmd/bench	1.432s
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/cmd/bench-quota	[no test files]
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/cmd/benchd	[no test files]
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/architecture	1.030s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/archivepolicy	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/bench	16.367s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/cachepolicy	(cached)
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/client	[no test files]
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/creation	[no test files]
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/execution	(cached)
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/history	[no test files]
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/integration	4.345s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/maintenance	(cached)
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model	[no test files]
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/output	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/protocol	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotapolicy	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/reap	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/repository	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/retention	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/service	2.027s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/setup	(cached)
+
+Repository quota XFS drill
+unshare -m bash scripts/test-repository-quota.sh NEW_BENCH NEW_HELPER scripts/test-repository-quota.py CACHE_BENCH CACHE_HELPER
+
+PASS: genuine legacy state/ledger upgrade preserves IDs, limits and filesystem identity; old CLI/helper refuse without changing allocation
+PASS: repository 4M request is physically enforced while peer and shared-store projects remain writable
+PASS: above-ceiling, fractional, zero and shared-resource requests refuse before assigning projects or materializing checkout data
+PASS: SIGKILL after privileged allocation retries the same ID, size and pinned commit after remote advancement; default or explicit requests cannot resize it
+PASS: changed repository quota blocks acquisition/run without resizing; a fresh repair lease can checkpoint/release
+PASS: reviewed reap retires the smaller allocation and its project ID permanently
+PASS: recovery of the saved branch under a new key gets its new bounded allocation
+PASS: changing the host ceiling is refused even when all active smaller allocations would fit it
+PASS: explicit inode migration preserves the smaller byte cap and project identity without reviving retired allocations
+DONE: repository quota integration passed
+
+Managed storage XFS regression
+unshare -m bash scripts/test-storage.sh NEW_BENCH NEW_HELPER scripts/test-storage.py
+
+PASS: managed host config verifies a separate data filesystem and fixed-policy shared caps
+PASS: managed frozen setup, build and warm/offline handoffs work inside project quotas
+PASS: warm creation selects frozen setup without hooks, installs under its quota and confirms the remote checkpoint before release
+PASS: private frozen pnpm setup uses a checkout-local store; that cache reaches its bench cap while shared storage remains writable
+PASS: noisy command output is bounded, marked truncated and still checkpointed safely
+<trial>/data/benches/first/node_modules/storage-fixture/payload.bin:
+ EXT: FILE-OFFSET      BLOCK-RANGE      TOTAL FLAGS
+   0: [0..8191]:       786624..794815    8192 0x2001
+<trial>/data/benches/second/node_modules/storage-fixture/payload.bin:
+ EXT: FILE-OFFSET      BLOCK-RANGE      TOTAL FLAGS
+   0: [0..8191]:       786624..794815    8192 0x2001
+PASS: package clone mutation leaves the other bench intact
+PASS: bench hard cap refuses writes while the shared store stays writable
+PASS: helper refuses escaping keys, writable/symlink policy and allocation-policy drift
+PASS: disabled project enforcement blocks new work until restored
+PASS: quota enforcement is required and total cap reservations reject overcommit
+PASS: interrupted privileged allocation resumes with the same project and reservation
+PASS: interrupted mirror publication is isolated; retry publishes a complete mirror
+PASS: incomplete privileged ledger fails closed without defaulting to fresh allocations
+PASS: filesystem UUID binding survives remount on a different loop device
+PASS: a different filesystem at the same path is refused
+DONE: managed storage integration passed
+
+Managed archive XFS regression
+unshare -m bash scripts/test-archive.sh NEW_BENCH NEW_HELPER scripts/test-archive.py PREARCHIVE_BENCH PREARCHIVE_HELPER
+
+PASS: same-filesystem nested bind mount is refused without deleting its contents
+PASS: explicit approval required; open unlinked data retains quota until close; retry retires project
+PASS: zero-block open inode independently prevents reservation release
+PASS: wrong project IDs and symlink targets refuse privileged empty-directory retirement
+PASS: previous binaries refuse archive schema and retired-project ledger
+PASS: SIGKILL after quota retirement retains approval; retry finalizes only once; checkpoint recovers
+DONE: managed archive/reap integration passed
+
+Inode XFS regression
+unshare -m bash scripts/test-inodes.sh NEW_BENCH NEW_HELPER scripts/test-inodes.py BYTE_BENCH BYTE_HELPER
+
+PASS: explicit resumable legacy migration pins original IDs and inode caps; old binaries and sudo migration refuse
+PASS: zero-byte bench files hit the inode hard cap; lease/run restore and verify their pinned limit
+PASS: both shared stores and mirrors enforce independent inode hard caps
+PASS: total inode reservation overcommit refuses before assigning a new project
+PASS: reviewed reap retires both reservations; recovery receives a new bounded project
+DONE: inode quota integration passed
+
+Schema-8 approved deletion and archive grace regression
+python3 -u scripts/test-archive-grace.py --bench NEW_BENCH --old-bench SCHEMA8_BENCH
+
+PASS: schema-8 SIGKILL leaves a genuine superbench.reap.v1 intent; schema-11 migration resumes exact approval and preserves replay/downgrade guards
+PASS: default seven-day grace, pre-effect rejection, immutable retry deadline and forged-plan rejection preserve checkout/artifacts
+PASS: explicit zero grace still requires an exact reviewed v3 manifest; schema 11 is persisted
+
+Schema-9 read-only archive and permission recovery regression
+python3 -u scripts/test-archive-permissions.py --bench NEW_BENCH --old-bench SCHEMA9_BENCH
+
+PASS: schema-9 archives require explicit read-only conversion, preserve the deadline and reject unstarted v2 approvals
+PASS: SIGKILL after a real permission change retains a pending archive, blocks writers/plans and resumes only the original tree
+PASS: SIGKILL after directory thaw retains exact deletion approval; new files are preserved and the same reviewed intent resumes
+
+Final drill source SHA256:
+d0af91618fb0aff636abbe0dd8a9664ff64c60238c2459dd5a770a954dcaeec9  scripts/test-repository-quota.py
+bf692ed9d49256c37e61b8415733fc196cbc8c5b83be3d662471d9c16f5346fb  scripts/test-repository-quota.sh
+d40ce58fde38ccc23576d8dd3c07daf5b8435a47ebd2fb0871a8ad550023e1ff  scripts/test-inodes.py

@@ -24,7 +24,7 @@ type Store struct {
 	collectAfterDelete func() error
 	executor           executionBackend
 	spaceProbe         func(string) (Space, error)
-	quotaApply         func(HostConfig, string, string) (hoststorage.Assignment, error)
+	quotaApply         func(HostConfig, string, string, uint64) (hoststorage.Assignment, error)
 }
 type database map[string]*Bench
 

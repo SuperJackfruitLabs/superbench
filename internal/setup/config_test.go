@@ -54,7 +54,7 @@ func TestCommandsRespectOnceEachAndOffline(t *testing.T) {
 func TestRejectInvalidConfigurationWithoutLeakingCommands(t *testing.T) {
 	for _, raw := range []string{
 		"[setup]\nonce='secret'\nonce='other'",
-		"[setup]\nonce=3", "[setup]\nonse='secret'", "[quota]\nsize='8G'",
+		"[setup]\nonce=3", "[setup]\nonse='secret'", "[quota]\nsize='0G'",
 		"[setup]\nonce=\"secret\\u0000\"", "[setup]\nonce='" + strings.Repeat("x", 16385) + "'",
 		strings.Repeat("# comment\n", MaxConfig), string([]byte{0xff}),
 	} {
