@@ -72,8 +72,9 @@ log output, schema upgrades, local administration and the isolation boundary.
 
 ## Archive and reap
 
-A released, clean, remote-confirmed bench can be archived, then deleted only after
-reviewing and explicitly approving its complete file manifest. See
+A released, clean, remote-confirmed bench can be archived. Deletion requires its
+persisted grace period to have elapsed and explicit approval of the complete file
+manifest. The default grace period is seven days. See
 [archive and reap](docs/archive.md) for retained artifacts, retry rules and managed
 quota retirement. Archive/reap are local administrative commands in this checkpoint.
 

@@ -44,6 +44,7 @@ func run(args []string) error {
 	mirrorTimeout := f.Duration("mirror-timeout", 2*time.Minute, "deadline for mirror clone/validation/fetch; socket uses daemon setting")
 	maxCollectBytes := f.Uint64("max-collect-bytes", 64<<20, "maximum log bytes per automatic collection cycle")
 	limit := f.Int("limit", 100, "history/collection result limit")
+	archiveGrace := f.Duration("archive-grace", 168*time.Hour, "local archive retention before reviewed reap; zero explicitly waives the grace")
 	logAge := f.Duration("older-than", 168*time.Hour, "minimum time since release and log seal")
 	metadataAge := f.Duration("metadata-older-than", 720*time.Hour, "minimum time since prior log collection")
 	planFile := f.String("plan", "", "private reviewed administrative plan JSON")
@@ -162,7 +163,7 @@ func run(args []string) error {
 	case "collections":
 		out, err = s.Collections()
 	case "archive":
-		out, err = s.Archive(key)
+		out, err = s.ArchiveWithGrace(key, *archiveGrace)
 	case "plan-reap":
 		out, err = s.PlanReap(key)
 	case "reap":

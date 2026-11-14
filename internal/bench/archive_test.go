@@ -31,7 +31,7 @@ func archivedFixture(t *testing.T) (Store, *Bench) {
 		t.Fatal(e)
 	}
 	write(t, filepath.Join(b.Path, "build", "non-recoverable"), "retained artifact")
-	b, e = s.Archive("task")
+	b, e = s.ArchiveWithGrace("task", 0)
 	if e != nil {
 		t.Fatal(e)
 	}

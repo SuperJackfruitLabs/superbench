@@ -22,6 +22,7 @@ type Bench struct {
 	Mirror        string
 	Checkpoint    string
 	ArchivedAt    string `json:",omitempty"`
+	ReapAfter     string `json:",omitempty"`
 	ReapingDigest string `json:",omitempty"`
 	ReapedAt      string `json:",omitempty"`
 	ProjectID     uint32

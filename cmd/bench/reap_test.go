@@ -47,7 +47,7 @@ func TestCLIReapRequiresUnambiguousConcreteApproval(t *testing.T) {
 	if e = s.Release("task", lease.Lease.Token); e != nil {
 		t.Fatal(e)
 	}
-	if _, e = s.Archive("task"); e != nil {
+	if _, e = s.ArchiveWithGrace("task", 0); e != nil {
 		t.Fatal(e)
 	}
 	p, e := s.PlanReap("task")
