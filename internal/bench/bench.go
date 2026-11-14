@@ -42,7 +42,13 @@ func (s Store) Create(key string, o Options, recovering bool) (*Bench, error) {
 		if err != nil {
 			return err
 		}
+		if e := s.admit(); e != nil {
+			return e
+		}
 		if pending != nil {
+			if err = s.applyBenchQuota(pending); err != nil {
+				return err
+			}
 			result, err = finishCreate(pending)
 			if err != nil {
 				return err
@@ -55,21 +61,11 @@ func (s Store) Create(key string, o Options, recovering bool) (*Bench, error) {
 		} else if !os.IsNotExist(err) {
 			return err
 		}
-		if err := os.MkdirAll(filepath.Join(s.Data, "mirrors"), 0700); err != nil {
+		mirror, err := s.prepareMirror(o.Repo)
+		if err != nil {
 			return err
 		}
-		mirror := s.mirrorPath(o.Repo)
-		if _, err := os.Stat(mirror); os.IsNotExist(err) {
-			if _, err = git(s.State, "clone", "--bare", "--", o.Repo, mirror); err != nil {
-				return err
-			}
-		} else if err != nil {
-			return err
-		}
-		// Never fetch directly into branches checked out by another bench.
-		if _, err := git(mirror, "fetch", "--prune", "origin", "+refs/heads/*:refs/remotes/origin/*"); err != nil {
-			return err
-		}
+
 		branchRef := "refs/remotes/origin/" + o.Branch
 		_, remoteErr := git(mirror, "rev-parse", "--verify", branchRef)
 		if recovering && remoteErr != nil {
@@ -89,6 +85,9 @@ func (s Store) Create(key string, o Options, recovering bool) (*Bench, error) {
 		}
 		intent := creation{Bench: b, Source: sha, Base: o.Base, Recovering: recovering}
 		if err = s.record(intent); err != nil {
+			return err
+		}
+		if err = s.applyBenchQuota(&intent); err != nil {
 			return err
 		}
 		result, err = finishCreate(&intent)
@@ -117,6 +116,9 @@ func owned(b *Bench, token string) error {
 func (s Store) Lease(key, holder string) (*Bench, error) {
 	var result *Bench
 	err := s.transaction(func(db database) error {
+		if e := s.admit(); e != nil {
+			return e
+		}
 		b, err := get(db, key)
 		if err != nil {
 			return err

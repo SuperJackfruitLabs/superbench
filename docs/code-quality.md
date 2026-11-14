@@ -19,3 +19,9 @@ Version 1 creates the benches table and atomically imports the old JSON snapshot
 The JSON file is retained unchanged; later commands use SQLite exclusively.
 Unknown schema versions fail closed. The driver and its transitives are recorded
 in go.mod/go.sum; there is no floating dependency during CI.
+
+
+The storage layer has no external dependencies. Engine imports may point to the
+hoststorage policy layer; only the quota CLI invokes privileged policy application.
+Both CLI binaries build in the check script. Schema 3 protects storage metadata
+and blocks upgrades underneath active schema-1/2 supervisors.

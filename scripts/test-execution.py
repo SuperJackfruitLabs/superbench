@@ -68,7 +68,7 @@ status=cli('status','second')[0]
 assert status['Lease']['Execution']['Phase']=='running'
 if old_binary:
     old=run([old_binary,'status','--state',state,'--data',data,'second'])
-    assert old.returncode!=0 and 'unsupported state schema 2' in old.stderr,(old.stdout,old.stderr)
+    assert old.returncode!=0 and 'unsupported state schema' in old.stderr,(old.stdout,old.stderr)
     print('PASS: previous SQLite binary refuses execution-schema state',flush=True)
 execution=status['Lease']['Execution']
 assert (cgroups/execution['ID']/'cgroup.procs').exists()

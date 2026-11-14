@@ -1,0 +1,7 @@
+PASS: parent exits normally; detached setsid descendant fenced before checkpoint/release
+PASS: previous SQLite binary refuses execution-schema state
+PASS: foreign-host state is refused, rather than treated as a reboot
+PASS: supervisor SIGKILL retains lease; wrong-token stop refused; admin stop fences surviving descendants and permits recovery
+PASS: cancellation fences the tree and retains a recoverable stopped lease
+PASS: full state does not prevent known-scope cancellation; lease remains held for reconciliation
+DONE: Linux cgroup execution integration passed

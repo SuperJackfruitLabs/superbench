@@ -149,3 +149,31 @@ children, supervisor SIGKILL, wrong-token/admin stop, cancellation, full-state
 cancellation, previous-binary refusal and foreign-host refusal. Test data and
 scope directories were cleaned up on exit. No service or production work was
 started. UID/mount isolation and host storage budgets remain pending.
+
+
+## Managed host storage checkpoint
+
+Formatting, vet, architecture checks, both CLI builds and local race tests pass.
+The root integration in [storage-output.txt](storage-output.txt) used two
+preallocated disposable 512 MiB XFS images, fresh private state/policy/ledger
+and temporary cgroups. It verified actual quota caps and read-back, frozen
+pnpm setup/build/offline handoffs, identical shared payload extents, independent
+clone mutation, bounded log output, reserved-capacity refusal, unsafe policy/key
+refusal, disabled-enforcement admission refusal, assignment SIGKILL/replay and
+clone SIGKILL/republication. An incomplete private ledger was rejected. Remounting
+on a different loop device retained the filesystem UUID and its allocations; a
+different filesystem at the same mount path was refused. Test resources were
+removed after completion; no installed host policy or production data was changed.
+
+The cgroup regression rerun with schema 3 and bounded captures is recorded in
+[storage-execution-regression.txt](storage-execution-regression.txt), covering
+supervisor failure, detached children and full-state cancellation. Local tests
+also check retained log reservations, output truncation and active-upgrade refusal.
+An initial fixture's absolute external tarball resolution failed frozen setup;
+the fixture was corrected to tracked vendor-relative dependencies. The installer
+did not rewrite that lockfile or silently release its failed lease.
+
+Still pending: delegated service/sudo provisioning, benchd, archive/reap and
+reservation release, automatic log/cache collection, repository TOML setup hooks,
+inode quotas, suite contracts/adapters and all later phases. Configured cache
+paths alone are not evidence of actual Bun/browser/toolchain installations.

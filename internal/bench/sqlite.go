@@ -12,7 +12,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const schemaVersion = 2
+const schemaVersion = 3
 
 type reader interface {
 	Query(string, ...any) (*sql.Rows, error)
@@ -97,8 +97,17 @@ func (s Store) migrate(tx *sql.Tx) error {
 	if version == schemaVersion {
 		return nil
 	}
-	if version == 1 {
-		_, err := tx.Exec("PRAGMA user_version=2")
+	if version == 1 || version == 2 {
+		records, err := loadRecords(tx)
+		if err != nil {
+			return err
+		}
+		for _, b := range records {
+			if b.Lease != nil && b.Lease.Execution != nil && b.Lease.Execution.Phase != "stopped" {
+				return errors.New("stop supervised executions with the installed binary before upgrading state")
+			}
+		}
+		_, err = tx.Exec("PRAGMA user_version=3")
 		return err
 	}
 	if version != 0 {
@@ -120,7 +129,7 @@ func (s Store) migrate(tx *sql.Tx) error {
 			return e
 		}
 	}
-	_, err = tx.Exec("PRAGMA user_version=2")
+	_, err = tx.Exec("PRAGMA user_version=3")
 	return err
 }
 func loadRecords(r reader) (database, error) {

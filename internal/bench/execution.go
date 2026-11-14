@@ -13,17 +13,20 @@ import (
 )
 
 type Execution struct {
-	ID     string
-	Root   string
-	BootID string
-	HostID string
-	Phase  string // starting, running, stopped
-	PID    int
-	Log    string
+	ID            string
+	Root          string
+	BootID        string
+	HostID        string
+	Phase         string // starting, running, stopped
+	PID           int
+	Log           string
+	LogLimitBytes uint64
 }
 type RunResult struct {
-	Bench    *Bench
-	ExitCode int
+	Execution    *Execution
+	Bench        *Bench
+	ExitCode     int
+	LogTruncated bool
 }
 type executionIdentity struct{ BootID, HostID string }
 type executionBackend interface {
@@ -96,6 +99,9 @@ func (s Store) Run(ctx context.Context, key, holder string, args []string, check
 	execution := &Execution{ID: id, Root: root, BootID: identity.BootID, HostID: identity.HostID, Phase: "starting", Log: filepath.Join(s.State, "run-"+id+".log")}
 	var b *Bench
 	err = s.transaction(func(db database) error {
+		if e := s.admit(); e != nil {
+			return e
+		}
 		original, e := get(db, key)
 		if e != nil {
 			return e
@@ -103,6 +109,11 @@ func (s Store) Run(ctx context.Context, key, holder string, args []string, check
 		if original.Lease != nil {
 			return errors.New("bench already leased")
 		}
+		limit, e := s.reserveLog(db)
+		if e != nil {
+			return e
+		}
+		execution.LogLimitBytes = limit
 		lease, e := newLease(holder)
 		if e != nil {
 			return e
@@ -117,20 +128,22 @@ func (s Store) Run(ctx context.Context, key, holder string, args []string, check
 		_ = s.backend().Fence(execution)
 		return nil, err
 	}
-	result := &RunResult{Bench: b, ExitCode: -1}
-	log, err := os.OpenFile(execution.Log, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	result := &RunResult{Bench: b, ExitCode: -1, Execution: execution}
+	capture, err := openLog(execution.Log, execution.LogLimitBytes)
 	if err != nil {
 		return result, err
 	}
-	defer log.Close()
+	defer capture.close()
+
 	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Dir = b.Path
-	cmd.Stdout = log
-	cmd.Stderr = log
-	cmd.Env = commandEnvironment(os.Environ())
+	cmd.Stdout = capture.writer
+	cmd.Stderr = capture.writer
+	cmd.Env = s.cacheEnvironment(os.Environ())
 	// Persist intent before launch; stop and launch share this gate so a delayed
 	// supervisor cannot create a new writer after another caller fenced the lease.
 	err = s.startExecution(ctx, key, b, cmd, execution)
+	_ = capture.writer.Close()
 	if err != nil {
 		if cmd.Process != nil {
 			if fenceErr := s.backend().Fence(execution); fenceErr != nil {
@@ -162,6 +175,12 @@ func (s Store) Run(ctx context.Context, key, holder string, args []string, check
 		return result, fmt.Errorf("unable to prove execution stopped; lease retained: %w", err)
 	}
 	result.Bench = stopped
+	result.Execution = stopped.Lease.Execution
+	logErr := capture.finish()
+	result.LogTruncated = capture.truncated
+	if logErr != nil {
+		return result, fmt.Errorf("command log failed; stopped lease retained: %w", logErr)
+	}
 	if waitErr != nil {
 		return result, fmt.Errorf("command failed; stopped lease retained: %w", waitErr)
 	}

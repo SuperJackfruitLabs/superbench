@@ -4,6 +4,7 @@ package bench
 import (
 	"encoding/json"
 	"errors"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,12 +23,16 @@ type Bench struct {
 	Path       string
 	Mirror     string
 	Checkpoint string
+	ProjectID  uint32
+	QuotaBytes uint64
 	Lease      *Lease `json:",omitempty"`
 }
 type Store struct {
 	State, Data string
 	CgroupRoot  string
 	executor    executionBackend
+	spaceProbe  func(string) (Space, error)
+	quotaApply  func(HostConfig, string, string) (hoststorage.Assignment, error)
 }
 type database map[string]*Bench
 

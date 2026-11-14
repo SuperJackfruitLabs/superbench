@@ -46,7 +46,17 @@ func (s Store) record(c creation) error {
 }
 func finishCreate(c *creation) (*Bench, error) {
 	b := c.Bench
-	if _, err := os.Lstat(b.Path); err == nil {
+	if stat, err := os.Lstat(b.Path); err == nil {
+		if stat.Mode()&os.ModeSymlink != 0 {
+			return nil, errors.New("worktree target is a symlink")
+		}
+		entries, e := os.ReadDir(b.Path)
+		if e != nil {
+			return nil, e
+		}
+		if len(entries) == 0 && b.ProjectID != 0 {
+			return materializeWorktree(c)
+		}
 		// Only adopt the exact journaled checkout. No reset, checkout or cleanup.
 		top, e := git(b.Path, "rev-parse", "--show-toplevel")
 		if e != nil {
@@ -79,6 +89,10 @@ func finishCreate(c *creation) (*Bench, error) {
 	} else if !os.IsNotExist(err) {
 		return nil, err
 	}
+	return materializeWorktree(c)
+}
+func materializeWorktree(c *creation) (*Bench, error) {
+	b := c.Bench
 	if err := os.MkdirAll(filepath.Dir(b.Path), 0700); err != nil {
 		return nil, err
 	}
