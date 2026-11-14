@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add Linux cgroup-backed run/stop commands, retained leases on supervisor failure,
+  local administrative fencing and schema-2 protection for execution metadata.
+
 - Replace provisional JSON state with versioned SQLite, one-time legacy import,
   rollback-safe lease updates and read-only status.
 

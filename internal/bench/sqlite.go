@@ -12,7 +12,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const schemaVersion = 1
+const schemaVersion = 2
 
 type reader interface {
 	Query(string, ...any) (*sql.Rows, error)
@@ -97,6 +97,10 @@ func (s Store) migrate(tx *sql.Tx) error {
 	if version == schemaVersion {
 		return nil
 	}
+	if version == 1 {
+		_, err := tx.Exec("PRAGMA user_version=2")
+		return err
+	}
 	if version != 0 {
 		return fmt.Errorf("unsupported state schema %d", version)
 	}
@@ -116,7 +120,7 @@ func (s Store) migrate(tx *sql.Tx) error {
 			return e
 		}
 	}
-	_, err = tx.Exec("PRAGMA user_version=1")
+	_, err = tx.Exec("PRAGMA user_version=2")
 	return err
 }
 func loadRecords(r reader) (database, error) {
@@ -145,3 +149,5 @@ func loadRecords(r reader) (database, error) {
 	}
 	return records, nil
 }
+
+func (s Store) Migrate() error { return s.transaction(func(database) error { return nil }) }

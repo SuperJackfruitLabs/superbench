@@ -10,8 +10,8 @@ import (
 	"testing"
 )
 
-// Standard library is the only runtime dependency of the engine. The command
-// may import the engine; the engine cannot import the command or other modules.
+// The driver is isolated in the SQL adapter; other engine files use the standard
+// library. The command may import the engine; reverse imports are prohibited.
 func TestArchitecture(t *testing.T) {
 	root := filepath.Join("..", "..")
 	packageLines := map[string]int{}

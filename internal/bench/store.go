@@ -11,8 +11,9 @@ import (
 )
 
 type Lease struct {
-	Token  string
-	Holder string
+	Token     string
+	Holder    string
+	Execution *Execution `json:",omitempty"`
 }
 type Bench struct {
 	Key        string
@@ -23,7 +24,11 @@ type Bench struct {
 	Checkpoint string
 	Lease      *Lease `json:",omitempty"`
 }
-type Store struct{ State, Data string }
+type Store struct {
+	State, Data string
+	CgroupRoot  string
+	executor    executionBackend
+}
 type database map[string]*Bench
 
 func (s Store) validate() error {
