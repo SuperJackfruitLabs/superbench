@@ -1,0 +1,15 @@
+{
+  "repository": "https://forge.superjackfruit.com/SuperJackfruitLabs/treaty",
+  "revision": "04813138dd1dc32aef2e528fc08dd7e76cca92f5",
+  "status": "proposed workspace request contract; no lifecycle deployment implied",
+  "files": {
+    "schemas/superbench/operation.v2.json": {
+      "local": "operation.v2.json",
+      "sha256": "201abdbddcefcb8629246f38214a61ed3e3dfb59e3d851a9dfebd2e0096940a6"
+    },
+    "fixtures/superbench-api/workspace-operations.json": {
+      "local": "workspace-operations.json",
+      "sha256": "a591ed9ee5f621824cdc33129fb4542d0e2af44ea43ee74bf8fda767df0ad120"
+    }
+  }
+}
