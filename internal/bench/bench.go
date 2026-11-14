@@ -4,7 +4,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/execution"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/history"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/setup"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -115,9 +117,10 @@ func owned(b *Bench, token string) error {
 	}
 	return nil
 }
-func (s Store) Lease(key, holder string) (*Bench, error) {
+func (s Store) acquireLease(key, holder string, prepare bool) (*Bench, *setup.Config, error) {
+	var config *setup.Config
 	var result *Bench
-	err := s.transaction(func(db database) error {
+	err := s.transactionSQL(func(db database, tx *sql.Tx) error {
 		if e := s.admit(); e != nil {
 			return e
 		}
@@ -138,12 +141,32 @@ func (s Store) Lease(key, holder string) (*Bench, error) {
 		if err != nil {
 			return err
 		}
+		if prepare {
+			config, err = setup.Read(b.Path)
+			if err != nil {
+				return err
+			}
+			if config != nil && config.Hooks() {
+				if s.executor == nil && !execution.Supported {
+					return errors.New("configured preparation requires Linux cgroup fencing on this host")
+				}
+				lease.Continuation, err = nonce()
+				if err != nil {
+					return err
+				}
+			} else {
+				config = nil
+				if err = setup.Invalidate(tx, key); err != nil {
+					return err
+				}
+			}
+		}
 		b.Lease = lease
 
 		result = b
 		return nil
 	})
-	return result, err
+	return result, config, err
 }
 func (s Store) Checkpoint(key, token string) (*Bench, error) {
 	var result *Bench
@@ -180,6 +203,9 @@ func (s Store) Checkpoint(key, token string) (*Bench, error) {
 	return result, err
 }
 func (s Store) Release(key, token string) error {
+	return s.release(key, token, false)
+}
+func (s Store) release(key, token string, automatic bool) error {
 	return s.transactionSQL(func(db database, tx *sql.Tx) error {
 		b, err := get(db, key)
 		if err != nil {
@@ -187,6 +213,9 @@ func (s Store) Release(key, token string) error {
 		}
 		if err = owned(b, token); err != nil {
 			return err
+		}
+		if automatic && b.Lease.StopRequested {
+			return errors.New("operator stop retained the lease; reconcile explicitly")
 		}
 		if err = s.ensureStopped(b); err != nil {
 			return err
@@ -206,6 +235,14 @@ func (s Store) Release(key, token string) error {
 		}
 		if b.Lease.Execution != nil {
 			if err = history.Released(tx, b.Lease.Execution.ID, b.Checkpoint); err != nil {
+				return err
+			}
+		}
+		for _, id := range b.Lease.RetainedRuns {
+			if _, err = history.Get(tx, id); err != nil {
+				return err
+			}
+			if err = history.Released(tx, id, b.Checkpoint); err != nil {
 				return err
 			}
 		}
@@ -242,5 +279,6 @@ func publicLease(l *Lease) *Lease {
 	}
 	copy := *l
 	copy.Token = ""
+	copy.Continuation = ""
 	return &copy
 }

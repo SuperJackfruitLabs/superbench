@@ -7,6 +7,8 @@ import (
 	"os/exec"
 )
 
+const Supported = false
+
 type Host struct{}
 
 var errNoFencing = errors.New("fenced execution requires Linux cgroup v2; use cooperative lease/checkpoint commands on this host")

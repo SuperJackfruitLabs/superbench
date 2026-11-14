@@ -222,7 +222,7 @@ func (s *Server) dispatch(r protocol.Request) (any, error) {
 		b, e := store.Create(r.Key, bench.Options{Repo: r.Repository, Branch: r.Branch, Base: r.Base}, r.Operation == "recover")
 		return map[string]any{"bench": benchView(b, false)}, e
 	case "lease":
-		b, e := store.Lease(r.Key, r.Holder)
+		b, e := store.LeaseContext(s.ctx, r.Key, r.Holder)
 		return map[string]any{"bench": benchView(b, true)}, e
 	case "checkpoint":
 		b, e := store.Checkpoint(r.Key, r.LeaseToken)

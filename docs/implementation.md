@@ -22,7 +22,7 @@ no destructive cleanup is authorized by this implementation plan.
 4. **Host storage management (implemented, validation below).** Fixed-policy quota
    helper, reservation ledger, free-space admission, shared caches, frozen pnpm/npm
    setup, atomic mirror publication and bounded/reserved logs. A staged Linux service installer is now verified separately. Byte and inode limits are enforced and verified.
-   Explicit TOML setup hooks are implemented; automatic acquisition hooks and
+   Explicit and automatic acquisition setup hooks are implemented; creation warm-up and
    broader cache/journal collection remain pending.
 5. **benchd and local CLI (API and reviewed archive/reap implemented).** Kernel peer uid
    authorization, bounded durable request receipts, strict pinned treaty vectors,
@@ -45,7 +45,7 @@ A core checkpoint does not constitute completion of a phase or the product.
 | Phase | Required outcome | Current evidence |
 |---|---|---|
 | 0 | Host disk alert, reviewed cleanup dry-run, code-stage branch/checkpoint rules | Not implemented by this repository; inspect estate and board settings before changes |
-| 1 | Standalone CLI and host service; durable state/leases; checkpoints/recovery; quotas, shared mirrors/stores; verified archive/reap | CLI, journals, SQLite, fenced Linux execution and host storage tested; local service API added; installer and reviewed archive/reap verified; reviewed log/history collection and approved automatic log retention implemented; explicit TOML setup hooks implemented; cache/journal collection, automatic acquisition hooks and integration pending |
+| 1 | Standalone CLI and host service; durable state/leases; checkpoints/recovery; quotas, shared mirrors/stores; verified archive/reap | CLI, journals, SQLite, fenced Linux execution and host storage tested; local service API added; installer and reviewed archive/reap verified; reviewed log/history collection and approved automatic log retention implemented; explicit/automatic acquisition setup hooks implemented; creation warm-up, cache/journal collection, configuration and integration pending |
 | 2 | Suite adapters, card panel, locality scoring, witness events; read-only web, file/diff/log/timeline views, terminal attach and MCP | Pending; charter/treaty contracts precede consumers; visual mockups before UI |
 | 3 | Remote editor launch/browser IDE; second-host recovery drill; per-bench isolation; Salaam layout and execution-host integration | Pending |
 
@@ -87,7 +87,13 @@ keep that approval distinct from permission to implement the product.
 - Explicit repository setup: bounded `.bench/config.toml`, durable once receipts,
   per-attempt each hooks and pre-effect invalidation when configuration changes.
   Required local/Linux checks, actual daemon/cgroup setup and execution failure
-  drills passed. Automatic acquisition hooks remain pending; see [setup](setup.md).
+  drills passed. Automatic acquisition hooks remained pending at that checkpoint;
+  see [setup](setup.md) for the subsequent implementation.
+
+- Automatic acquisition preparation: setup-to-command/cooperative handoff holds
+  one lease, protects all stage logs and revokes continuation after a successful
+  stop. Local/Linux required checks and actual daemon/cgroup failure drills
+  passed; creation warm-up and remaining Phase 1 scope stay pending.
 
 
 ## Remaining retention work

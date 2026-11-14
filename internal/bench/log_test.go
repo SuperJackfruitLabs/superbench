@@ -1,44 +1,13 @@
 package bench
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
-func TestBoundedLogDrainsOutputAndMarksTruncation(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "run.log")
-	capture, e := openLog(path, 1024)
-	if e != nil {
-		t.Fatal(e)
-	}
-	defer capture.close()
-	cmd := exec.Command("sh", "-c", "head -c 131072 /dev/zero")
-	cmd.Stdout = capture.writer
-	cmd.Stderr = capture.writer
-	if e = cmd.Start(); e != nil {
-		t.Fatal(e)
-	}
-	capture.writer.Close()
-	if e = cmd.Wait(); e != nil {
-		t.Fatal(e)
-	}
-	if e = capture.finish(); e != nil {
-		t.Fatal(e)
-	}
-	raw, e := os.ReadFile(path)
-	if e != nil {
-		t.Fatal(e)
-	}
-	if len(raw) != 1024 || !bytes.HasSuffix(raw, []byte(logMarker)) || !capture.truncated {
-		t.Fatal("output not bounded/marked", len(raw))
-	}
-}
 func TestRunReportsTruncationWithoutLosingCheckpoint(t *testing.T) {
 	s, r := fixture(t)
 	if _, e := s.Create("task", Options{Repo: r}, false); e != nil {

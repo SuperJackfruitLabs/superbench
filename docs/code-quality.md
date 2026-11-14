@@ -5,7 +5,8 @@ go vet, the full race suite and all three binary builds. Architecture tests cap
 Go files at 1,000 lines and packages at 4,000 lines, including tests. They enforce
 runtime import edges and prohibit reverse engine-to-CLI/service dependencies.
 
-The engine owns lease/lifecycle transactions. `internal/execution` implements the
+The engine owns lease/lifecycle transactions. `internal/output` owns bounded
+capture and aggregate log admission; the engine supplies current reservations. `internal/execution` implements the
 host process fence without importing the engine. `internal/setup` reads bounded
 repository configuration and stores setup receipts through database/sql; the
 engine alone decides when successful preparation is eligible to commit.
@@ -20,7 +21,7 @@ External runtime imports are pinned in go.mod/go.sum and restricted by adapter:
 - github.com/pelletier/go-toml/v2 v2.4.3: setup configuration decoder only.
 
 Other runtime code uses the standard library. No dependency version floats in
-CI. Schema 7 protects setup receipts; older supported state upgrades retain
+CI. Schema 8 protects setup receipts and preparation handoffs; older supported state upgrades retain
 history and pinned quota metadata. Unknown versions fail closed. Active older
 supervisors must be stopped with their installed binary before migration.
 

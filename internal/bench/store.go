@@ -13,9 +13,12 @@ import (
 )
 
 type Lease struct {
-	Token     string
-	Holder    string
-	Execution *Execution `json:",omitempty"`
+	Token         string
+	Holder        string
+	Execution     *Execution `json:",omitempty"`
+	Continuation  string     `json:",omitempty"`
+	RetainedRuns  []string   `json:",omitempty"`
+	StopRequested bool       `json:",omitempty"`
 }
 type Bench struct {
 	Key           string
