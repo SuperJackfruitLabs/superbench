@@ -7,10 +7,12 @@ import (
 	"flag"
 	"fmt"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/bench"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/maintenance"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/protocol"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -27,7 +29,7 @@ func main() {
 }
 func run(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: bench <inspect-log|adopt-log|history|reconcile-log|plan-collect|collect|resume-collect|cancel-collect|collections|archive|plan-reap|reap|create|recover|lease|checkpoint|release|status|run|stop|migrate|configure-host|host-status|setup> [flags] [key]; flags precede key")
+		return fmt.Errorf("usage: bench <retention-preview|retention-enable|retention-disable|retention-status|retention-run|retention-ack-pending|inspect-log|adopt-log|history|reconcile-log|plan-collect|collect|resume-collect|cancel-collect|collections|archive|plan-reap|reap|create|recover|lease|checkpoint|release|status|run|stop|migrate|configure-host|host-status|setup> [flags] [key]; flags precede key")
 	}
 	config, err := os.UserConfigDir()
 	if err != nil {
@@ -38,6 +40,8 @@ func run(args []string) error {
 		return err
 	}
 	f := flag.NewFlagSet(args[0], flag.ContinueOnError)
+	enableAutomatic := f.Bool("enable-automatic", false, "approve future automatic collections under the reviewed policy")
+	maxCollectBytes := f.Uint64("max-collect-bytes", 64<<20, "maximum log bytes per automatic collection cycle")
 	limit := f.Int("limit", 100, "history/collection result limit")
 	logAge := f.Duration("older-than", 168*time.Hour, "minimum time since release and log seal")
 	metadataAge := f.Duration("metadata-older-than", 720*time.Hour, "minimum time since prior log collection")
@@ -71,11 +75,12 @@ func run(args []string) error {
 		return fmt.Errorf("expected one key; flags must precede it")
 	}
 	key := f.Arg(0)
-	if key == "" && args[0] != "status" && args[0] != "migrate" && args[0] != "configure-host" && args[0] != "host-status" && args[0] != "history" && args[0] != "plan-collect" && args[0] != "collect" && args[0] != "collections" && args[0] != "adopt-log" {
+	globalRetention := strings.HasPrefix(args[0], "retention-")
+	if key == "" && !globalRetention && args[0] != "status" && args[0] != "migrate" && args[0] != "configure-host" && args[0] != "host-status" && args[0] != "history" && args[0] != "plan-collect" && args[0] != "collect" && args[0] != "collections" && args[0] != "adopt-log" {
 		return fmt.Errorf("key required")
 	}
 	switch args[0] {
-	case "plan-collect", "collect", "collections", "adopt-log":
+	case "retention-preview", "retention-enable", "retention-disable", "retention-status", "retention-run", "retention-ack-pending", "plan-collect", "collect", "collections", "adopt-log":
 		if key != "" {
 			return fmt.Errorf("this operation does not accept a key")
 		}
@@ -122,6 +127,18 @@ func run(args []string) error {
 	s := bench.Store{State: *state, Data: *data, CgroupRoot: *cgroupRoot}
 	var out any
 	switch args[0] {
+	case "retention-preview":
+		out, err = (maintenance.Manager{Root: s.State, Store: s}).Preview(maintenance.Policy{Version: "superbench.retention-policy.v1", Root: s.State, Scope: maintenance.Scope, LogAge: maintenance.Duration(*logAge), MetadataAge: maintenance.Duration(*metadataAge), Limit: *limit, MaxBytes: *maxCollectBytes})
+	case "retention-enable":
+		out, err = approvedAutomaticPolicy(s, *planFile, *approval, *enableAutomatic)
+	case "retention-disable":
+		out, err = (maintenance.Manager{Root: s.State, Store: s}).Disable()
+	case "retention-status":
+		out, err = (maintenance.Manager{Root: s.State, Store: s}).Status()
+	case "retention-run":
+		out, err = (maintenance.Manager{Root: s.State, Store: s}).Tick(context.Background())
+	case "retention-ack-pending":
+		out, err = (maintenance.Manager{Root: s.State, Store: s}).AcknowledgePending()
 	case "inspect-log":
 		out, err = s.InspectLog(key)
 	case "adopt-log":

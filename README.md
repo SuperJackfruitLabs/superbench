@@ -72,6 +72,9 @@ quota retirement. Archive/reap are local administrative commands in this checkpo
 Supervised runs retain private history and sealed output evidence. Use reviewed
 [log collection](docs/retention.md) to free released output; held, open or unknown
 logs remain protected. Collection can resume after a crash without rerunning work.
+The daemon can also run an explicitly approved [automatic retention
+policy](docs/automatic-retention.md), with bounded batches and durable recovery.
+Automatic retention is disabled until the operator reviews and enables a policy.
 
 ## Recovery
 
@@ -121,7 +124,7 @@ atomic transaction.
   while conflicting files require review and a pushed checkpoint may need retrying
   if saving state failed.
   No automatic deletion/reset is attempted.
-- Automatic retention policies, shared-cache/journal collection, remote
+- Shared-cache/journal collection, remote
   authentication, UI and suite
   integrations are not implemented. The local API authenticates Unix peer uids.
 - Only trusted repositories are suitable. Local git configuration and hooks apply.

@@ -10,7 +10,7 @@ no destructive cleanup is authorized by this implementation plan.
    repository, branch, target path and pinned source SHA before creating a
    worktree. A retry registers only that exact clean checkout. Preserve and reject
    dirty, changed, unjournaled or conflicting checkouts. Retain intents alongside
-   state; reviewed archive/reap is implemented; automated retention remains future work. Creation never resets or deletes conflicting files.
+   state; reviewed archive/reap is implemented; approved automatic log retention is implemented; broader collection remains future work. Creation never resets or deletes conflicting files.
 2. **Transactional service storage (implemented, verification below).** SQLite
    versioned schema and legacy import now replace JSON outside bench data; keep journal semantics and state-failure
    regressions. Status is read-only. Partial mirror clones use staged atomic publication and
@@ -22,12 +22,12 @@ no destructive cleanup is authorized by this implementation plan.
 4. **Host storage management (implemented, validation below).** Fixed-policy quota
    helper, reservation ledger, free-space admission, shared caches, frozen pnpm/npm
    setup, atomic mirror publication and bounded/reserved logs. A staged Linux service installer is now verified separately. Byte and inode limits are enforced and verified.
-   TOML hooks and automatic collection remain pending.
+   TOML hooks and broader cache/journal collection remain pending.
 5. **benchd and local CLI (API and reviewed archive/reap implemented).** Kernel peer uid
    authorization, bounded durable request receipts, strict pinned treaty vectors,
    redacted status and crash reconciliation. See [service verification](service.md).
    Service installation has a verified Linux payload; checkpoint-verified
-   archive/reap is now verified; automatic retention remains pending.
+   archive/reap and approved automatic log retention are verified separately.
 6. **Suite pilot.** Charter ownership change and treaty API/event contracts before
    adapters; one opt-in board and a clean-checkout verification path. No production
    tag or deployment is part of this local implementation turn.
@@ -44,7 +44,7 @@ A core checkpoint does not constitute completion of a phase or the product.
 | Phase | Required outcome | Current evidence |
 |---|---|---|
 | 0 | Host disk alert, reviewed cleanup dry-run, code-stage branch/checkpoint rules | Not implemented by this repository; inspect estate and board settings before changes |
-| 1 | Standalone CLI and host service; durable state/leases; checkpoints/recovery; quotas, shared mirrors/stores; verified archive/reap | CLI, journals, SQLite, fenced Linux execution and host storage tested; local service API added; installer and reviewed archive/reap verified; reviewed log/history collection added; automatic retention, cache/journal collection, hooks and integration pending |
+| 1 | Standalone CLI and host service; durable state/leases; checkpoints/recovery; quotas, shared mirrors/stores; verified archive/reap | CLI, journals, SQLite, fenced Linux execution and host storage tested; local service API added; installer and reviewed archive/reap verified; reviewed log/history collection added; approved automatic log retention implemented; cache/journal collection, hooks and integration pending |
 | 2 | Suite adapters, card panel, locality scoring, witness events; read-only web, file/diff/log/timeline views, terminal attach and MCP | Pending; charter/treaty contracts precede consumers; visual mockups before UI |
 | 3 | Remote editor launch/browser IDE; second-host recovery drill; per-bench isolation; Salaam layout and execution-host integration | Pending |
 
@@ -78,12 +78,17 @@ keep that approval distinct from permission to implement the product.
   pinned state metadata and target revalidation before managed acquisition.
   Actual XFS zero-byte-file limits, migration, overcommit and retirement are verified.
 
+- Approved automatic log retention: explicit policy/initial-batch approval,
+  bounded periodic daemon collection, exact persisted batch recovery and a
+  disabling gate. Local/Linux required checks, actual cgroup/daemon drills and
+  a disposable systemd installation passed. No installed policy was enabled.
+
 
 ## Remaining retention work
 
 Reviewed log collection and history are implemented in [retention.md](retention.md),
 including protected held/failed evidence and durable interruption recovery.
-Automatic policy execution and broader collection remain pending. Use a reviewed candidate plan and verify the same files/ownership
+Approved automatic log policy execution is implemented in [automatic-retention.md](automatic-retention.md); broader collection remains pending. Use a reviewed candidate plan and verify the same files/ownership
 before collection; never treat age as proof that a writer stopped. Shared cache
 and abandoned-clone collection need the same active-writer and namespace checks.
 

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"mime"
 	"net/http"
 	"strconv"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/bench"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/maintenance"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/protocol"
 )
 
@@ -20,6 +22,7 @@ type Config struct {
 	Store              bench.Store
 	Operators, Readers map[uint32]bool
 	MaxActive          int
+	RetentionInterval  time.Duration
 }
 type Server struct {
 	config    Config
@@ -38,6 +41,12 @@ func Serve(ctx context.Context, c Config) error {
 	if c.MaxActive < 1 || c.MaxActive > 64 {
 		return errors.New("invalid active operation limit")
 	}
+	if c.RetentionInterval == 0 {
+		c.RetentionInterval = time.Minute
+	}
+	if c.RetentionInterval < time.Second || c.RetentionInterval > 24*time.Hour {
+		return errors.New("invalid retention interval")
+	}
 	listener, lock, e := listen(c.Socket, c.Store.State)
 	if e != nil {
 		return e
@@ -55,6 +64,11 @@ func Serve(ctx context.Context, c Config) error {
 	lifetime, cancel := context.WithCancel(ctx)
 	defer cancel()
 	s := &Server{config: c, ctx: lifetime, receipts: r, slots: make(chan struct{}, c.MaxActive)}
+	maintenanceDone := make(chan struct{})
+	go func() {
+		defer close(maintenanceDone)
+		maintenance.Manager{Root: c.Store.State, Store: c.Store}.Run(lifetime, c.RetentionInterval, func(e error) { log.Printf("retention blocked: %v", e) })
+	}()
 	httpServer := &http.Server{Handler: s, ConnContext: connContext, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 << 10}
 	shutdownDone := make(chan error, 1)
 	go func() {
@@ -75,6 +89,7 @@ func Serve(ctx context.Context, c Config) error {
 		_ = httpServer.Close()
 	}
 	s.handlers.Wait()
+	<-maintenanceDone
 	if e == http.ErrServerClosed {
 		return shutdownErr
 	}
