@@ -35,7 +35,7 @@ func managedFixture(t *testing.T) (Store, string, *int) {
 		if e := os.MkdirAll(path, 0700); e != nil {
 			return hoststorage.Assignment{}, e
 		}
-		return hoststorage.Assignment{Path: path, ProjectID: id, Bytes: 8 << 20}, nil
+		return hoststorage.Assignment{Path: path, ProjectID: id, Bytes: 8 << 20, Inodes: 128}, nil
 	}
 	config := HostConfig{DataRoot: s.Data, QuotaHelper: "/test/helper", MinDataFreeBytes: 1 << 20, MinStateFreeBytes: 1 << 20}
 	if e := s.ConfigureHost(config); e != nil {
@@ -62,7 +62,7 @@ func TestManagedCreateRecordsQuotaAndResumesEmptyAllocation(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if b.ProjectID != 10000 || b.QuotaBytes != 8<<20 || *calls != 2 {
+	if b.ProjectID != 10000 || b.QuotaBytes != 8<<20 || b.QuotaInodes != 128 || *calls != 2 {
 		t.Fatal("allocation was not recorded/retried", b, *calls)
 	}
 	if g(t, b.Path, "rev-parse", "HEAD") == "" {
@@ -177,5 +177,108 @@ func TestPartialMirrorIsNotPublishedOrBorrowed(t *testing.T) {
 	g(t, b.Mirror, "config", "remote.origin.url", r+"-wrong")
 	if _, e = s.Create("other", Options{Repo: r}, false); e == nil {
 		t.Fatal("mismatched mirror reused")
+	}
+}
+
+func TestManagedAcquisitionRechecksPinnedInodeCap(t *testing.T) {
+	s, r, _ := managedFixture(t)
+	if _, e := s.Create("task", Options{Repo: r}, false); e != nil {
+		t.Fatal(e)
+	}
+	original := s.quotaApply
+	s.quotaApply = func(c HostConfig, kind, key string) (hoststorage.Assignment, error) {
+		a, e := original(c, kind, key)
+		if kind == "bench" {
+			a.Inodes++
+		}
+		return a, e
+	}
+	if _, e := s.Lease("task", "writer"); e == nil || !strings.Contains(e.Error(), "pinned byte/inode") {
+		t.Fatal("changed inode cap acquired", e)
+	}
+	states, e := s.Status("task")
+	if e != nil || states[0].Lease != nil {
+		t.Fatal("failed admission created a lease", e)
+	}
+}
+func TestStateUpgradePinsInodesAndRefusesChangedAllocation(t *testing.T) {
+	for _, conflict := range []bool{false, true} {
+		t.Run(map[bool]string{false: "same-project", true: "changed-project"}[conflict], func(t *testing.T) {
+			s, r, _ := managedFixture(t)
+			if _, e := s.Create("task", Options{Repo: r}, false); e != nil {
+				t.Fatal(e)
+			}
+			if e := s.transaction(func(db database) error { db["task"].QuotaInodes = 0; return nil }); e != nil {
+				t.Fatal(e)
+			}
+			db, e := s.openSQL(false)
+			if e != nil {
+				t.Fatal(e)
+			}
+			if _, e = db.Exec("PRAGMA user_version=4"); e != nil {
+				t.Fatal(e)
+			}
+			db.Close()
+			original := s.quotaApply
+			s.quotaApply = func(c HostConfig, kind, key string) (hoststorage.Assignment, error) {
+				a, e := original(c, kind, key)
+				if conflict && kind == "bench" {
+					a.ProjectID++
+				}
+				return a, e
+			}
+			e = s.Migrate()
+			if conflict {
+				if e == nil {
+					t.Fatal("changed allocation adopted")
+				}
+				return
+			}
+			if e != nil {
+				t.Fatal(e)
+			}
+			states, e := s.Status("task")
+			if e != nil || states[0].QuotaInodes != 128 {
+				t.Fatal("inode cap not pinned", e)
+			}
+		})
+	}
+}
+
+func TestStateUpgradePreservesReapIntentWithoutReallocatingRetiredProject(t *testing.T) {
+	s, r, _ := managedFixture(t)
+	if _, e := s.Create("task", Options{Repo: r}, false); e != nil {
+		t.Fatal(e)
+	}
+	if e := s.transaction(func(db database) error {
+		b := db["task"]
+		b.QuotaInodes = 0
+		b.ArchivedAt = "2026-11-14T00:00:00Z"
+		b.ReapingDigest = strings.Repeat("a", 64)
+		return nil
+	}); e != nil {
+		t.Fatal(e)
+	}
+	db, e := s.openSQL(false)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.Exec("PRAGMA user_version=4"); e != nil {
+		t.Fatal(e)
+	}
+	db.Close()
+	original := s.quotaApply
+	s.quotaApply = func(c HostConfig, kind, key string) (hoststorage.Assignment, error) {
+		if kind == "bench" {
+			return hoststorage.Assignment{}, errors.New("retired project")
+		}
+		return original(c, kind, key)
+	}
+	if e = s.Migrate(); e != nil {
+		t.Fatal("retained reap intent could not upgrade", e)
+	}
+	records, e := s.Status("task")
+	if e != nil || records[0].ReapingDigest != strings.Repeat("a", 64) || records[0].QuotaInodes != 0 {
+		t.Fatal("reap recovery authority changed", e)
 	}
 }

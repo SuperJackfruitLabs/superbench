@@ -19,17 +19,18 @@ type leaseDTO struct {
 	Execution *executionDTO `json:"execution,omitempty"`
 }
 type benchDTO struct {
-	Key        string    `json:"key"`
-	Repository string    `json:"repository"`
-	Branch     string    `json:"branch"`
-	Path       string    `json:"path"`
-	Checkpoint string    `json:"checkpoint"`
-	ArchivedAt string    `json:"archived_at,omitempty"`
-	Reaping    bool      `json:"reaping,omitempty"`
-	ReapedAt   string    `json:"reaped_at,omitempty"`
-	ProjectID  uint32    `json:"project_id"`
-	QuotaBytes uint64    `json:"quota_bytes"`
-	Lease      *leaseDTO `json:"lease,omitempty"`
+	Key         string    `json:"key"`
+	Repository  string    `json:"repository"`
+	Branch      string    `json:"branch"`
+	Path        string    `json:"path"`
+	Checkpoint  string    `json:"checkpoint"`
+	ArchivedAt  string    `json:"archived_at,omitempty"`
+	Reaping     bool      `json:"reaping,omitempty"`
+	ReapedAt    string    `json:"reaped_at,omitempty"`
+	ProjectID   uint32    `json:"project_id"`
+	QuotaInodes uint64    `json:"quota_inodes"`
+	QuotaBytes  uint64    `json:"quota_bytes"`
+	Lease       *leaseDTO `json:"lease,omitempty"`
 }
 
 func executionView(e *bench.Execution) *executionDTO {
@@ -42,7 +43,7 @@ func benchView(b *bench.Bench, token bool) *benchDTO {
 	if b == nil {
 		return nil
 	}
-	v := &benchDTO{Key: b.Key, Repository: displayRepository(b.Repo), Branch: b.Branch, Path: b.Path, Checkpoint: b.Checkpoint, ProjectID: b.ProjectID, QuotaBytes: b.QuotaBytes, ArchivedAt: b.ArchivedAt, Reaping: b.ReapingDigest != "" && b.ReapedAt == "", ReapedAt: b.ReapedAt}
+	v := &benchDTO{Key: b.Key, Repository: displayRepository(b.Repo), Branch: b.Branch, Path: b.Path, Checkpoint: b.Checkpoint, ProjectID: b.ProjectID, QuotaBytes: b.QuotaBytes, QuotaInodes: b.QuotaInodes, ArchivedAt: b.ArchivedAt, Reaping: b.ReapingDigest != "" && b.ReapedAt == "", ReapedAt: b.ReapedAt}
 	if b.Lease != nil {
 		mode := "cooperative"
 		if b.Lease.Execution != nil {

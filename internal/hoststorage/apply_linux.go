@@ -23,7 +23,7 @@ func (p Policy) Apply(kind, key string) (Assignment, error) {
 		return zero, e
 	}
 	var name, path string
-	var size uint64
+	var size, inodes uint64
 	var fixed uint32
 	switch kind {
 	case "bench":
@@ -33,17 +33,20 @@ func (p Policy) Apply(kind, key string) (Assignment, error) {
 		name = "bench:" + key
 		path = filepath.Join(p.Root, "benches", key)
 		size = p.BenchBytes
+		inodes = p.BenchInodes
 	case "shared":
 		switch key {
 		case "store":
 			name = "store"
 			path = filepath.Join(p.Root, "store")
 			size = p.StoreBytes
+			inodes = p.StoreInodes
 			fixed = 100
 		case "mirrors":
 			name = "mirrors"
 			path = filepath.Join(p.Root, "mirrors")
 			size = p.MirrorBytes
+			inodes = p.MirrorInodes
 			fixed = 101
 		default:
 			return zero, errors.New("unknown shared resource")
@@ -137,12 +140,42 @@ func (p Policy) Apply(kind, key string) (Assignment, error) {
 	}
 
 	a, known := l.Assignments[name]
+	reserved := p.StoreInodes + p.MirrorInodes + p.ReserveInodes
+	for key, assignment := range l.Assignments {
+		if strings.HasPrefix(key, "bench:") && assignment.Bytes != 0 {
+			if reserved > 1<<60-p.BenchInodes {
+				return zero, errors.New("inode budget overflow")
+			}
+			reserved += p.BenchInodes
+		}
+	}
+	if kind == "bench" && !known {
+		reserved += inodes
+	}
+	if (!known || p.upgradingInodes) && reserved > fs.Files {
+		return zero, errors.New("host inode budget exhausted; refusing overcommit")
+	}
+
 	if known {
 		if a.Bytes == 0 {
 			return zero, errors.New("bench project is retired; use another key")
 		}
-		if a.Path != path || a.Bytes != size {
+		if a.Path != path || a.Bytes != size || !p.upgradingInodes && a.Inodes != inodes {
 			return zero, errors.New("existing allocation differs from policy; explicit migration required")
+		}
+		if p.upgradingInodes {
+			used, _, _, e := p.readQuota(a.ProjectID, "-i")
+			if e != nil {
+				return zero, e
+			}
+			if used > inodes {
+				return zero, errors.New("inode migration would set a limit below current usage")
+			}
+			a.Inodes = inodes
+			l.Assignments[name] = a
+			if e = save(p.Ledger, filepath.Join(p.Ledger, "assignments.json"), l); e != nil {
+				return zero, e
+			}
 		}
 	} else {
 		// Reserve all shared caps even before those projects are first materialized.
@@ -174,7 +207,7 @@ func (p Policy) Apply(kind, key string) (Assignment, error) {
 			id = l.Next
 			l.Next++
 		}
-		a = Assignment{Path: path, ProjectID: id, Bytes: size}
+		a = Assignment{Path: path, ProjectID: id, Bytes: size, Inodes: inodes}
 		l.Assignments[name] = a
 		// Persist allocation before filesystem effects. A retry uses the same ID.
 		if e = save(p.Ledger, filepath.Join(p.Ledger, "assignments.json"), l); e != nil {
@@ -221,25 +254,17 @@ func (p Policy) Apply(kind, key string) (Assignment, error) {
 			return zero, e
 		}
 	}
-	if _, e = xfs("/usr/sbin/xfs_quota", "-x", "-c", fmt.Sprintf("limit -p bhard=%dk %d", size/1024, a.ProjectID), p.Root); e != nil {
+	if _, e = xfs("/usr/sbin/xfs_quota", "-x", "-c", fmt.Sprintf("limit -p bhard=%dk ihard=%d %d", size/1024, inodes, a.ProjectID), p.Root); e != nil {
 		return zero, e
 	}
-	report, e := xfs("/usr/sbin/xfs_quota", "-x", "-c", fmt.Sprintf("report -p -n -b -N -L %d -U %d", a.ProjectID, a.ProjectID), p.Root)
-	if e != nil {
-		return zero, e
-	}
-	verified := false
-	for _, line := range strings.Split(report, "\n") {
-		fields := strings.Fields(line)
-		if len(fields) >= 4 && fields[0] == "#"+expected {
-			hard, e := strconv.ParseUint(fields[3], 10, 64)
-			if e == nil && hard == size/1024 {
-				verified = true
-			}
+	for unit, expectedLimit := range map[string]uint64{"-b": size / 1024, "-i": inodes} {
+		_, hard, found, e := p.readQuota(a.ProjectID, unit)
+		if e != nil {
+			return zero, e
 		}
-	}
-	if !verified {
-		return zero, errors.New("unable to confirm project hard limit")
+		if !found || hard != expectedLimit {
+			return zero, errors.New("unable to confirm project byte/inode hard limit")
+		}
 	}
 	if e = os.Chown(path, p.OwnerUID, p.OwnerGID); e != nil {
 		return zero, e

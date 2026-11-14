@@ -29,7 +29,7 @@ def good(args,**kwargs):
  return p.stdout.strip()
 def git(where,*args):return good([real_git,'-C',where,*args])
 def writepolicy(path,datadir,ledger,bench=16<<20):
- p={'Root':str(datadir),'Ledger':str(ledger),'OwnerUID':0,'OwnerGID':0,'BenchBytes':bench,'StoreBytes':16<<20,'MirrorBytes':32<<20,'ReserveBytes':64<<20}
+ p={'Root':str(datadir),'Ledger':str(ledger),'OwnerUID':0,'OwnerGID':0,'BenchBytes':bench,'StoreBytes':16<<20,'MirrorBytes':32<<20,'ReserveBytes':64<<20,'BenchInodes':2048,'StoreInodes':8192,'MirrorInodes':8192,'ReserveInodes':1024}
  path.write_text(json.dumps(p));path.chmod(0o600);return p
 policy=root/'policy.json';settings=writepolicy(policy,data,root/'quota-ledger')
 # Pausing after an actual privileged assignment tests the lost-reply boundary.

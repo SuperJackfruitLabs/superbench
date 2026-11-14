@@ -129,6 +129,9 @@ func (s Store) Lease(key, holder string) (*Bench, error) {
 		if b.Lease != nil {
 			return fmt.Errorf("%w by %s; no automatic expiry", ErrBusy, b.Lease.Holder)
 		}
+		if e := s.ensureBenchQuota(b); e != nil {
+			return e
+		}
 		lease, err := newLease(holder)
 		if err != nil {
 			return err

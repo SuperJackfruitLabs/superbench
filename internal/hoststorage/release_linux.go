@@ -113,6 +113,7 @@ func (p Policy) Release(key string, project uint32) (Assignment, error) {
 	// Retain the hard limit on the retired project. A crash/retry can still query
 	// its zero-usage row; no ID is ever reused, and only logical reservation is freed.
 	a.Bytes = 0
+	a.Inodes = 0
 	l.Assignments["bench:"+key] = a
 	if e = save(p.Ledger, filepath.Join(p.Ledger, "assignments.json"), l); e != nil {
 		return zero, e

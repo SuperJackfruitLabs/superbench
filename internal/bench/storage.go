@@ -148,8 +148,10 @@ func (s Store) admit() error {
 		return fmt.Errorf("state free-space reserve reached: %d available, %d required", status.State.Free, minState)
 	}
 	if status.Config != nil {
-		if _, e = s.quota(*status.Config, "shared", "store"); e != nil {
-			return e
+		for _, key := range []string{"store", "mirrors"} {
+			if _, e = s.quota(*status.Config, "shared", key); e != nil {
+				return e
+			}
 		}
 	}
 	return nil
@@ -181,7 +183,7 @@ func (s Store) quota(c HostConfig, kind, key string) (hoststorage.Assignment, er
 	if kind == "bench" {
 		expected = filepath.Join(s.Data, "benches", key)
 	}
-	if a.Path != expected || a.ProjectID == 0 || a.Bytes == 0 {
+	if a.Path != expected || a.ProjectID == 0 || a.Bytes == 0 || a.Inodes == 0 {
 		return a, errors.New("quota helper returned a conflicting assignment")
 	}
 	return a, nil
@@ -240,11 +242,12 @@ func (s Store) applyBenchQuota(c *creation) error {
 	if e != nil {
 		return e
 	}
-	if c.Bench.ProjectID != 0 && (c.Bench.ProjectID != a.ProjectID || c.Bench.QuotaBytes != a.Bytes) {
+	if c.Bench.ProjectID != 0 && (c.Bench.ProjectID != a.ProjectID || c.Bench.QuotaBytes != a.Bytes || c.Bench.QuotaInodes != 0 && c.Bench.QuotaInodes != a.Inodes) {
 		return errors.New("creation intent conflicts with quota allocation")
 	}
 	c.Bench.ProjectID = a.ProjectID
 	c.Bench.QuotaBytes = a.Bytes
+	c.Bench.QuotaInodes = a.Inodes
 	return s.record(*c)
 }
 
@@ -274,8 +277,50 @@ func (s Store) releaseQuota(b *Bench) error {
 	if e = json.Unmarshal(raw, &a); e != nil {
 		return e
 	}
-	if a.Path != b.Path || a.ProjectID != b.ProjectID || a.Bytes != 0 {
+	if a.Path != b.Path || a.ProjectID != b.ProjectID || a.Bytes != 0 || a.Inodes != 0 {
 		return errors.New("quota helper did not confirm retired assignment")
 	}
+	return nil
+}
+
+func (s Store) ensureBenchQuota(b *Bench) error {
+	c, e := s.hostConfig()
+	if e != nil {
+		return e
+	}
+	if c == nil {
+		if b.ProjectID != 0 {
+			return errors.New("managed bench has no host policy")
+		}
+		return nil
+	}
+	a, e := s.quota(*c, "bench", b.Key)
+	if e != nil {
+		return e
+	}
+	if a.ProjectID != b.ProjectID || a.Bytes != b.QuotaBytes || a.Inodes == 0 || a.Inodes != b.QuotaInodes {
+		return errors.New("bench quota differs from its pinned byte/inode allocation; explicit migration required")
+	}
+	return nil
+}
+func (s Store) pinMigratedInodes(b *Bench) error {
+	if b.ProjectID == 0 || b.QuotaInodes != 0 || b.ReapedAt != "" || b.ReapingDigest != "" {
+		return nil
+	}
+	c, e := s.hostConfig()
+	if e != nil {
+		return e
+	}
+	if c == nil {
+		return errors.New("managed state upgrade requires its host policy")
+	}
+	a, e := s.quota(*c, "bench", b.Key)
+	if e != nil {
+		return e
+	}
+	if a.ProjectID != b.ProjectID || a.Bytes != b.QuotaBytes || a.Inodes == 0 {
+		return errors.New("state upgrade differs from the original allocation")
+	}
+	b.QuotaInodes = a.Inodes
 	return nil
 }

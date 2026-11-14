@@ -48,9 +48,10 @@ Its installer prepares files and accounts without starting the service.
 ## Managed storage
 
 Linux hosts can configure a dedicated XFS data mount with per-bench and shared
-caps, fixed-policy root allocation, free-space admission and bounded run logs.
+byte/inode caps, fixed-policy root allocation, free-space admission and bounded run logs.
 `bench setup` supports frozen pnpm/npm installs. See [storage management](docs/storage.md)
-for provisioning prerequisites, budgets, compatibility and verification.
+for provisioning prerequisites, budgets, compatibility and verification. Existing
+byte-only hosts require the [explicit inode migration](docs/inodes.md).
 
 ## Supervised runs
 

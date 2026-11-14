@@ -1,0 +1,13 @@
+PASS: explicit resumable legacy migration pins original IDs and inode caps; old binaries and sudo migration refuse
+PASS: zero-byte bench files hit the inode hard cap; lease/run restore and verify their pinned limit
+PASS: both shared stores and mirrors enforce independent inode hard caps
+PASS: total inode reservation overcommit refuses before assigning a new project
+PASS: reviewed reap retires both reservations; recovery receives a new bounded project
+DONE: inode quota integration passed
+PASS: same-filesystem nested bind mount is refused without deleting its contents
+PASS: explicit approval required; open unlinked data retains quota until close; retry retires project
+PASS: zero-block open inode independently prevents reservation release
+PASS: wrong project IDs and symlink targets refuse privileged empty-directory retirement
+PASS: previous binaries refuse archive schema and retired-project ledger
+PASS: SIGKILL after quota retirement retains approval; retry finalizes only once; checkpoint recovers
+DONE: managed archive/reap integration passed

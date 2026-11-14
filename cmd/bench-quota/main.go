@@ -25,12 +25,20 @@ func run(args []string) error {
 	if *policy != "/etc/superbench/storage.json" && (os.Getuid() != 0 || os.Geteuid() != 0 || os.Getenv("SUDO_UID") != "") {
 		return fmt.Errorf("policy override requires a direct root caller")
 	}
-	if (f.NArg() != 3 || f.Arg(0) != "apply") && (f.NArg() != 4 || f.Arg(0) != "release" || f.Arg(1) != "bench") {
-		return fmt.Errorf("usage: bench-quota [--policy ROOT_POLICY] apply <bench|shared> KEY | release bench KEY PROJECT_ID")
+	migrating := f.NArg() == 1 && f.Arg(0) == "migrate-inodes"
+	if !migrating && (f.NArg() != 3 || f.Arg(0) != "apply") && (f.NArg() != 4 || f.Arg(0) != "release" || f.Arg(1) != "bench") {
+		return fmt.Errorf("usage: bench-quota [--policy ROOT_POLICY] apply <bench|shared> KEY | release bench KEY PROJECT_ID | migrate-inodes")
 	}
 	p, e := hoststorage.Load(*policy)
 	if e != nil {
 		return e
+	}
+	if migrating {
+		assignments, e := p.MigrateInodes()
+		if e != nil {
+			return e
+		}
+		return json.NewEncoder(os.Stdout).Encode(assignments)
 	}
 	var assignment hoststorage.Assignment
 	if f.Arg(0) == "release" {

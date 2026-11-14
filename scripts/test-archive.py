@@ -15,7 +15,7 @@ data = root / "data"
 state = root / "state"
 policy = root / "policy.json"
 policy.write_text(json.dumps({"Root":str(data), "Ledger":str(root / "ledger"), "OwnerUID":0, "OwnerGID":0,
-                             "BenchBytes":32<<20, "StoreBytes":16<<20, "MirrorBytes":32<<20, "ReserveBytes":64<<20}))
+                             "BenchBytes":32<<20, "StoreBytes":16<<20, "MirrorBytes":32<<20, "ReserveBytes":64<<20,"BenchInodes":4096,"StoreInodes":8192,"MirrorInodes":8192,"ReserveInodes":1024}))
 policy.chmod(0o600)
 
 def run(args):
@@ -135,7 +135,9 @@ print("PASS: wrong project IDs and symlink targets refuse privileged empty-direc
 # Pre-archive binaries must reject both new core state and retired quota ledgers.
 old=run([old_bench,"lease","--state",state,"--data",data,"--holder","old","first"])
 assert old.returncode!=0 and "unsupported state schema" in old.stderr,old.stderr
-old=run([old_helper,"--policy",policy,"apply","shared","store"])
+legacy_policy=root / "legacy-policy.json"
+legacy_policy.write_text(json.dumps({key:value for key,value in json.loads(policy.read_text()).items() if not key.endswith("Inodes")}));legacy_policy.chmod(0o600)
+old=run([old_helper,"--policy",legacy_policy,"apply","shared","store"])
 assert old.returncode!=0 and "ledger allocation conflicts" in old.stderr,old.stderr
 print("PASS: previous binaries refuse archive schema and retired-project ledger",flush=True)
 
