@@ -1,0 +1,25 @@
+#!/bin/sh
+set -eu
+# systemd delegates this unit's current cgroup; never guess a slice/unit path.
+cgroup_path=
+while IFS=: read -r hierarchy controllers path; do
+    if [ "$hierarchy" = 0 ] && [ -z "$controllers" ]; then
+        cgroup_path=$path
+        break
+    fi
+done < /proc/self/cgroup
+case "$cgroup_path" in
+    /*) ;;
+    *) echo 'superbench: cgroup v2 delegation required' >&2; exit 1 ;;
+esac
+case "$cgroup_path" in
+    /|*/../*|*/..|*/./*|*/.) echo 'superbench: dedicated delegated cgroup required' >&2; exit 1 ;;
+esac
+exec /usr/local/bin/benchd \
+    --state /var/lib/superbench/state \
+    --data /srv/superbench-data \
+    --socket /run/superbench/benchd.sock \
+    --cgroup-root "/sys/fs/cgroup$cgroup_path" \
+    --operator-uids "${BENCHD_OPERATOR_UIDS:-0}" \
+    --reader-uids "${BENCHD_READER_UIDS:-}" \
+    --max-active "${BENCHD_MAX_ACTIVE:-8}"

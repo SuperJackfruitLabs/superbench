@@ -1,0 +1,6 @@
+PASS: managed payload staged idempotently; fixed sudo policy validates
+PASS: installed systemd settings start an unprivileged daemon
+PASS: service delegation launches, fences, checkpoints and releases a Linux run
+PASS: fixed helper sudo works inside service; policy override remains forbidden
+PASS: stopping service removes its socket and delegated execution tree
+DONE: service installation integration passed

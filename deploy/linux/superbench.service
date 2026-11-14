@@ -1,0 +1,37 @@
+[Unit]
+Description=SuperBench local bench lifecycle
+Documentation=https://forge.superjackfruit.com/SuperJackfruitLabs/superbench
+After=network.target
+RequiresMountsFor=/srv/superbench-data /var/lib/superbench
+
+[Service]
+Type=simple
+User=superbench
+Group=superbench
+UMask=0077
+StateDirectory=superbench
+StateDirectoryMode=0700
+RuntimeDirectory=superbench
+RuntimeDirectoryMode=0750
+EnvironmentFile=/etc/superbench/benchd.env
+ExecStart=/usr/local/libexec/superbench-start
+Delegate=yes
+# Keep descendant cleanup under systemd if the daemon cannot finish recovery.
+KillMode=control-group
+TimeoutStopSec=45s
+Restart=on-failure
+RestartSec=3s
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/srv/superbench-data /var/lib/superbench /var/lib/superbench-quota
+PrivateTmp=yes
+ProtectControlGroups=no
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+LockPersonality=yes
+# Managed storage uses the single validated sudo helper. Do not set
+# NoNewPrivileges=yes or remove the capabilities that helper needs.
+
+[Install]
+WantedBy=multi-user.target

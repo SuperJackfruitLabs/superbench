@@ -40,7 +40,8 @@ bench stop --admin fix-login
 to private state. A successful administrative stop returns the retained lease
 and token so the operator can inspect, checkpoint and release it. Network callers
 must never obtain this authority merely by supplying a boolean request field.
-The future service adapter must enforce its own operator authorization.
+The local service enforces operator authorization from kernel Unix peer
+credentials; see [the service API](service.md).
 
 Killing the supervisor does not free the lease. The cgroup stays recorded so
 another local process can fence the surviving tree. Cancellation kills the known
@@ -66,8 +67,9 @@ implemented yet. Commands still have the launching user's authority, so delibera
 cgroup escape by that user is outside this boundary. Phase 3 supplies stronger
 isolation; this is lifecycle fencing for trusted commands, not a sandbox.
 
-Log retention, storage budgets and delegated-service provisioning are subsequent
-Phase 1 slices. Interactive terminal attachment belongs to Phase 2.
+Storage budgets and the [delegated Linux service installer](install.md) are
+implemented. Automatic log retention is still pending. Interactive terminal
+attachment belongs to Phase 2.
 
 ## Verification
 

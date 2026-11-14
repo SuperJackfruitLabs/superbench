@@ -1,0 +1,3 @@
+d /var/lib/superbench 0700 superbench superbench -
+d /var/lib/superbench-quota 0700 root root -
+d /srv/superbench-data 0700 superbench superbench -

@@ -1,8 +1,9 @@
 # Local daemon and CLI
 
 `benchd` owns one host-local Unix socket and one private state store. It exposes
-no TCP listener. This remains a prototype: service installation, archive/reap,
-retention and suite adapters are subsequent work.
+no TCP listener. This remains a prototype. The reviewed
+[Linux service installation](install.md) payload is available;
+archive/reap, retention and suite adapters are subsequent work.
 
 ## Start and connect
 
