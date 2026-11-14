@@ -131,6 +131,11 @@ func (s Store) runStage(ctx context.Context, key, holder string, args []string, 
 			if e := s.ensureBenchQuota(original); e != nil {
 				return e
 			}
+			if options.prior == nil {
+				if e = s.refreshMirror(ctx, original); e != nil {
+					return e
+				}
+			}
 			limit, e := s.reserveLog(db)
 			if e != nil {
 				return e

@@ -38,6 +38,7 @@ func run() error {
 	operators := flag.String("operator-uids", strconv.Itoa(os.Geteuid())+",0", "comma-separated local operator uids")
 	readers := flag.String("reader-uids", "", "comma-separated local read-only uids")
 	retentionInterval := flag.Duration("retention-interval", time.Minute, "automatic retention check interval; inactive until policy is approved")
+	mirrorTimeout := flag.Duration("mirror-timeout", 2*time.Minute, "deadline for mirror clone/validation/fetch")
 	active := flag.Int("max-active", 8, "maximum active operations")
 	flag.Parse()
 	if flag.NArg() != 0 {
@@ -70,5 +71,5 @@ func run() error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	return service.Serve(ctx, service.Config{Socket: *socket, Store: bench.Store{State: *state, Data: *data, CgroupRoot: *cgroup}, Operators: ops, Readers: read, MaxActive: *active, RetentionInterval: *retentionInterval})
+	return service.Serve(ctx, service.Config{Socket: *socket, Store: bench.Store{State: *state, Data: *data, CgroupRoot: *cgroup, MirrorTimeout: *mirrorTimeout}, Operators: ops, Readers: read, MaxActive: *active, RetentionInterval: *retentionInterval})
 }

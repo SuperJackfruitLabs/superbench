@@ -111,6 +111,9 @@ starts outside SuperBench are still cooperative and must be stopped by that
 caller before release. Preparation does not confer process isolation on them.
 On hosts without Linux fencing, configured automatic preparation refuses; plain
 cooperative acquisition remains available for repositories without hooks.
+Ordinary acquisition first refreshes its [registered mirror](mirrors.md).
+`--offline` selects dependency setup behavior; mirror connectivity is still
+required. The local repair lease is the explicit outage/maintenance path.
 Repositories without hooks do not automatically install dependencies during
 `run` or `lease`; use explicit `setup` for frozen-lockfile installation.
 

@@ -1,6 +1,7 @@
 package bench
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -117,7 +118,7 @@ func owned(b *Bench, token string) error {
 	}
 	return nil
 }
-func (s Store) acquireLease(key, holder string, prepare bool) (*Bench, *setup.Config, error) {
+func (s Store) acquireLease(ctx context.Context, key, holder string, prepare bool) (*Bench, *setup.Config, error) {
 	var config *setup.Config
 	var result *Bench
 	err := s.transactionSQL(func(db database, tx *sql.Tx) error {
@@ -142,6 +143,9 @@ func (s Store) acquireLease(key, holder string, prepare bool) (*Bench, *setup.Co
 			return err
 		}
 		if prepare {
+			if err = s.refreshMirror(ctx, b); err != nil {
+				return err
+			}
 			config, err = setup.Read(b.Path)
 			if err != nil {
 				return err

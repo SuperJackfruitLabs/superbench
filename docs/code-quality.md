@@ -5,7 +5,8 @@ go vet, the full race suite and all three binary builds. Architecture tests cap
 Go files at 1,000 lines and packages at 4,000 lines, including tests. They enforce
 runtime import edges and prohibit reverse engine-to-CLI/service dependencies.
 
-The engine owns lease/lifecycle transactions. `internal/output` owns bounded
+The engine owns lease/lifecycle transactions. `internal/repository` owns mirror
+publication, checkout binding, bounded Git metadata/fetch and namespace rules. `internal/output` owns bounded
 capture and aggregate log admission; the engine supplies current reservations. `internal/execution` implements the
 host process fence without importing the engine. `internal/setup` reads bounded
 repository configuration and stores setup receipts through database/sql; the

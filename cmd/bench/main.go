@@ -41,6 +41,7 @@ func run(args []string) error {
 	}
 	f := flag.NewFlagSet(args[0], flag.ContinueOnError)
 	enableAutomatic := f.Bool("enable-automatic", false, "approve future automatic collections under the reviewed policy")
+	mirrorTimeout := f.Duration("mirror-timeout", 2*time.Minute, "deadline for mirror clone/validation/fetch; socket uses daemon setting")
 	maxCollectBytes := f.Uint64("max-collect-bytes", 64<<20, "maximum log bytes per automatic collection cycle")
 	limit := f.Int("limit", 100, "history/collection result limit")
 	logAge := f.Duration("older-than", 168*time.Hour, "minimum time since release and log seal")
@@ -124,7 +125,7 @@ func run(args []string) error {
 		defer stop()
 		return remote(ctx, *socket, r)
 	}
-	s := bench.Store{State: *state, Data: *data, CgroupRoot: *cgroupRoot}
+	s := bench.Store{State: *state, Data: *data, CgroupRoot: *cgroupRoot, MirrorTimeout: *mirrorTimeout}
 	var out any
 	switch args[0] {
 	case "retention-preview":

@@ -21,7 +21,7 @@ no destructive cleanup is authorized by this implementation plan.
    and full-state behavior are exercised on Linux. Cross-uid isolation remains pending; delegated service installation is verified; cooperative shell leases are not fenced.
 4. **Host storage management (implemented, validation below).** Fixed-policy quota
    helper, reservation ledger, free-space admission, shared caches, frozen pnpm/npm
-   setup, atomic mirror publication and bounded/reserved logs. A staged Linux service installer is now verified separately. Byte and inode limits are enforced and verified.
+   setup, atomic mirror publication, acquisition-time remote-tracking refresh and bounded/reserved logs. A staged Linux service installer is now verified separately. Byte and inode limits are enforced and verified.
    Explicit and automatic acquisition setup hooks are implemented; creation warm-up and
    broader cache/journal collection remain pending.
 5. **benchd and local CLI (API and reviewed archive/reap implemented).** Kernel peer uid
@@ -95,6 +95,11 @@ keep that approval distinct from permission to implement the product.
   stop. Local/Linux required checks and actual daemon/cgroup failure drills
   passed; creation warm-up and remaining Phase 1 scope stay pending.
 
+- Acquisition mirror refresh: normal lease/run/setup validates the registered
+  checkout/mirror and refreshes remote-tracking branches while preserving local
+  work. Mirror operations have a configurable deadline; failed refresh grants
+  no ordinary acquisition, and local repair stays network-independent.
+
 
 ## Remaining retention work
 
@@ -110,3 +115,15 @@ Sustainable bounded receipt collection needs a producer-first treaty extension
 with a bounded retry/freshness contract and a persisted monotonic watermark;
 changing the retry window must never expire a bench lease or release a writer.
 Do not implement collection by simply deleting completed receipt rows.
+
+
+## Phase 1 acceptance still to prove
+
+The original proposal remains the acceptance source; the checkpoints above do
+not replace its scope. Before calling Phase 1 complete, explicitly verify the
+standalone laptop preparation path (supervised hooks currently require Linux),
+creation warm-up, multiple repositories within a bench, archive grace/read-only
+lifecycle and collection, remaining cache/quota/archive configuration, and the
+AgentPod acquisition/prompt/checkpoint pilot on an opt-in board. The review of
+charter/treaty boundaries must precede suite consumers. Source-level progress or
+passing single-host drills alone is not evidence that those outcomes are done.

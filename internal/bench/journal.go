@@ -1,11 +1,10 @@
 package bench
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/repository"
 	"os"
 	"path/filepath"
 )
@@ -109,7 +108,4 @@ func materializeWorktree(c *creation) (*Bench, error) {
 	return &b, nil
 }
 
-func (s Store) mirrorPath(repo string) string {
-	sum := sha256.Sum256([]byte(repo))
-	return filepath.Join(s.Data, "mirrors", hex.EncodeToString(sum[:])+".git")
-}
+func (s Store) mirrorPath(repo string) string { return repository.Path(s.Data, repo) }

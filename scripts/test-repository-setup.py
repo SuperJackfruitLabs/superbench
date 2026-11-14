@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import shlex
 import socket
 import sqlite3
 import subprocess
@@ -93,7 +94,19 @@ def main():
         good([args.old_bench, "create", "--state", state, "--data", data, "--repo", remote, "task"])
         with sqlite3.connect(state / "bench.db") as db:
             assert db.execute("PRAGMA user_version").fetchone()[0] == 6
+        def advance_remote(label):
+            (seed / "remote-state").write_text(label)
+            good(["git", "-C", seed, "add", "remote-state"])
+            good(["git", "-C", seed, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-m", label])
+            good(["git", "-C", seed, "push", "origin", "main"])
+            return good(["git", "-C", seed, "rev-parse", "HEAD"]).strip()
+
+        mirror = next((data / "mirrors").glob("*.git"))
+        task_head = good(["git", "-C", data / "benches/task", "rev-parse", "HEAD"]).strip()
+        fresh = advance_remote("before explicit setup")
         first = cli("setup", "--holder", "first", "task")
+        assert good(["git", "-C", mirror, "rev-parse", "refs/remotes/origin/main"]).strip() == fresh
+        assert good(["git", "-C", data / "benches/task", "rev-parse", "HEAD"]).strip() == task_head
         assert first["ExitCode"] == 0 and first["Bench"].get("Lease") is None and receipt("task")
         old = run([args.old_bench, "status", "--state", state, "--data", data])
         assert old.returncode != 0 and "unsupported state schema" in old.stderr
@@ -113,8 +126,11 @@ def main():
             except (OSError, http.client.HTTPException):
                 return False
         wait_for(ready, "daemon ready")
+        fresh = advance_remote("before daemon setup")
         good([args.bench, "setup", "--socket", sock, "--request-id", "setup-second",
               "--holder", "second", "--offline", "task"])
+        assert good(["git", "-C", mirror, "rev-parse", "refs/remotes/origin/main"]).strip() == fresh
+        print("PASS: explicit CLI and daemon setup refresh remote tracking while retaining the task HEAD", flush=True)
         path = data / "benches/task"
         assert (path / ".setup-events").read_text() == "onceeach:0each:1"
         print("PASS: schema-6 state upgrades; old binary refuses; once persists across CLI/daemon and each honors explicit offline environment", flush=True)
@@ -168,8 +184,10 @@ def main():
         print("PASS: cancellation fences hook descendants, retains the lease and records no successful preparation", flush=True)
         cli("create", "--repo", remote, "auto")
         auto = data / "benches/auto"
+        fresh = advance_remote("before run")
         job = run(command("run", "--holder", "job", "auto", "--", "sh", "-c", "printf job >> .setup-events; exit 7"))
         assert job.returncode == 7, job.stderr
+        assert good(["git", "-C", mirror, "rev-parse", "refs/remotes/origin/main"]).strip() == fresh
         held = json.loads(job.stdout)["Bench"]["Lease"]
         assert len(held["RetainedRuns"]) == 1 and held["Execution"]["Phase"] == "stopped"
         records = cli("history", "auto")
@@ -182,8 +200,11 @@ def main():
         assert all(not r["ReleasedAt"].startswith("0001-") for r in cli("history", "auto"))
         cli("run", "--holder", "next", "auto", "--", "sh", "-c", "printf next >> .setup-events")
         assert (auto / ".setup-events").read_text() == "onceeach:0jobeach:0next"
+        fresh = advance_remote("before cooperative lease")
         cooperative = json.loads(good([args.bench, "lease", "--socket", sock, "--request-id", "auto-cooperative",
                                        "--holder", "cooperative", "auto"]))["bench"]["lease"]
+        assert good(["git", "-C", mirror, "rev-parse", "refs/remotes/origin/main"]).strip() == fresh
+        print("PASS: automatic run and cooperative acquisition refresh remote tracking before preparation", flush=True)
         assert cooperative["mode"] == "cooperative" and "execution" not in cooperative
         state_lease = cli("status", "auto")[0]["Lease"]
         assert len(state_lease["RetainedRuns"]) == 1 and "Execution" not in state_lease and "Continuation" not in state_lease
@@ -266,6 +287,40 @@ def main():
         daemon.terminate()
         assert daemon.wait(timeout=15) == 0
         daemon = None
+        cli("create", "--repo", remote, "fetchFail")
+        remote.rename(root / "remote.offline")
+        refused = run(command("run", "--holder", "offline", "fetchFail", "--", "touch", main_marker))
+        assert refused.returncode != 0 and not main_marker.exists()
+        assert cli("status", "fetchFail")[0].get("Lease") is None and cli("history", "fetchFail") == []
+        repaired = cli("lease-repair", "--holder", "operator", "fetchFail")
+        (root / "remote.offline").rename(remote)
+        token = repaired["Lease"]["Token"]
+        cli("checkpoint", "--token", token, "fetchFail")
+        cli("release", "--token", token, "fetchFail")
+        print("PASS: failed refresh starts no task and grants no lease; local repair remains usable during a remote outage", flush=True)
+
+        cli("create", "--repo", remote, "fetchCancel")
+        wrapper = root / "git-wrapper"
+        wrapper.mkdir()
+        fetch_ready = root / "fetch-ready"
+        real_git = shutil.which("git")
+        (wrapper / "git").write_text("#!/bin/sh\nif [ \"$3\" = fetch ]; then printf started > " + shlex.quote(str(fetch_ready)) + "; exec sleep 30; fi\nexec " + shlex.quote(real_git) + " \"$@\"\n")
+        (wrapper / "git").chmod(0o700)
+        environment = dict(os.environ)
+        environment["PATH"] = str(wrapper) + os.pathsep + environment["PATH"]
+        process = subprocess.Popen(list(map(str, command("run", "--holder", "canceled-fetch", "fetchCancel", "--", "touch", main_marker))),
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=environment)
+        wait_for(fetch_ready.exists, "fetch ready")
+        process.terminate()
+        _, error = process.communicate(timeout=15)
+        assert process.returncode != 0 and not main_marker.exists(), error
+        process = None
+        assert cli("status", "fetchCancel")[0].get("Lease") is None and cli("history", "fetchCancel") == []
+        expired = subprocess.run(list(map(str, command("run", "--mirror-timeout", "500ms", "--holder", "expired-fetch", "fetchCancel", "--", "touch", main_marker))),
+                                 capture_output=True, text=True, timeout=15, env=environment)
+        assert expired.returncode != 0 and "deadline" in expired.stderr and not main_marker.exists()
+        assert cli("status", "fetchCancel")[0].get("Lease") is None
+        print("PASS: canceled and expired refresh stop before task/lease creation and never launch the requested command", flush=True)
         print("DONE: repository setup and automatic preparation integration passed", flush=True)
     finally:
         for child in (process, daemon):

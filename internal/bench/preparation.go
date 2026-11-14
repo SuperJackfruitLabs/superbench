@@ -91,14 +91,14 @@ func (s Store) Lease(key, holder string) (*Bench, error) {
 // RepairLease is local administration: acquire a cooperative lease without
 // executing broken repository setup. It is deliberately absent from the RPC API.
 func (s Store) RepairLease(key, holder string) (*Bench, error) {
-	b, _, e := s.acquireLease(key, holder, false)
+	b, _, e := s.acquireLease(context.Background(), key, holder, false)
 	return b, e
 }
 func (s Store) LeaseContext(ctx context.Context, key, holder string) (*Bench, error) {
 	if e := ctx.Err(); e != nil {
 		return nil, e
 	}
-	b, c, e := s.acquireLease(key, holder, true)
+	b, c, e := s.acquireLease(ctx, key, holder, true)
 	if e != nil || c == nil {
 		return b, e
 	}
