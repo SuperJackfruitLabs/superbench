@@ -51,8 +51,9 @@ func TestArchitecture(t *testing.T) {
 			rel = filepath.ToSlash(rel)
 			edges := map[string][]string{
 				"internal/bench":         {"internal/quotapolicy", "internal/cachepolicy", "internal/archivepolicy", "internal/model", "internal/creation", "internal/repository", "internal/output", "internal/execution", "internal/setup", "internal/hoststorage", "internal/reap", "internal/history", "internal/retention"},
-				"internal/archivepolicy": {"internal/model", "internal/reap"},
+				"internal/archivepolicy": {"internal/model", "internal/reap", "internal/repository", "internal/setup"},
 				"internal/setup":         {"internal/cachepolicy", "internal/quotapolicy"},
+				"internal/autoarchive":   {"internal/bench", "internal/archivepolicy", "internal/model", "internal/repository", "internal/setup"},
 				"internal/execution":     {"internal/cachepolicy"},
 				"internal/model":         {"internal/execution"},
 				"internal/creation":      {"internal/model", "internal/repository"},
@@ -60,8 +61,8 @@ func TestArchitecture(t *testing.T) {
 				"internal/history":       {"internal/reap"},
 				"internal/retention":     {"internal/history", "internal/reap"},
 				"internal/maintenance":   {"internal/retention", "internal/reap"},
-				"internal/service":       {"internal/bench", "internal/protocol", "internal/maintenance"},
-				"cmd/bench":              {"internal/bench", "internal/client", "internal/protocol", "internal/reap", "internal/retention", "internal/history", "internal/maintenance"},
+				"internal/service":       {"internal/autoarchive", "internal/bench", "internal/protocol", "internal/maintenance"},
+				"cmd/bench":              {"internal/autoarchive", "internal/bench", "internal/client", "internal/protocol", "internal/reap", "internal/retention", "internal/history", "internal/maintenance"},
 				"cmd/benchd":             {"internal/bench", "internal/service"},
 				"cmd/bench-quota":        {"internal/hoststorage"},
 			}

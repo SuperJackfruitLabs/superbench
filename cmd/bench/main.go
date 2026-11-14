@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/autoarchive"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/bench"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/maintenance"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/protocol"
@@ -29,7 +30,7 @@ func main() {
 }
 func run(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: bench <retention-preview|retention-enable|retention-disable|retention-status|retention-run|retention-ack-pending|inspect-log|adopt-log|history|reconcile-log|plan-collect|collect|resume-collect|cancel-collect|collections|lease-repair|create-cold|recover-cold|archive|plan-reap|reap|create|recover|lease|checkpoint|release|status|run|stop|migrate|configure-host|host-status|setup> [flags] [key]; flags precede key")
+		return fmt.Errorf("usage: bench <archive-run|retention-preview|retention-enable|retention-disable|retention-status|retention-run|retention-ack-pending|inspect-log|adopt-log|history|reconcile-log|plan-collect|collect|resume-collect|cancel-collect|collections|lease-repair|create-cold|recover-cold|archive|plan-reap|reap|create|recover|lease|checkpoint|release|status|run|stop|migrate|configure-host|host-status|setup> [flags] [key]; flags precede key")
 	}
 	config, err := os.UserConfigDir()
 	if err != nil {
@@ -44,6 +45,7 @@ func run(args []string) error {
 	mirrorTimeout := f.Duration("mirror-timeout", 2*time.Minute, "deadline for mirror clone/validation/fetch; socket uses daemon setting")
 	maxCollectBytes := f.Uint64("max-collect-bytes", 64<<20, "maximum log bytes per automatic collection cycle")
 	limit := f.Int("limit", 100, "history/collection result limit")
+	afterKey := f.String("after-key", "", "archive sweep cursor from the previous report's Next field")
 	archiveGrace := f.Duration("archive-grace", 168*time.Hour, "local archive retention before reviewed reap; zero explicitly waives the grace")
 	logAge := f.Duration("older-than", 168*time.Hour, "minimum time since release and log seal")
 	metadataAge := f.Duration("metadata-older-than", 720*time.Hour, "minimum time since prior log collection")
@@ -77,12 +79,12 @@ func run(args []string) error {
 		return fmt.Errorf("expected one key; flags must precede it")
 	}
 	key := f.Arg(0)
-	globalRetention := strings.HasPrefix(args[0], "retention-")
+	globalRetention := strings.HasPrefix(args[0], "retention-") || args[0] == "archive-run"
 	if key == "" && !globalRetention && args[0] != "status" && args[0] != "migrate" && args[0] != "configure-host" && args[0] != "host-status" && args[0] != "history" && args[0] != "plan-collect" && args[0] != "collect" && args[0] != "collections" && args[0] != "adopt-log" {
 		return fmt.Errorf("key required")
 	}
 	switch args[0] {
-	case "retention-preview", "retention-enable", "retention-disable", "retention-status", "retention-run", "retention-ack-pending", "plan-collect", "collect", "collections", "adopt-log":
+	case "archive-run", "retention-preview", "retention-enable", "retention-disable", "retention-status", "retention-run", "retention-ack-pending", "plan-collect", "collect", "collections", "adopt-log":
 		if key != "" {
 			return fmt.Errorf("this operation does not accept a key")
 		}
@@ -131,6 +133,10 @@ func run(args []string) error {
 	s := bench.Store{State: *state, Data: *data, CgroupRoot: *cgroupRoot, MirrorTimeout: *mirrorTimeout}
 	var out any
 	switch args[0] {
+	case "archive-run":
+		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer cancel()
+		out, err = (&autoarchive.Manager{Store: s, After: *afterKey}).Tick(ctx, *limit)
 	case "retention-preview":
 		out, err = (maintenance.Manager{Root: s.State, Store: s}).Preview(maintenance.Policy{Version: "superbench.retention-policy.v1", Root: s.State, Scope: maintenance.Scope, LogAge: maintenance.Duration(*logAge), MetadataAge: maintenance.Duration(*metadataAge), Limit: *limit, MaxBytes: *maxCollectBytes})
 	case "retention-enable":

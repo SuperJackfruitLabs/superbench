@@ -1,0 +1,104 @@
+Automatic archive Linux verification, 2026-11-15
+Uncommitted working candidate, state schema 12.
+Linux 7.0.0-22-generic; go1.26.4 linux/amd64.
+All final commands below exited 0.
+
+Disposable local Git remotes, temporary authoritative state and unique cgroup
+subtree only. No installed service or production data was changed. Daemons
+exited cleanly after SIGTERM; deliberate SIGKILL and restart exercised the
+committed archive intent. Cleanup checks found no remaining drill directory
+or cgroup root.
+
+Build provenance before commit:
+Initial source archive SHA256:
+9ae1b4783e10ee4bf401776becdabcbd115fdbb1496fbbaf2a116ff0254e8125
+Final journal-provenance guard and its regression were synchronized after
+that snapshot, then the full Linux check and all fresh builds were repeated.
+The corrected squash fixture was synchronized before the final drill.
+Final synchronized file SHA256 values appear below.
+
+Binary SHA256:
+NEW_BENCH ff536061d77a2bf3d51578d202ffd7eaadae75b2e42ca31d470c8c6caa51df6c
+NEW_HELPER 8145a1667b3593381910919589c2ecf6a2df82f3f8ca44e19b40b66537ff8575
+NEW_DAEMON 09dadd71b4568c9eb47275ce41a826d1f9af608d115f6dd4a129e980ac222f86
+SCHEMA11_BENCH de8429d8cca52de5267ecba53c60ffe298c197858a6681b791286b9bdcd1d728
+SCHEMA8_BENCH dacbbeffb3fb019b9a79b492b2369f50028c3147ebc70a11d6c0d889688b857d
+SCHEMA9_BENCH 97fd3f83142acd2eb36e95108461d59d0b34213e7dd48e6383bc832463c216f1
+
+Legacy fixtures:
+SCHEMA11_BENCH: retained bin-quotas CLI from the published repository-quota
+slice f7a915f0a510f97f10185e59a1bd8e52b2296b6d (PR 17).
+SCHEMA8_BENCH: ec96e2998570288aa9653cfc58076b58c3d8e2eb.
+SCHEMA9_BENCH: 4d9257d783799aeffbcf286b5a8e4570d15ced62.
+Actual schema versions are asserted by the runtime fixtures; no creation
+base, unmerged observation or merge evidence is fabricated through SQL.
+
+Commands use placeholders for absolute binaries and current source paths.
+The complete final output follows each command group. Independent daemon
+fixtures use local bare Git remotes and a one-second archive interval.
+
+Full Linux required check and fresh builds
+sh scripts/check.sh
+go build -o NEW_BENCH ./cmd/bench
+go build -o NEW_HELPER ./cmd/bench-quota
+go build -o NEW_DAEMON ./cmd/benchd
+
+....
+----------------------------------------------------------------------
+Ran 4 tests in 0.005s
+
+OK
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/cmd/bench	1.432s
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/cmd/bench-quota	[no test files]
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/cmd/benchd	[no test files]
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/architecture	1.039s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/archivepolicy	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/autoarchive	6.623s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/bench	17.183s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/cachepolicy	(cached)
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/client	[no test files]
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/creation	1.018s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/execution	(cached)
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/history	[no test files]
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/integration	4.700s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/maintenance	(cached)
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model	[no test files]
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/output	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/protocol	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotapolicy	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/reap	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/repository	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/retention	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/service	2.156s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/setup	(cached)
+
+Automatic archive CLI/daemon drill
+python3 -u scripts/test-automatic-archive.py --bench NEW_BENCH --benchd NEW_DAEMON --old-bench SCHEMA11_BENCH
+
+PASS: periodic daemon ignores fresh/unmerged work, preserves repeated checkpoint proof, then archives a real merge read-only with exact evidence and seven-day grace; repeats are immutable and SIGTERM exits cleanly
+PASS: following a newer default commit without an observed unmerged checkpoint grants no archive authority
+PASS: manual, held, dirty, advanced/deleted remote branches and squash merges stay active; assume-unchanged/skip-worktree edits cannot authorize mismatched or uncommitted policy
+PASS: CLI after-key pagination visits every manual bench once within the requested bound
+PASS: genuine schema-11 CLI state migrates to12 without inventing creation/merge proof; old CLI refuses and legacy work remains active
+PASS: SIGKILL during actual daemon freeze preserves committed intent; restart finishes the same evidence/deadline/tree despite changed default HEAD, without deleting output
+DONE: automatic archive CLI/daemon integration passed
+
+Schema-8 approved deletion and archive-grace regression
+python3 -u scripts/test-archive-grace.py --bench NEW_BENCH --old-bench SCHEMA8_BENCH
+
+PASS: schema-8 SIGKILL leaves a genuine superbench.reap.v1 intent; schema-12 migration resumes exact approval and preserves replay/downgrade guards
+PASS: default seven-day grace, pre-effect rejection, immutable retry deadline and forged-plan rejection preserve checkout/artifacts
+PASS: explicit zero grace still requires an exact reviewed v3 manifest; schema 12 is persisted
+
+Schema-9 archive and permission-recovery regression
+python3 -u scripts/test-archive-permissions.py --bench NEW_BENCH --old-bench SCHEMA9_BENCH
+
+PASS: schema-9 archives require explicit read-only conversion, preserve the deadline and reject unstarted v2 approvals
+PASS: SIGKILL after a real permission change retains a pending archive, blocks writers/plans and resumes only the original tree
+PASS: SIGKILL after directory thaw retains exact deletion approval; new files are preserved and the same reviewed intent resumes
+
+Final synchronized source SHA256:
+408ae387ab202d7a4aa87e681a5a79c6ce3d9317d23588dcfd873273d5c6f39a  internal/creation/files.go
+865f8dbfa9c21e93475670bc80d4efc1a877dda371e051c156802b5c7306125a  internal/creation/provenance_test.go
+2a352e743dcad24101bb73584e684163b18d61fa46709bcef2eb740ac9ee20ba  scripts/test-automatic-archive.py

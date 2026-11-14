@@ -1,6 +1,7 @@
 package model
 
 import (
+	"encoding/hex"
 	"errors"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/execution"
 )
@@ -21,12 +22,15 @@ type Bench struct {
 	Path                string
 	Mirror              string
 	Checkpoint          string
-	ArchivedAt          string `json:",omitempty"`
-	ReapAfter           string `json:",omitempty"`
-	ArchiveFreezeDigest string `json:",omitempty"`
-	ArchiveFrozenAt     string `json:",omitempty"`
-	ReapingDigest       string `json:",omitempty"`
-	ReapedAt            string `json:",omitempty"`
+	CreatedFrom         string                `json:",omitempty"`
+	ArchivedAt          string                `json:",omitempty"`
+	ReapAfter           string                `json:",omitempty"`
+	ArchiveFreezeDigest string                `json:",omitempty"`
+	ArchiveFrozenAt     string                `json:",omitempty"`
+	ArchiveMerge        *ArchiveMergeEvidence `json:",omitempty"`
+	ArchiveUnmerged     *ArchiveMergeEvidence `json:",omitempty"`
+	ReapingDigest       string                `json:",omitempty"`
+	ReapedAt            string                `json:",omitempty"`
 	ProjectID           uint32
 	QuotaBytes          uint64
 	RequestedQuotaBytes uint64 `json:",omitempty"`
@@ -34,6 +38,17 @@ type Bench struct {
 	Lease               *Lease `json:",omitempty"`
 }
 
+// ArchiveMergeEvidence is an observation, not a permanent claim about remote refs.
+// The containing archive record binds it to the repository, task and freeze intent.
+type ArchiveMergeEvidence struct {
+	Checkpoint, ConfigDigest, TargetBranch, TargetCommit, ObservedAt string
+}
+
 type Options struct{ Repo, Branch, Base, Holder, Token string }
+
+func ValidCommit(s string) bool {
+	raw, err := hex.DecodeString(s)
+	return err == nil && (len(raw) == 20 || len(raw) == 32)
+}
 
 var ErrDirty = errors.New("bench has uncommitted or untracked files; commit or preserve them before checkpoint/release")

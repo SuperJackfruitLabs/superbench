@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/archivepolicy"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/history"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotapolicy"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/setup"
 	"net/url"
@@ -16,7 +17,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const schemaVersion = 11
+const schemaVersion = 12
 
 type reader interface {
 	Query(string, ...any) (*sql.Rows, error)
@@ -71,6 +72,9 @@ func validRecords(records database) error {
 	}
 	for key, b := range records {
 		if b != nil {
+			if b.CreatedFrom != "" && !model.ValidCommit(b.CreatedFrom) {
+				return errors.New("invalid creation source commit")
+			}
 			if !quotapolicy.ValidBytes(b.RequestedQuotaBytes) || b.ProjectID != 0 && b.RequestedQuotaBytes != 0 && b.RequestedQuotaBytes != b.QuotaBytes {
 				return errors.New("invalid pinned quota request")
 			}
@@ -125,7 +129,7 @@ func (s Store) migrate(tx *sql.Tx) error {
 	if version == schemaVersion {
 		return nil
 	}
-	if version == 1 || version == 2 || version == 3 || version == 4 || version == 5 || version == 6 || version == 7 || version == 8 || version == 9 || version == 10 {
+	if version >= 1 && version <= 11 {
 		records, err := loadRecords(tx)
 		if err != nil {
 			return err
@@ -161,7 +165,7 @@ func (s Store) migrate(tx *sql.Tx) error {
 		if err = setup.Schema(tx); err != nil {
 			return err
 		}
-		_, err = tx.Exec("PRAGMA user_version=11")
+		_, err = tx.Exec("PRAGMA user_version=12")
 		return err
 	}
 	if version != 0 {
@@ -195,7 +199,7 @@ func (s Store) migrate(tx *sql.Tx) error {
 	if err = setup.Schema(tx); err != nil {
 		return err
 	}
-	_, err = tx.Exec("PRAGMA user_version=11")
+	_, err = tx.Exec("PRAGMA user_version=12")
 	return err
 }
 func loadRecords(r reader) (database, error) {

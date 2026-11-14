@@ -21,7 +21,7 @@ go = false
 All five settings default to `true`. Unknown keys, path strings, nonboolean
 values and duplicate keys are rejected by the bounded TOML reader. The repository
 cannot supply an arbitrary cache directory through this table. Repository
-[quota requests](quotas.md) are supported; `[archive]` remains unsupported.
+[quota requests](quotas.md) and [archive policy](automatic-archive.md) are supported.
 
 ## Locations and command behavior
 

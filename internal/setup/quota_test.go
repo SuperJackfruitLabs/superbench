@@ -83,6 +83,9 @@ func TestQuotaSelectionIgnoresUnrelatedInvalidFields(t *testing.T) {
 		"[quota]\nsize='3KiB'\n[caches]\npnpm='wrong'\n",
 		"setup=123\ncaches=false\n[quota]\nsize='3KiB'\n",
 		"[quota]\nsize='3KiB'\n[setup]\nunknown='bad'\n",
+		"[quota]\nsize='3KiB'\n[archive]\nwhen='invalid'\n",
+		"[quota]\nsize='3KiB'\n[archive]\nwhen=123\n",
+		"[quota]\nsize='3KiB'\n[archive]\nunknown='bad'\n",
 	} {
 		root, commit := quotaRepo(t, raw)
 		if n, err := QuotaAt(root, commit); err != nil || n != 3072 {
@@ -95,7 +98,7 @@ func TestQuotaSelectionIgnoresUnrelatedInvalidFields(t *testing.T) {
 }
 
 func TestQuotaAtBoundsAndFileTypes(t *testing.T) {
-	for _, kind := range []string{"missing", "symlink", "tree", "executable", "max-size", "oversize", "invalid-toml", "invalid-quota"} {
+	for _, kind := range []string{"missing", "symlink", "tree", "executable", "max-size", "oversize", "invalid-toml", "invalid-quota", "invalid-utf8"} {
 		t.Run(kind, func(t *testing.T) {
 			root, _ := quotaRepo(t, "[quota]\nsize='3KiB'\n")
 			path := filepath.Join(root, ".bench/config.toml")
@@ -131,6 +134,8 @@ func TestQuotaAtBoundsAndFileTypes(t *testing.T) {
 				err = os.WriteFile(path, []byte("[quota"), 0644)
 			case "invalid-quota":
 				err = os.WriteFile(path, []byte("[quota]\nsize='0G'\n"), 0644)
+			case "invalid-utf8":
+				err = os.WriteFile(path, []byte{255}, 0644)
 			}
 			if err != nil {
 				t.Fatal(err)

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/archivepolicy"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/execution"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/history"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
@@ -73,10 +74,13 @@ func (s Store) createRegistered(ctx context.Context, key string, o Options, reco
 			return nil
 		}
 		if pending != nil {
-			if !pending.QuotaRequestPinned {
+			if !pending.QuotaRequestPinned || pending.Bench.CreatedFrom == "" {
 				// Even without a recorded reply, an older helper may have allocated
 				// its default cap. Never reinterpret a legacy creation request.
-				pending.Bench.RequestedQuotaBytes = 0
+				if !pending.QuotaRequestPinned {
+					pending.Bench.RequestedQuotaBytes = 0
+				}
+				pending.Bench.CreatedFrom = pending.Source
 				pending.QuotaRequestPinned = true
 				if err = s.record(*pending); err != nil {
 					return err
@@ -118,7 +122,7 @@ func (s Store) createRegistered(ctx context.Context, key string, o Options, reco
 		if err != nil {
 			return err
 		}
-		b := Bench{RequestedQuotaBytes: requested, Key: key, Repo: o.Repo, Branch: o.Branch, Path: filepath.Join(s.Data, "benches", key), Mirror: mirror}
+		b := Bench{CreatedFrom: sha, RequestedQuotaBytes: requested, Key: key, Repo: o.Repo, Branch: o.Branch, Path: filepath.Join(s.Data, "benches", key), Mirror: mirror}
 		if remoteErr == nil {
 			b.Checkpoint = sha
 		}
@@ -238,6 +242,7 @@ func (s Store) Checkpoint(key, token string) (*Bench, error) {
 			return err
 		}
 		b.Checkpoint = sha
+		archivepolicy.NoteCheckpoint(context.Background(), s.mirrors(), b)
 		copy := *b
 		copy.Lease = publicLease(b.Lease)
 		result = &copy

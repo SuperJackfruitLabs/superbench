@@ -80,6 +80,9 @@ persisted grace period to have elapsed and explicit approval of the complete fil
 manifest. The default grace period is seven days. See
 [archive and reap](docs/archive.md) for retained artifacts, retry rules and managed
 quota retirement. Archive/reap are local administrative commands in this checkpoint.
+Committed [repository archive policy](docs/automatic-archive.md) can opt into
+automatic read-only archival after a verified unmerged-to-merged checkpoint
+transition. Deletion still requires an exact reviewed plan after the grace period.
 
 ## History and log retention
 
