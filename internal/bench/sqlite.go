@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/history"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -12,7 +13,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const schemaVersion = 5
+const schemaVersion = 6
 
 type reader interface {
 	Query(string, ...any) (*sql.Rows, error)
@@ -100,7 +101,7 @@ func (s Store) migrate(tx *sql.Tx) error {
 	if version == schemaVersion {
 		return nil
 	}
-	if version == 1 || version == 2 || version == 3 || version == 4 {
+	if version == 1 || version == 2 || version == 3 || version == 4 || version == 5 {
 		records, err := loadRecords(tx)
 		if err != nil {
 			return err
@@ -122,7 +123,10 @@ func (s Store) migrate(tx *sql.Tx) error {
 				return e
 			}
 		}
-		_, err = tx.Exec("PRAGMA user_version=5")
+		if err = history.Schema(tx); err != nil {
+			return err
+		}
+		_, err = tx.Exec("PRAGMA user_version=6")
 		return err
 	}
 	if version != 0 {
@@ -144,7 +148,10 @@ func (s Store) migrate(tx *sql.Tx) error {
 			return e
 		}
 	}
-	_, err = tx.Exec("PRAGMA user_version=5")
+	if err = history.Schema(tx); err != nil {
+		return err
+	}
+	_, err = tx.Exec("PRAGMA user_version=6")
 	return err
 }
 func loadRecords(r reader) (database, error) {

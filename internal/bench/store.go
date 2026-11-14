@@ -2,6 +2,7 @@
 package bench
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage"
@@ -32,12 +33,13 @@ type Bench struct {
 	Lease         *Lease `json:",omitempty"`
 }
 type Store struct {
-	State, Data     string
-	CgroupRoot      string
-	reapAfterDelete func() error
-	executor        executionBackend
-	spaceProbe      func(string) (Space, error)
-	quotaApply      func(HostConfig, string, string) (hoststorage.Assignment, error)
+	State, Data        string
+	CgroupRoot         string
+	reapAfterDelete    func() error
+	collectAfterDelete func() error
+	executor           executionBackend
+	spaceProbe         func(string) (Space, error)
+	quotaApply         func(HostConfig, string, string) (hoststorage.Assignment, error)
 }
 type database map[string]*Bench
 
@@ -88,6 +90,9 @@ func (s Store) validate() error {
 // The host-wide OS lock also serializes mirror/worktree operations. SQLite
 // transactions make the authoritative record update atomic independently.
 func (s Store) transaction(fn func(database) error) error {
+	return s.transactionSQL(func(records database, _ *sql.Tx) error { return fn(records) })
+}
+func (s Store) transactionSQL(fn func(database, *sql.Tx) error) error {
 	if err := s.validate(); err != nil {
 		return err
 	}
@@ -120,7 +125,7 @@ func (s Store) transaction(fn func(database) error) error {
 	if err != nil {
 		return err
 	}
-	if err = fn(records); err != nil {
+	if err = fn(records, tx); err != nil {
 		return err
 	}
 	if err = validRecords(records); err != nil {
@@ -140,6 +145,9 @@ func (s Store) transaction(fn func(database) error) error {
 
 // Status does not create directories, lock files, databases or journal files.
 func (s Store) read(fn func(database) error) error {
+	return s.readSQL(func(records database, _ reader) error { return fn(records) })
+}
+func (s Store) readSQL(fn func(database, reader) error) error {
 	if err := s.validate(); err != nil {
 		return err
 	}
@@ -158,7 +166,7 @@ func (s Store) read(fn func(database) error) error {
 		if e != nil {
 			return e
 		}
-		return fn(records)
+		return fn(records, nil)
 	} else if err != nil {
 		return err
 	}
@@ -174,7 +182,7 @@ func (s Store) read(fn func(database) error) error {
 	if err != nil {
 		return err
 	}
-	return fn(records)
+	return fn(records, db)
 }
 
 func atomicWrite(dirPath, target string, raw []byte) error {

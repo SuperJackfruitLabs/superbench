@@ -44,7 +44,7 @@ A core checkpoint does not constitute completion of a phase or the product.
 | Phase | Required outcome | Current evidence |
 |---|---|---|
 | 0 | Host disk alert, reviewed cleanup dry-run, code-stage branch/checkpoint rules | Not implemented by this repository; inspect estate and board settings before changes |
-| 1 | Standalone CLI and host service; durable state/leases; checkpoints/recovery; quotas, shared mirrors/stores; verified archive/reap | CLI, journals, SQLite, fenced Linux execution and host storage tested; local service API added; installer and reviewed archive/reap verified; retention, hooks and integration pending |
+| 1 | Standalone CLI and host service; durable state/leases; checkpoints/recovery; quotas, shared mirrors/stores; verified archive/reap | CLI, journals, SQLite, fenced Linux execution and host storage tested; local service API added; installer and reviewed archive/reap verified; reviewed log/history collection added; automatic retention, cache/journal collection, hooks and integration pending |
 | 2 | Suite adapters, card panel, locality scoring, witness events; read-only web, file/diff/log/timeline views, terminal attach and MCP | Pending; charter/treaty contracts precede consumers; visual mockups before UI |
 | 3 | Remote editor launch/browser IDE; second-host recovery drill; per-bench isolation; Salaam layout and execution-host integration | Pending |
 
@@ -79,10 +79,11 @@ keep that approval distinct from permission to implement the product.
   Actual XFS zero-byte-file limits, migration, overcommit and retirement are verified.
 
 
-## Retention slice still required
+## Remaining retention work
 
-Collecting logs must preserve held/failed execution evidence until explicit
-reconciliation. Use a reviewed candidate plan and verify the same files/ownership
+Reviewed log collection and history are implemented in [retention.md](retention.md),
+including protected held/failed evidence and durable interruption recovery.
+Automatic policy execution and broader collection remain pending. Use a reviewed candidate plan and verify the same files/ownership
 before collection; never treat age as proof that a writer stopped. Shared cache
 and abandoned-clone collection need the same active-writer and namespace checks.
 

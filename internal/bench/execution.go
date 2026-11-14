@@ -3,13 +3,17 @@ package bench
 import (
 	"context"
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/history"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/retention"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"syscall"
+	"time"
 )
 
 type Execution struct {
@@ -98,7 +102,10 @@ func (s Store) Run(ctx context.Context, key, holder string, args []string, check
 	}
 	execution := &Execution{ID: id, Root: root, BootID: identity.BootID, HostID: identity.HostID, Phase: "starting", Log: filepath.Join(s.State, "run-"+id+".log")}
 	var b *Bench
-	err = s.transaction(func(db database) error {
+	err = s.transactionSQL(func(db database, tx *sql.Tx) error {
+		if e := retention.Directory(s.State); e != nil {
+			return e
+		}
 		if e := s.admit(); e != nil {
 			return e
 		}
@@ -126,6 +133,9 @@ func (s Store) Run(ctx context.Context, key, holder string, args []string, check
 		}
 		original.Lease = lease
 		original.Lease.Execution = execution
+		if e = history.Start(tx, history.Record{ID: id, Key: key, Holder: holder, StartedAt: time.Now().UTC()}); e != nil {
+			return e
+		}
 		copy := *original
 		b = &copy
 		return nil
@@ -186,6 +196,9 @@ func (s Store) Run(ctx context.Context, key, holder string, args []string, check
 	result.LogTruncated = capture.truncated
 	if logErr != nil {
 		return result, fmt.Errorf("command log failed; stopped lease retained: %w", logErr)
+	}
+	if err = s.sealRunLog(id, capture, &result.ExitCode, result.LogTruncated); err != nil {
+		return result, fmt.Errorf("log history save failed; stopped lease retained: %w", err)
 	}
 	if waitErr != nil {
 		return result, fmt.Errorf("command failed; stopped lease retained: %w", waitErr)

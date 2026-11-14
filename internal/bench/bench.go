@@ -1,8 +1,10 @@
 package bench
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/history"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -178,7 +180,7 @@ func (s Store) Checkpoint(key, token string) (*Bench, error) {
 	return result, err
 }
 func (s Store) Release(key, token string) error {
-	return s.transaction(func(db database) error {
+	return s.transactionSQL(func(db database, tx *sql.Tx) error {
 		b, err := get(db, key)
 		if err != nil {
 			return err
@@ -201,6 +203,11 @@ func (s Store) Release(key, token string) error {
 		}
 		if err = confirmed(b, sha); err != nil {
 			return err
+		}
+		if b.Lease.Execution != nil {
+			if err = history.Released(tx, b.Lease.Execution.ID, b.Checkpoint); err != nil {
+				return err
+			}
 		}
 		b.Lease = nil
 		return nil

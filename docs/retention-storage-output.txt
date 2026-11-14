@@ -1,0 +1,21 @@
+PASS: managed host config verifies a separate data filesystem and fixed-policy shared caps
+PASS: managed frozen setup, build and warm/offline handoffs work inside project quotas
+PASS: noisy command output is bounded, marked truncated and still checkpointed safely
+PASS: package clone mutation leaves the other bench intact
+PASS: bench hard cap refuses writes while the shared store stays writable
+PASS: helper refuses escaping keys, writable/symlink policy and allocation-policy drift
+PASS: disabled project enforcement blocks new work until restored
+PASS: quota enforcement is required and total cap reservations reject overcommit
+PASS: interrupted privileged allocation resumes with the same project and reservation
+PASS: interrupted mirror publication is isolated; retry publishes a complete mirror
+PASS: incomplete privileged ledger fails closed without defaulting to fresh allocations
+PASS: filesystem UUID binding survives remount on a different loop device
+PASS: a different filesystem at the same path is refused
+DONE: managed storage integration passed
+PASS: same-filesystem nested bind mount is refused without deleting its contents
+PASS: explicit approval required; open unlinked data retains quota until close; retry retires project
+PASS: zero-block open inode independently prevents reservation release
+PASS: wrong project IDs and symlink targets refuse privileged empty-directory retirement
+PASS: previous binaries refuse archive schema and retired-project ledger
+PASS: SIGKILL after quota retirement retains approval; retry finalizes only once; checkpoint recovers
+DONE: managed archive/reap integration passed
