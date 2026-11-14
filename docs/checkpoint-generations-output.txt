@@ -1,0 +1,874 @@
+Checkpoint generation Linux verification, 2026-11-15
+Working producer/reader primitive; uncommitted SuperBench candidate.
+Linux 7.0.0-22-generic; go1.26.4 linux/amd64; Git 2.53.0.
+All recorded required checks, fresh builds and dedicated race tests exited 0.
+
+The real-process test grants only a disposable fixture lifecycle gate. It
+establishes durable journal/crash/retry behavior: a real second-repository
+pre-receive hook pauses publication after the first task and immutable tag pin;
+the parent SIGKILLs its entire owned helper/Git/hook process group. Two fresh
+helper processes preserve the exact raw intent, Prepared timestamp, generation,
+first successful refs and deterministic seal. Partial publication has no seal.
+All Git repositories and remote receive hooks are local disposable fixtures.
+Final process inspection found no remaining test helper process.
+
+Canonical shared contract provenance:
+{
+  "repository": "https://forge.superjackfruit.com/SuperJackfruitLabs/treaty",
+  "revision": "250ca4f7d4380cfe236abe577bb4e608fa6fdf46",
+  "status": "proposed checkpoint extension; no suite consumer deployment implied",
+  "files": {
+    "schemas/superbench/checkpoint.v1.json": {
+      "local": "checkpoint.v1.json",
+      "sha256": "9c3dd1f1ffd076ac0c4546b427283c1f439eae7e9a7f750e812f0fc47babe008"
+    },
+    "fixtures/superbench-api/checkpoints.json": {
+      "local": "checkpoints.json",
+      "sha256": "bc1c11ba57c8ccbe7f683108c8866ac0a51bdb7b219e87bd664c033bff7f52ed"
+    }
+  }
+}
+
+The default producer conformance test is mandatory and uses these exact pinned
+bytes: 15 valid + 75 invalid manifest bodies = 90 shared manifest bodies.
+The Treaty focused suite's 92 test count additionally includes two envelope/
+schema assertions; it is not the producer corpus body count.
+
+Source verification chronology:
+1. Initial complete source snapshot SHA256:
+   004ec61485b6fedc3ec3dd3e54b0fd7e593baa9a2f66d96d31fe66af65bc693b
+   This includes the mandatory canonical fixtures and real-process test.
+2. Initial full Linux check, fresh three-binary build and uncached verbose
+   checkpointset race suite passed. Complete logs are preserved below.
+3. Final control-push guards were synchronized into that same isolated source:
+   a48a0aab43a6a7a1153dc8c88bb4bded502f144531511768a87dc2ae717efaa3
+     internal/checkpointset/git.go
+   6f83d74b171cba691c78a65150941f78a84e0488b8fbe637724d14e13a8fe7fc
+     internal/checkpointset/coordinator_push_test.go
+   The entire required Linux check/build and uncached verbose race suite were
+   then repeated. Real Git regressions verify client pre-push hooks are skipped,
+   unrelated annotated tags are not followed, required pins reach the remote,
+   and server receive hooks still reject publication.
+
+Final required-build SHA256:
+BENCH e8407bb5d95e5a19e59985bc4b19e6a805ca099b61987089653c091fe4849320
+BENCH_QUOTA 2178ff6a6c139a2b7a365095453f4be8d8f3b063dc3aebf9043d001719326725
+BENCHD de437e1c6047982b60b362bf5692f7369fe8ba11d85b3710fe821ad9ec9a06f5
+The new package is exercised through Go tests, including its test-only process
+helper. Existing command binaries were rebuilt by the required check script.
+
+Commands below use source-relative paths and omit machine-specific cache paths.
+No deployment was performed. Full successful logs follow each command group.
+
+Initial Linux required check and fresh builds
+sh scripts/check.sh
+go build -o BENCH ./cmd/bench
+go build -o BENCH_QUOTA ./cmd/bench-quota
+go build -o BENCHD ./cmd/benchd
+
+....
+----------------------------------------------------------------------
+Ran 4 tests in 0.004s
+
+OK
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/cmd/bench	1.616s
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/cmd/bench-quota	[no test files]
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/cmd/benchd	[no test files]
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/architecture	1.043s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/archivepolicy	1.078s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/autoarchive	6.597s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/bench	16.860s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/cachepolicy	1.018s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/checkpointset	9.626s
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/client	[no test files]
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/creation	1.028s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/execution	1.016s
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/history	[no test files]
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage	1.024s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/integration	4.415s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/maintenance	1.138s
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model	[no test files]
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/output	1.026s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/protocol	1.031s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotapolicy	1.021s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/reap	1.176s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/repository	5.988s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/retention	1.326s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/service	2.086s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/setup	2.053s
+
+Initial uncached verbose checkpoint generation race tests
+go test -race ./internal/checkpointset -count=1 -v
+
+=== RUN   TestCheckpointProcessHelper
+--- PASS: TestCheckpointProcessHelper (0.00s)
+=== RUN   TestCoordinatorProcessSIGKILLRetainsJournalAndResumesExactSeal
+    coordinator_process_test.go:219: real helper process group killed after first task/pin; durable Prepared/raw bytes and deterministic seal survived two fresh-process retries (fixture gate only)
+--- PASS: TestCoordinatorProcessSIGKILLRetainsJournalAndResumesExactSeal (3.39s)
+=== RUN   TestCoordinatorRetainsPartialPushesAndRetriesSameGeneration
+=== RUN   TestCoordinatorRetainsPartialPushesAndRetriesSameGeneration/second_task
+=== RUN   TestCoordinatorRetainsPartialPushesAndRetriesSameGeneration/second_pin
+=== RUN   TestCoordinatorRetainsPartialPushesAndRetriesSameGeneration/seal
+--- PASS: TestCoordinatorRetainsPartialPushesAndRetriesSameGeneration (2.23s)
+    --- PASS: TestCoordinatorRetainsPartialPushesAndRetriesSameGeneration/second_task (0.71s)
+    --- PASS: TestCoordinatorRetainsPartialPushesAndRetriesSameGeneration/second_pin (0.75s)
+    --- PASS: TestCoordinatorRetainsPartialPushesAndRetriesSameGeneration/seal (0.77s)
+=== RUN   TestRecoverSealedGenerationAfterNewPartialGenerationAndLostState
+--- PASS: TestRecoverSealedGenerationAfterNewPartialGenerationAndLostState (0.95s)
+=== RUN   TestCoordinatorRequiresGateAndRefusesForeignMetadata
+--- PASS: TestCoordinatorRequiresGateAndRefusesForeignMetadata (0.21s)
+=== RUN   TestCoordinatorRefusesOccupiedPinsAndAlternatePushIdentity
+=== RUN   TestCoordinatorRefusesOccupiedPinsAndAlternatePushIdentity/occupied_pin
+=== RUN   TestCoordinatorRefusesOccupiedPinsAndAlternatePushIdentity/alternate_push_URL
+--- PASS: TestCoordinatorRefusesOccupiedPinsAndAlternatePushIdentity (0.37s)
+    --- PASS: TestCoordinatorRefusesOccupiedPinsAndAlternatePushIdentity/occupied_pin (0.21s)
+    --- PASS: TestCoordinatorRefusesOccupiedPinsAndAlternatePushIdentity/alternate_push_URL (0.17s)
+=== RUN   TestRecoverRefusesForeignMetadataBranchDespiteLocalSealObjects
+--- PASS: TestRecoverRefusesForeignMetadataBranchDespiteLocalSealObjects (0.40s)
+=== RUN   TestCheckpointLockHonorsCancellation
+--- PASS: TestCheckpointLockHonorsCancellation (0.16s)
+=== RUN   TestCheckpointHistoryKeepsStableParticipantLayout
+=== RUN   TestCheckpointHistoryKeepsStableParticipantLayout/remove_member
+=== RUN   TestCheckpointHistoryKeepsStableParticipantLayout/rename_member
+=== RUN   TestCheckpointHistoryKeepsStableParticipantLayout/change_task_ref
+=== RUN   TestCheckpointHistoryKeepsStableParticipantLayout/reuse_generation
+--- PASS: TestCheckpointHistoryKeepsStableParticipantLayout (0.59s)
+    --- PASS: TestCheckpointHistoryKeepsStableParticipantLayout/remove_member (0.05s)
+    --- PASS: TestCheckpointHistoryKeepsStableParticipantLayout/rename_member (0.05s)
+    --- PASS: TestCheckpointHistoryKeepsStableParticipantLayout/change_task_ref (0.06s)
+    --- PASS: TestCheckpointHistoryKeepsStableParticipantLayout/reuse_generation (0.06s)
+=== RUN   TestKnownSecondPinConflictPrecedesAllTaskPublication
+--- PASS: TestKnownSecondPinConflictPrecedesAllTaskPublication (0.22s)
+=== RUN   TestManifestRoundTripAndRawDigest
+--- PASS: TestManifestRoundTripAndRawDigest (0.00s)
+=== RUN   TestManifestIdentityRefsAndBounds
+=== RUN   TestManifestIdentityRefsAndBounds/previous-format
+=== RUN   TestManifestIdentityRefsAndBounds/duplicate-name
+=== RUN   TestManifestIdentityRefsAndBounds/bench
+=== RUN   TestManifestIdentityRefsAndBounds/task-short
+=== RUN   TestManifestIdentityRefsAndBounds/previous-empty
+=== RUN   TestManifestIdentityRefsAndBounds/duplicate-task
+=== RUN   TestManifestIdentityRefsAndBounds/version
+=== RUN   TestManifestIdentityRefsAndBounds/generation
+=== RUN   TestManifestIdentityRefsAndBounds/empty-members
+=== RUN   TestManifestIdentityRefsAndBounds/task-tag
+=== RUN   TestManifestIdentityRefsAndBounds/task-lock
+=== RUN   TestManifestIdentityRefsAndBounds/pin-generation
+=== RUN   TestManifestIdentityRefsAndBounds/pin-branch
+=== RUN   TestManifestIdentityRefsAndBounds/commit-uppercase
+=== RUN   TestManifestIdentityRefsAndBounds/coordinator-missing
+=== RUN   TestManifestIdentityRefsAndBounds/coordinator-case
+=== RUN   TestManifestIdentityRefsAndBounds/member-name
+=== RUN   TestManifestIdentityRefsAndBounds/member-name-long
+=== RUN   TestManifestIdentityRefsAndBounds/task-reflog
+=== RUN   TestManifestIdentityRefsAndBounds/task-control
+=== RUN   TestManifestIdentityRefsAndBounds/format
+=== RUN   TestManifestIdentityRefsAndBounds/unsorted
+=== RUN   TestManifestIdentityRefsAndBounds/commit-length
+--- PASS: TestManifestIdentityRefsAndBounds (0.02s)
+    --- PASS: TestManifestIdentityRefsAndBounds/previous-format (0.00s)
+    --- PASS: TestManifestIdentityRefsAndBounds/duplicate-name (0.00s)
+    --- PASS: TestManifestIdentityRefsAndBounds/bench (0.00s)
+    --- PASS: TestManifestIdentityRefsAndBounds/task-short (0.00s)
+    --- PASS: TestManifestIdentityRefsAndBounds/previous-empty (0.00s)
+    --- PASS: TestManifestIdentityRefsAndBounds/duplicate-task (0.00s)
+    --- PASS: TestManifestIdentityRefsAndBounds/version (0.00s)
+    --- PASS: TestManifestIdentityRefsAndBounds/generation (0.00s)
+    --- PASS: TestManifestIdentityRefsAndBounds/empty-members (0.00s)
+    --- PASS: TestManifestIdentityRefsAndBounds/task-tag (0.00s)
+    --- PASS: TestManifestIdentityRefsAndBounds/task-lock (0.00s)
+    --- PASS: TestManifestIdentityRefsAndBounds/pin-generation (0.00s)
+    --- PASS: TestManifestIdentityRefsAndBounds/pin-branch (0.00s)
+    --- PASS: TestManifestIdentityRefsAndBounds/commit-uppercase (0.00s)
+    --- PASS: TestManifestIdentityRefsAndBounds/coordinator-missing (0.00s)
+    --- PASS: TestManifestIdentityRefsAndBounds/coordinator-case (0.00s)
+    --- PASS: TestManifestIdentityRefsAndBounds/member-name (0.00s)
+    --- PASS: TestManifestIdentityRefsAndBounds/member-name-long (0.00s)
+    --- PASS: TestManifestIdentityRefsAndBounds/task-reflog (0.00s)
+    --- PASS: TestManifestIdentityRefsAndBounds/task-control (0.00s)
+    --- PASS: TestManifestIdentityRefsAndBounds/format (0.00s)
+    --- PASS: TestManifestIdentityRefsAndBounds/unsorted (0.00s)
+    --- PASS: TestManifestIdentityRefsAndBounds/commit-length (0.00s)
+=== RUN   TestRepositoryIdentities
+--- PASS: TestRepositoryIdentities (0.00s)
+=== RUN   TestStrictRawJSON
+--- PASS: TestStrictRawJSON (0.05s)
+=== RUN   TestDeterministicRefs
+--- PASS: TestDeterministicRefs (0.00s)
+=== RUN   TestSharedCheckpointCorpus
+=== RUN   TestSharedCheckpointCorpus/valid/two-repository-genesis
+=== RUN   TestSharedCheckpointCorpus/valid/mixed-object-formats-with-sha256-coordinator
+=== RUN   TestSharedCheckpointCorpus/valid/sha1-previous-generation
+=== RUN   TestSharedCheckpointCorpus/valid/ssh-identity-and-scp
+=== RUN   TestSharedCheckpointCorpus/valid/local-absolute-path-with-spaces
+=== RUN   TestSharedCheckpointCorpus/valid/file-url-identities
+=== RUN   TestSharedCheckpointCorpus/valid/unicode-task-reference
+=== RUN   TestSharedCheckpointCorpus/valid/one-member
+=== RUN   TestSharedCheckpointCorpus/valid/thirty-two-members
+=== RUN   TestSharedCheckpointCorpus/valid/scp-bracketed-ipv6
+=== RUN   TestSharedCheckpointCorpus/valid/scp-opaque-path-colon
+=== RUN   TestSharedCheckpointCorpus/valid/scp-opaque-path-space
+=== RUN   TestSharedCheckpointCorpus/valid/scp-opaque-path-query-and-fragment
+=== RUN   TestSharedCheckpointCorpus/valid/astral-unicode-task-reference
+=== RUN   TestSharedCheckpointCorpus/valid/repository-exact-4096-ascii-bytes
+=== RUN   TestSharedCheckpointCorpus/invalid/wrong-version
+=== RUN   TestSharedCheckpointCorpus/invalid/uppercase-bench-id
+=== RUN   TestSharedCheckpointCorpus/invalid/short-generation
+=== RUN   TestSharedCheckpointCorpus/invalid/null-previous
+=== RUN   TestSharedCheckpointCorpus/invalid/empty-members
+=== RUN   TestSharedCheckpointCorpus/invalid/unknown-holder
+=== RUN   TestSharedCheckpointCorpus/invalid/unknown-lease-token
+=== RUN   TestSharedCheckpointCorpus/invalid/unknown-host-path
+=== RUN   TestSharedCheckpointCorpus/invalid/unknown-embedded-digest
+=== RUN   TestSharedCheckpointCorpus/invalid/missing-generation
+=== RUN   TestSharedCheckpointCorpus/invalid/too-many-members
+=== RUN   TestSharedCheckpointCorpus/invalid/unknown-member-checkout-path
+=== RUN   TestSharedCheckpointCorpus/invalid/sha256-with-sha1-commit
+=== RUN   TestSharedCheckpointCorpus/invalid/uppercase-commit
+=== RUN   TestSharedCheckpointCorpus/invalid/unsupported-object-format
+=== RUN   TestSharedCheckpointCorpus/invalid/invalid-repository-name
+=== RUN   TestSharedCheckpointCorpus/invalid/empty-repository
+=== RUN   TestSharedCheckpointCorpus/invalid/option-repository
+=== RUN   TestSharedCheckpointCorpus/invalid/nul-repository
+=== RUN   TestSharedCheckpointCorpus/invalid/newline-repository
+=== RUN   TestSharedCheckpointCorpus/invalid/oversize-repository
+=== RUN   TestSharedCheckpointCorpus/invalid/unsafe-task-ref-00
+=== RUN   TestSharedCheckpointCorpus/invalid/unsafe-task-ref-01
+=== RUN   TestSharedCheckpointCorpus/invalid/unsafe-task-ref-02
+=== RUN   TestSharedCheckpointCorpus/invalid/unsafe-task-ref-03
+=== RUN   TestSharedCheckpointCorpus/invalid/unsafe-task-ref-04
+=== RUN   TestSharedCheckpointCorpus/invalid/unsafe-task-ref-05
+=== RUN   TestSharedCheckpointCorpus/invalid/unsafe-task-ref-06
+=== RUN   TestSharedCheckpointCorpus/invalid/unsafe-task-ref-07
+=== RUN   TestSharedCheckpointCorpus/invalid/unsafe-task-ref-08
+=== RUN   TestSharedCheckpointCorpus/invalid/unsafe-task-ref-09
+=== RUN   TestSharedCheckpointCorpus/invalid/unsafe-task-ref-10
+=== RUN   TestSharedCheckpointCorpus/invalid/unsafe-task-ref-11
+=== RUN   TestSharedCheckpointCorpus/invalid/unsafe-task-ref-12
+=== RUN   TestSharedCheckpointCorpus/invalid/unsafe-task-ref-13
+=== RUN   TestSharedCheckpointCorpus/invalid/unsafe-task-ref-14
+=== RUN   TestSharedCheckpointCorpus/invalid/unsafe-task-ref-15
+=== RUN   TestSharedCheckpointCorpus/invalid/unsafe-task-ref-16
+=== RUN   TestSharedCheckpointCorpus/invalid/unsafe-task-ref-17
+=== RUN   TestSharedCheckpointCorpus/invalid/unsafe-task-ref-18
+=== RUN   TestSharedCheckpointCorpus/invalid/unsafe-task-ref-19
+=== RUN   TestSharedCheckpointCorpus/invalid/unsorted-members
+=== RUN   TestSharedCheckpointCorpus/invalid/duplicate-member-name
+=== RUN   TestSharedCheckpointCorpus/invalid/missing-coordinator
+=== RUN   TestSharedCheckpointCorpus/invalid/wrong-generation-pin
+=== RUN   TestSharedCheckpointCorpus/invalid/wrong-member-pin
+=== RUN   TestSharedCheckpointCorpus/invalid/duplicate-repository-task-pair
+=== RUN   TestSharedCheckpointCorpus/invalid/previous-format-does-not-match-coordinator
+=== RUN   TestSharedCheckpointCorpus/invalid/http-username
+=== RUN   TestSharedCheckpointCorpus/invalid/http-password
+=== RUN   TestSharedCheckpointCorpus/invalid/ssh-password
+=== RUN   TestSharedCheckpointCorpus/invalid/ssh-empty-password
+=== RUN   TestSharedCheckpointCorpus/invalid/url-query
+=== RUN   TestSharedCheckpointCorpus/invalid/empty-url-query
+=== RUN   TestSharedCheckpointCorpus/invalid/url-fragment
+=== RUN   TestSharedCheckpointCorpus/invalid/empty-url-fragment
+=== RUN   TestSharedCheckpointCorpus/invalid/ssh-query
+=== RUN   TestSharedCheckpointCorpus/invalid/remote-file-host
+=== RUN   TestSharedCheckpointCorpus/invalid/file-query
+=== RUN   TestSharedCheckpointCorpus/invalid/file-userinfo
+=== RUN   TestSharedCheckpointCorpus/invalid/relative-local-path
+=== RUN   TestSharedCheckpointCorpus/invalid/unknown-url-scheme
+=== RUN   TestSharedCheckpointCorpus/invalid/helper-remote
+=== RUN   TestSharedCheckpointCorpus/invalid/scp-password
+=== RUN   TestSharedCheckpointCorpus/invalid/empty-ssh-username
+=== RUN   TestSharedCheckpointCorpus/invalid/bare-scp-host
+=== RUN   TestSharedCheckpointCorpus/invalid/malformed-scp-ipv6
+=== RUN   TestSharedCheckpointCorpus/invalid/scp-unicode-username
+=== RUN   TestSharedCheckpointCorpus/invalid/scp-whitespace-username
+=== RUN   TestSharedCheckpointCorpus/invalid/scp-punctuation-host
+=== RUN   TestSharedCheckpointCorpus/invalid/scp-leading-hyphen-host
+=== RUN   TestSharedCheckpointCorpus/invalid/lone-high-surrogate-task-ref
+=== RUN   TestSharedCheckpointCorpus/invalid/lone-low-surrogate-task-ref
+=== RUN   TestSharedCheckpointCorpus/invalid/lone-surrogate-absolute-repository
+=== RUN   TestSharedCheckpointCorpus/invalid/repository-unicode-exceeds-4096-utf8-bytes
+--- PASS: TestSharedCheckpointCorpus (0.10s)
+    --- PASS: TestSharedCheckpointCorpus/valid/two-repository-genesis (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/valid/mixed-object-formats-with-sha256-coordinator (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/valid/sha1-previous-generation (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/valid/ssh-identity-and-scp (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/valid/local-absolute-path-with-spaces (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/valid/file-url-identities (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/valid/unicode-task-reference (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/valid/one-member (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/valid/thirty-two-members (0.01s)
+    --- PASS: TestSharedCheckpointCorpus/valid/scp-bracketed-ipv6 (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/valid/scp-opaque-path-colon (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/valid/scp-opaque-path-space (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/valid/scp-opaque-path-query-and-fragment (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/valid/astral-unicode-task-reference (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/valid/repository-exact-4096-ascii-bytes (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/wrong-version (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/uppercase-bench-id (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/short-generation (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/null-previous (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/empty-members (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unknown-holder (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unknown-lease-token (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unknown-host-path (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unknown-embedded-digest (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/missing-generation (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/too-many-members (0.01s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unknown-member-checkout-path (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/sha256-with-sha1-commit (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/uppercase-commit (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unsupported-object-format (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/invalid-repository-name (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/empty-repository (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/option-repository (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/nul-repository (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/newline-repository (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/oversize-repository (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unsafe-task-ref-00 (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unsafe-task-ref-01 (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unsafe-task-ref-02 (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unsafe-task-ref-03 (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unsafe-task-ref-04 (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unsafe-task-ref-05 (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unsafe-task-ref-06 (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unsafe-task-ref-07 (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unsafe-task-ref-08 (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unsafe-task-ref-09 (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unsafe-task-ref-10 (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unsafe-task-ref-11 (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unsafe-task-ref-12 (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unsafe-task-ref-13 (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unsafe-task-ref-14 (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unsafe-task-ref-15 (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unsafe-task-ref-16 (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unsafe-task-ref-17 (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unsafe-task-ref-18 (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unsafe-task-ref-19 (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unsorted-members (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/duplicate-member-name (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/missing-coordinator (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/wrong-generation-pin (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/wrong-member-pin (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/duplicate-repository-task-pair (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/previous-format-does-not-match-coordinator (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/http-username (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/http-password (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/ssh-password (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/ssh-empty-password (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/url-query (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/empty-url-query (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/url-fragment (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/empty-url-fragment (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/ssh-query (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/remote-file-host (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/file-query (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/file-userinfo (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/relative-local-path (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unknown-url-scheme (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/helper-remote (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/scp-password (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/empty-ssh-username (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/bare-scp-host (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/malformed-scp-ipv6 (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/scp-unicode-username (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/scp-whitespace-username (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/scp-punctuation-host (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/scp-leading-hyphen-host (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/lone-high-surrogate-task-ref (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/lone-low-surrogate-task-ref (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/lone-surrogate-absolute-repository (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/repository-unicode-exceeds-4096-utf8-bytes (0.00s)
+=== RUN   TestUnicodeScalarsRemainLossless
+--- PASS: TestUnicodeScalarsRemainLossless (0.00s)
+=== RUN   TestSCPOpaquePathAndASCIIIdentity
+--- PASS: TestSCPOpaquePathAndASCIIIdentity (0.00s)
+=== RUN   TestPinnedCheckpointSources
+--- PASS: TestPinnedCheckpointSources (0.00s)
+PASS
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/checkpointset	9.709s
+
+Final Linux required check/build after control-push guard synchronization
+sh scripts/check.sh
+
+....
+----------------------------------------------------------------------
+Ran 4 tests in 0.005s
+
+OK
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/cmd/bench	(cached)
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/cmd/bench-quota	[no test files]
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/cmd/benchd	[no test files]
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/architecture	1.035s
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/archivepolicy	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/autoarchive	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/bench	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/cachepolicy	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/checkpointset	9.811s
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/client	[no test files]
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/creation	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/execution	(cached)
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/history	[no test files]
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/integration	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/maintenance	(cached)
+?   	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model	[no test files]
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/output	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/protocol	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotapolicy	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/reap	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/repository	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/retention	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/service	(cached)
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/setup	(cached)
+
+Final uncached verbose checkpoint generation race tests
+go test -race ./internal/checkpointset -count=1 -v
+
+=== RUN   TestCheckpointProcessHelper
+--- PASS: TestCheckpointProcessHelper (0.00s)
+=== RUN   TestCoordinatorProcessSIGKILLRetainsJournalAndResumesExactSeal
+    coordinator_process_test.go:219: real helper process group killed after first task/pin; durable Prepared/raw bytes and deterministic seal survived two fresh-process retries (fixture gate only)
+--- PASS: TestCoordinatorProcessSIGKILLRetainsJournalAndResumesExactSeal (3.05s)
+=== RUN   TestControlPushDoesNotLaunchClientHooksOrFollowUnrelatedTags
+--- PASS: TestControlPushDoesNotLaunchClientHooksOrFollowUnrelatedTags (0.42s)
+=== RUN   TestControlPushStillRunsServerReceiveHooks
+--- PASS: TestControlPushStillRunsServerReceiveHooks (0.29s)
+=== RUN   TestCoordinatorRetainsPartialPushesAndRetriesSameGeneration
+=== RUN   TestCoordinatorRetainsPartialPushesAndRetriesSameGeneration/second_task
+=== RUN   TestCoordinatorRetainsPartialPushesAndRetriesSameGeneration/second_pin
+=== RUN   TestCoordinatorRetainsPartialPushesAndRetriesSameGeneration/seal
+--- PASS: TestCoordinatorRetainsPartialPushesAndRetriesSameGeneration (2.35s)
+    --- PASS: TestCoordinatorRetainsPartialPushesAndRetriesSameGeneration/second_task (0.72s)
+    --- PASS: TestCoordinatorRetainsPartialPushesAndRetriesSameGeneration/second_pin (0.82s)
+    --- PASS: TestCoordinatorRetainsPartialPushesAndRetriesSameGeneration/seal (0.80s)
+=== RUN   TestRecoverSealedGenerationAfterNewPartialGenerationAndLostState
+--- PASS: TestRecoverSealedGenerationAfterNewPartialGenerationAndLostState (0.96s)
+=== RUN   TestCoordinatorRequiresGateAndRefusesForeignMetadata
+--- PASS: TestCoordinatorRequiresGateAndRefusesForeignMetadata (0.21s)
+=== RUN   TestCoordinatorRefusesOccupiedPinsAndAlternatePushIdentity
+=== RUN   TestCoordinatorRefusesOccupiedPinsAndAlternatePushIdentity/occupied_pin
+=== RUN   TestCoordinatorRefusesOccupiedPinsAndAlternatePushIdentity/alternate_push_URL
+--- PASS: TestCoordinatorRefusesOccupiedPinsAndAlternatePushIdentity (0.34s)
+    --- PASS: TestCoordinatorRefusesOccupiedPinsAndAlternatePushIdentity/occupied_pin (0.19s)
+    --- PASS: TestCoordinatorRefusesOccupiedPinsAndAlternatePushIdentity/alternate_push_URL (0.15s)
+=== RUN   TestRecoverRefusesForeignMetadataBranchDespiteLocalSealObjects
+--- PASS: TestRecoverRefusesForeignMetadataBranchDespiteLocalSealObjects (0.44s)
+=== RUN   TestCheckpointLockHonorsCancellation
+--- PASS: TestCheckpointLockHonorsCancellation (0.15s)
+=== RUN   TestCheckpointHistoryKeepsStableParticipantLayout
+=== RUN   TestCheckpointHistoryKeepsStableParticipantLayout/remove_member
+=== RUN   TestCheckpointHistoryKeepsStableParticipantLayout/rename_member
+=== RUN   TestCheckpointHistoryKeepsStableParticipantLayout/change_task_ref
+=== RUN   TestCheckpointHistoryKeepsStableParticipantLayout/reuse_generation
+--- PASS: TestCheckpointHistoryKeepsStableParticipantLayout (0.64s)
+    --- PASS: TestCheckpointHistoryKeepsStableParticipantLayout/remove_member (0.05s)
+    --- PASS: TestCheckpointHistoryKeepsStableParticipantLayout/rename_member (0.05s)
+    --- PASS: TestCheckpointHistoryKeepsStableParticipantLayout/change_task_ref (0.06s)
+    --- PASS: TestCheckpointHistoryKeepsStableParticipantLayout/reuse_generation (0.06s)
+=== RUN   TestKnownSecondPinConflictPrecedesAllTaskPublication
+--- PASS: TestKnownSecondPinConflictPrecedesAllTaskPublication (0.23s)
+=== RUN   TestManifestRoundTripAndRawDigest
+--- PASS: TestManifestRoundTripAndRawDigest (0.00s)
+=== RUN   TestManifestIdentityRefsAndBounds
+=== RUN   TestManifestIdentityRefsAndBounds/task-control
+=== RUN   TestManifestIdentityRefsAndBounds/format
+=== RUN   TestManifestIdentityRefsAndBounds/duplicate-name
+=== RUN   TestManifestIdentityRefsAndBounds/unsorted
+=== RUN   TestManifestIdentityRefsAndBounds/version
+=== RUN   TestManifestIdentityRefsAndBounds/bench
+=== RUN   TestManifestIdentityRefsAndBounds/coordinator-missing
+=== RUN   TestManifestIdentityRefsAndBounds/empty-members
+=== RUN   TestManifestIdentityRefsAndBounds/member-name
+=== RUN   TestManifestIdentityRefsAndBounds/member-name-long
+=== RUN   TestManifestIdentityRefsAndBounds/task-tag
+=== RUN   TestManifestIdentityRefsAndBounds/pin-generation
+=== RUN   TestManifestIdentityRefsAndBounds/generation
+=== RUN   TestManifestIdentityRefsAndBounds/coordinator-case
+=== RUN   TestManifestIdentityRefsAndBounds/task-short
+=== RUN   TestManifestIdentityRefsAndBounds/task-reflog
+=== RUN   TestManifestIdentityRefsAndBounds/pin-branch
+=== RUN   TestManifestIdentityRefsAndBounds/commit-length
+=== RUN   TestManifestIdentityRefsAndBounds/previous-empty
+=== RUN   TestManifestIdentityRefsAndBounds/previous-format
+=== RUN   TestManifestIdentityRefsAndBounds/task-lock
+=== RUN   TestManifestIdentityRefsAndBounds/commit-uppercase
+=== RUN   TestManifestIdentityRefsAndBounds/duplicate-task
+--- PASS: TestManifestIdentityRefsAndBounds (0.01s)
+    --- PASS: TestManifestIdentityRefsAndBounds/task-control (0.00s)
+    --- PASS: TestManifestIdentityRefsAndBounds/format (0.00s)
+    --- PASS: TestManifestIdentityRefsAndBounds/duplicate-name (0.00s)
+    --- PASS: TestManifestIdentityRefsAndBounds/unsorted (0.00s)
+    --- PASS: TestManifestIdentityRefsAndBounds/version (0.00s)
+    --- PASS: TestManifestIdentityRefsAndBounds/bench (0.00s)
+    --- PASS: TestManifestIdentityRefsAndBounds/coordinator-missing (0.00s)
+    --- PASS: TestManifestIdentityRefsAndBounds/empty-members (0.00s)
+    --- PASS: TestManifestIdentityRefsAndBounds/member-name (0.00s)
+    --- PASS: TestManifestIdentityRefsAndBounds/member-name-long (0.00s)
+    --- PASS: TestManifestIdentityRefsAndBounds/task-tag (0.00s)
+    --- PASS: TestManifestIdentityRefsAndBounds/pin-generation (0.00s)
+    --- PASS: TestManifestIdentityRefsAndBounds/generation (0.00s)
+    --- PASS: TestManifestIdentityRefsAndBounds/coordinator-case (0.00s)
+    --- PASS: TestManifestIdentityRefsAndBounds/task-short (0.00s)
+    --- PASS: TestManifestIdentityRefsAndBounds/task-reflog (0.00s)
+    --- PASS: TestManifestIdentityRefsAndBounds/pin-branch (0.00s)
+    --- PASS: TestManifestIdentityRefsAndBounds/commit-length (0.00s)
+    --- PASS: TestManifestIdentityRefsAndBounds/previous-empty (0.00s)
+    --- PASS: TestManifestIdentityRefsAndBounds/previous-format (0.00s)
+    --- PASS: TestManifestIdentityRefsAndBounds/task-lock (0.00s)
+    --- PASS: TestManifestIdentityRefsAndBounds/commit-uppercase (0.00s)
+    --- PASS: TestManifestIdentityRefsAndBounds/duplicate-task (0.00s)
+=== RUN   TestRepositoryIdentities
+--- PASS: TestRepositoryIdentities (0.00s)
+=== RUN   TestStrictRawJSON
+--- PASS: TestStrictRawJSON (0.05s)
+=== RUN   TestDeterministicRefs
+--- PASS: TestDeterministicRefs (0.00s)
+=== RUN   TestSharedCheckpointCorpus
+=== RUN   TestSharedCheckpointCorpus/valid/two-repository-genesis
+=== RUN   TestSharedCheckpointCorpus/valid/mixed-object-formats-with-sha256-coordinator
+=== RUN   TestSharedCheckpointCorpus/valid/sha1-previous-generation
+=== RUN   TestSharedCheckpointCorpus/valid/ssh-identity-and-scp
+=== RUN   TestSharedCheckpointCorpus/valid/local-absolute-path-with-spaces
+=== RUN   TestSharedCheckpointCorpus/valid/file-url-identities
+=== RUN   TestSharedCheckpointCorpus/valid/unicode-task-reference
+=== RUN   TestSharedCheckpointCorpus/valid/one-member
+=== RUN   TestSharedCheckpointCorpus/valid/thirty-two-members
+=== RUN   TestSharedCheckpointCorpus/valid/scp-bracketed-ipv6
+=== RUN   TestSharedCheckpointCorpus/valid/scp-opaque-path-colon
+=== RUN   TestSharedCheckpointCorpus/valid/scp-opaque-path-space
+=== RUN   TestSharedCheckpointCorpus/valid/scp-opaque-path-query-and-fragment
+=== RUN   TestSharedCheckpointCorpus/valid/astral-unicode-task-reference
+=== RUN   TestSharedCheckpointCorpus/valid/repository-exact-4096-ascii-bytes
+=== RUN   TestSharedCheckpointCorpus/invalid/wrong-version
+=== RUN   TestSharedCheckpointCorpus/invalid/uppercase-bench-id
+=== RUN   TestSharedCheckpointCorpus/invalid/short-generation
+=== RUN   TestSharedCheckpointCorpus/invalid/null-previous
+=== RUN   TestSharedCheckpointCorpus/invalid/empty-members
+=== RUN   TestSharedCheckpointCorpus/invalid/unknown-holder
+=== RUN   TestSharedCheckpointCorpus/invalid/unknown-lease-token
+=== RUN   TestSharedCheckpointCorpus/invalid/unknown-host-path
+=== RUN   TestSharedCheckpointCorpus/invalid/unknown-embedded-digest
+=== RUN   TestSharedCheckpointCorpus/invalid/missing-generation
+=== RUN   TestSharedCheckpointCorpus/invalid/too-many-members
+=== RUN   TestSharedCheckpointCorpus/invalid/unknown-member-checkout-path
+=== RUN   TestSharedCheckpointCorpus/invalid/sha256-with-sha1-commit
+=== RUN   TestSharedCheckpointCorpus/invalid/uppercase-commit
+=== RUN   TestSharedCheckpointCorpus/invalid/unsupported-object-format
+=== RUN   TestSharedCheckpointCorpus/invalid/invalid-repository-name
+=== RUN   TestSharedCheckpointCorpus/invalid/empty-repository
+=== RUN   TestSharedCheckpointCorpus/invalid/option-repository
+=== RUN   TestSharedCheckpointCorpus/invalid/nul-repository
+=== RUN   TestSharedCheckpointCorpus/invalid/newline-repository
+=== RUN   TestSharedCheckpointCorpus/invalid/oversize-repository
+=== RUN   TestSharedCheckpointCorpus/invalid/unsafe-task-ref-00
+=== RUN   TestSharedCheckpointCorpus/invalid/unsafe-task-ref-01
+=== RUN   TestSharedCheckpointCorpus/invalid/unsafe-task-ref-02
+=== RUN   TestSharedCheckpointCorpus/invalid/unsafe-task-ref-03
+=== RUN   TestSharedCheckpointCorpus/invalid/unsafe-task-ref-04
+=== RUN   TestSharedCheckpointCorpus/invalid/unsafe-task-ref-05
+=== RUN   TestSharedCheckpointCorpus/invalid/unsafe-task-ref-06
+=== RUN   TestSharedCheckpointCorpus/invalid/unsafe-task-ref-07
+=== RUN   TestSharedCheckpointCorpus/invalid/unsafe-task-ref-08
+=== RUN   TestSharedCheckpointCorpus/invalid/unsafe-task-ref-09
+=== RUN   TestSharedCheckpointCorpus/invalid/unsafe-task-ref-10
+=== RUN   TestSharedCheckpointCorpus/invalid/unsafe-task-ref-11
+=== RUN   TestSharedCheckpointCorpus/invalid/unsafe-task-ref-12
+=== RUN   TestSharedCheckpointCorpus/invalid/unsafe-task-ref-13
+=== RUN   TestSharedCheckpointCorpus/invalid/unsafe-task-ref-14
+=== RUN   TestSharedCheckpointCorpus/invalid/unsafe-task-ref-15
+=== RUN   TestSharedCheckpointCorpus/invalid/unsafe-task-ref-16
+=== RUN   TestSharedCheckpointCorpus/invalid/unsafe-task-ref-17
+=== RUN   TestSharedCheckpointCorpus/invalid/unsafe-task-ref-18
+=== RUN   TestSharedCheckpointCorpus/invalid/unsafe-task-ref-19
+=== RUN   TestSharedCheckpointCorpus/invalid/unsorted-members
+=== RUN   TestSharedCheckpointCorpus/invalid/duplicate-member-name
+=== RUN   TestSharedCheckpointCorpus/invalid/missing-coordinator
+=== RUN   TestSharedCheckpointCorpus/invalid/wrong-generation-pin
+=== RUN   TestSharedCheckpointCorpus/invalid/wrong-member-pin
+=== RUN   TestSharedCheckpointCorpus/invalid/duplicate-repository-task-pair
+=== RUN   TestSharedCheckpointCorpus/invalid/previous-format-does-not-match-coordinator
+=== RUN   TestSharedCheckpointCorpus/invalid/http-username
+=== RUN   TestSharedCheckpointCorpus/invalid/http-password
+=== RUN   TestSharedCheckpointCorpus/invalid/ssh-password
+=== RUN   TestSharedCheckpointCorpus/invalid/ssh-empty-password
+=== RUN   TestSharedCheckpointCorpus/invalid/url-query
+=== RUN   TestSharedCheckpointCorpus/invalid/empty-url-query
+=== RUN   TestSharedCheckpointCorpus/invalid/url-fragment
+=== RUN   TestSharedCheckpointCorpus/invalid/empty-url-fragment
+=== RUN   TestSharedCheckpointCorpus/invalid/ssh-query
+=== RUN   TestSharedCheckpointCorpus/invalid/remote-file-host
+=== RUN   TestSharedCheckpointCorpus/invalid/file-query
+=== RUN   TestSharedCheckpointCorpus/invalid/file-userinfo
+=== RUN   TestSharedCheckpointCorpus/invalid/relative-local-path
+=== RUN   TestSharedCheckpointCorpus/invalid/unknown-url-scheme
+=== RUN   TestSharedCheckpointCorpus/invalid/helper-remote
+=== RUN   TestSharedCheckpointCorpus/invalid/scp-password
+=== RUN   TestSharedCheckpointCorpus/invalid/empty-ssh-username
+=== RUN   TestSharedCheckpointCorpus/invalid/bare-scp-host
+=== RUN   TestSharedCheckpointCorpus/invalid/malformed-scp-ipv6
+=== RUN   TestSharedCheckpointCorpus/invalid/scp-unicode-username
+=== RUN   TestSharedCheckpointCorpus/invalid/scp-whitespace-username
+=== RUN   TestSharedCheckpointCorpus/invalid/scp-punctuation-host
+=== RUN   TestSharedCheckpointCorpus/invalid/scp-leading-hyphen-host
+=== RUN   TestSharedCheckpointCorpus/invalid/lone-high-surrogate-task-ref
+=== RUN   TestSharedCheckpointCorpus/invalid/lone-low-surrogate-task-ref
+=== RUN   TestSharedCheckpointCorpus/invalid/lone-surrogate-absolute-repository
+=== RUN   TestSharedCheckpointCorpus/invalid/repository-unicode-exceeds-4096-utf8-bytes
+--- PASS: TestSharedCheckpointCorpus (0.11s)
+    --- PASS: TestSharedCheckpointCorpus/valid/two-repository-genesis (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/valid/mixed-object-formats-with-sha256-coordinator (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/valid/sha1-previous-generation (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/valid/ssh-identity-and-scp (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/valid/local-absolute-path-with-spaces (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/valid/file-url-identities (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/valid/unicode-task-reference (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/valid/one-member (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/valid/thirty-two-members (0.01s)
+    --- PASS: TestSharedCheckpointCorpus/valid/scp-bracketed-ipv6 (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/valid/scp-opaque-path-colon (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/valid/scp-opaque-path-space (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/valid/scp-opaque-path-query-and-fragment (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/valid/astral-unicode-task-reference (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/valid/repository-exact-4096-ascii-bytes (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/wrong-version (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/uppercase-bench-id (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/short-generation (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/null-previous (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/empty-members (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unknown-holder (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unknown-lease-token (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unknown-host-path (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unknown-embedded-digest (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/missing-generation (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/too-many-members (0.01s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unknown-member-checkout-path (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/sha256-with-sha1-commit (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/uppercase-commit (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unsupported-object-format (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/invalid-repository-name (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/empty-repository (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/option-repository (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/nul-repository (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/newline-repository (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/oversize-repository (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unsafe-task-ref-00 (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unsafe-task-ref-01 (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unsafe-task-ref-02 (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unsafe-task-ref-03 (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unsafe-task-ref-04 (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unsafe-task-ref-05 (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unsafe-task-ref-06 (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unsafe-task-ref-07 (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unsafe-task-ref-08 (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unsafe-task-ref-09 (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unsafe-task-ref-10 (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unsafe-task-ref-11 (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unsafe-task-ref-12 (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unsafe-task-ref-13 (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unsafe-task-ref-14 (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unsafe-task-ref-15 (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unsafe-task-ref-16 (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unsafe-task-ref-17 (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unsafe-task-ref-18 (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unsafe-task-ref-19 (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unsorted-members (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/duplicate-member-name (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/missing-coordinator (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/wrong-generation-pin (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/wrong-member-pin (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/duplicate-repository-task-pair (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/previous-format-does-not-match-coordinator (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/http-username (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/http-password (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/ssh-password (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/ssh-empty-password (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/url-query (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/empty-url-query (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/url-fragment (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/empty-url-fragment (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/ssh-query (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/remote-file-host (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/file-query (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/file-userinfo (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/relative-local-path (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/unknown-url-scheme (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/helper-remote (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/scp-password (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/empty-ssh-username (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/bare-scp-host (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/malformed-scp-ipv6 (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/scp-unicode-username (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/scp-whitespace-username (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/scp-punctuation-host (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/scp-leading-hyphen-host (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/lone-high-surrogate-task-ref (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/lone-low-surrogate-task-ref (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/lone-surrogate-absolute-repository (0.00s)
+    --- PASS: TestSharedCheckpointCorpus/invalid/repository-unicode-exceeds-4096-utf8-bytes (0.00s)
+=== RUN   TestUnicodeScalarsRemainLossless
+--- PASS: TestUnicodeScalarsRemainLossless (0.00s)
+=== RUN   TestSCPOpaquePathAndASCIIIdentity
+--- PASS: TestSCPOpaquePathAndASCIIIdentity (0.00s)
+=== RUN   TestPinnedCheckpointSources
+--- PASS: TestPinnedCheckpointSources (0.00s)
+PASS
+ok  	forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/checkpointset	10.285s
+
+Canonical Treaty docs build
+Official Node v24.22.3 / npm 11.19.1. npm ci previously installed the unchanged
+lockfile successfully (349 packages; 0 vulnerabilities). The schema, docs,
+validator and final committed fixture vectors were synchronized before this
+final build. No dependencies or lockfile changed between install and build.
+Final corpus update archive SHA256:
+e9deec7772eb4e6937a2dd909b36ea79cbc8f1fa514dd050cc88aebb32a72808
+
+cd docs-site
+npm ci
+npm run build
+
+Final npm run build output (complete; temporary source path normalized):
+
+> @treaty/docs@0.0.1 build
+> node scripts/generate.mjs && node scripts/check-claims.mjs && astro build
+
+generate: 12 event pages and 29 Matrix event pages, from 41 schemas
+check-claims: 56 pages; 41 schemas each with its page, 27 CloudEvents types, 29 Matrix types, 7 relay settings, 10 relay answers and 5 packages match the code; current version v0.0.13
+22:03:50 [content] Syncing content
+22:03:50 [content] Synced content
+22:03:50 [types] Generated 1.36s
+22:03:50 [build] output: "static"
+22:03:50 [build] mode: "static"
+22:03:50 [build] directory: <source>/docs-site/dist/
+22:03:50 [build] Collecting build info...
+22:03:50 [build] ✓ Completed in 1.61s.
+22:03:50 [build] Building static entrypoints...
+22:03:51 [vite] ✓ built in 1.32s
+22:03:51 [vite] ✓ built in 163ms
+22:03:51 [build] Rearranging server assets...
+
+ generating static routes 
+22:03:52 [WARN] [content] The collection "i18n" does not exist or is empty. Please check your content config file for errors.
+22:03:52   ├─ /404.html (+52ms) 
+22:03:52   ├─ /llms-full.txt (+1.95s) 
+22:03:54   ├─ /llms-small.txt (+1.37s) 
+22:03:55   ├─ /llms.txt (+3ms) 
+22:03:55   ├─ /envelope.md (+3ms) 
+22:03:55   ├─ /events.md (+2ms) 
+22:03:55   ├─ /events/attention-pending-v1.md (+2ms) 
+22:03:55   ├─ /events/card-ready-v1.md (+2ms) 
+22:03:55   ├─ /events/check-failed-v1.md (+2ms) 
+22:03:55   ├─ /events/check-overridden-v1.md (+2ms) 
+22:03:55   ├─ /events/decision-pulled-back-v1.md (+2ms) 
+22:03:55   ├─ /events/decision-released-v1.md (+1ms) 
+22:03:55   ├─ /events/decision-timeout-v1.md (+1ms) 
+22:03:55   ├─ /events/delivery-pending-v1.md (+1ms) 
+22:03:55   ├─ /events/elicitation-pending-v1.md (+1ms) 
+22:03:55   ├─ /events/gate-approval-recorded-v1.md (+1ms) 
+22:03:55   ├─ /events/gate-pending-v1.md (+1ms) 
+22:03:55   ├─ /events/record-v1.md (+1ms) 
+22:03:55   ├─ /fixtures.md (+1ms) 
+22:03:55   ├─ /index.md (+1ms) 
+22:03:55   ├─ /matrix.md (+1ms) 
+22:03:55   ├─ /matrix/answers/superpipeline-attention-answer-v2.md (+1ms) 
+22:03:55   ├─ /matrix/answers/superpipeline-check-override-v2.md (+1ms) 
+22:03:55   ├─ /matrix/answers/superpipeline-delivery-answer-v2.md (+1ms) 
+22:03:55   ├─ /matrix/answers/superpipeline-gate-decision-v1.md (+1ms) 
+22:03:55   ├─ /matrix/answers/superpipeline-gate-decision-v2.md (+1ms) 
+22:03:55   ├─ /matrix/answers/superpipeline-gate-pull-back-v2.md (+1ms) 
+22:03:55   ├─ /matrix/answers/superpipeline-question-answer-v2.md (+1ms) 
+22:03:55   ├─ /matrix/cards/agentpod-checks-waiting-v2.md (+1ms) 
+22:03:55   ├─ /matrix/cards/superpipeline-attention-v2.md (+1ms) 
+22:03:55   ├─ /matrix/cards/superpipeline-delivery-v2.md (+1ms) 
+22:03:55   ├─ /matrix/cards/superpipeline-elicitation.md (+1ms) 
+22:03:55   ├─ /matrix/cards/superpipeline-gate.md (+1ms) 
+22:03:55   ├─ /matrix/cards/superpipeline-gate-v1.md (+1ms) 
+22:03:55   ├─ /matrix/cards/superpipeline-gate-v2.md (+2ms) 
+22:03:55   ├─ /matrix/cards/superpipeline-question-v2.md (+2ms) 
+22:03:55   ├─ /matrix/notices/agentpod-check-failed-v2.md (+1ms) 
+22:03:55   ├─ /matrix/notices/agentpod-check-overridden-v2.md (+1ms) 
+22:03:55   ├─ /matrix/notices/agentpod-decision-pulled-back-v2.md (+1ms) 
+22:03:55   ├─ /matrix/notices/agentpod-decision-released-v2.md (+1ms) 
+22:03:55   ├─ /matrix/notices/agentpod-gate-progress-v2.md (+1ms) 
+22:03:55   ├─ /matrix/notices/superpipeline-decision-escalated-v1.md (+1ms) 
+22:03:55   ├─ /matrix/notices/superpipeline-decision-reminded-v1.md (+1ms) 
+22:03:55   ├─ /matrix/permissions/agentpod-permission.md (+1ms) 
+22:03:55   ├─ /matrix/permissions/agentpod-permission-answer-v2.md (+1ms) 
+22:03:55   ├─ /matrix/permissions/agentpod-permission-outcome-v1.md (+1ms) 
+22:03:55   ├─ /matrix/permissions/agentpod-permission-v1.md (+1ms) 
+22:03:55   ├─ /matrix/permissions/agentpod-permission-v2.md (+1ms) 
+22:03:55   ├─ /matrix/receipts/superpipeline-attention-outcome-v1.md (+1ms) 
+22:03:55   ├─ /matrix/receipts/superpipeline-gate-outcome-v1.md (+1ms) 
+22:03:55   ├─ /packages.md (+1ms) 
+22:03:55   ├─ /packages/cloudevents.md (+1ms) 
+22:03:55   ├─ /packages/ecosystem-identity.md (+1ms) 
+22:03:55   ├─ /packages/event-schemas.md (+1ms) 
+22:03:55   ├─ /packages/matrix-events.md (+1ms) 
+22:03:55   ├─ /packages/outbox.md (+1ms) 
+22:03:55   ├─ /relay.md (+1ms) 
+22:03:55   ├─ /status.md (+1ms) 
+22:03:55   ├─ /versioning.md (+1ms) 
+22:03:55   ├─ /what-it-is.md (+1ms) 
+22:03:55   ├─ /envelope/index.html (+13ms) 
+22:03:55   ├─ /events/index.html (+8ms) 
+22:03:55   ├─ /events/attention-pending-v1/index.html (+6ms) 
+22:03:55   ├─ /events/card-ready-v1/index.html (+7ms) 
+22:03:55   ├─ /events/check-failed-v1/index.html (+7ms) 
+22:03:55   ├─ /events/check-overridden-v1/index.html (+8ms) 
+22:03:55   ├─ /events/decision-pulled-back-v1/index.html (+7ms) 
+22:03:55   ├─ /events/decision-released-v1/index.html (+9ms) 
+22:03:55   ├─ /events/decision-timeout-v1/index.html (+9ms) 
+22:03:55   ├─ /events/delivery-pending-v1/index.html (+8ms) 
+22:03:55   ├─ /events/elicitation-pending-v1/index.html (+12ms) 
+22:03:55   ├─ /events/gate-approval-recorded-v1/index.html (+6ms) 
+22:03:55   ├─ /events/gate-pending-v1/index.html (+6ms) 
+22:03:55   ├─ /events/record-v1/index.html (+5ms) 
+22:03:55   ├─ /fixtures/index.html (+5ms) 
+22:03:55   ├─ /index.html (+6ms) 
+22:03:55   ├─ /matrix/index.html (+5ms) 
+22:03:55   ├─ /matrix/answers/superpipeline-attention-answer-v2/index.html (+5ms) 
+22:03:55   ├─ /matrix/answers/superpipeline-check-override-v2/index.html (+5ms) 
+22:03:55   ├─ /matrix/answers/superpipeline-delivery-answer-v2/index.html (+6ms) 
+22:03:55   ├─ /matrix/answers/superpipeline-gate-decision-v1/index.html (+5ms) 
+22:03:55   ├─ /matrix/answers/superpipeline-gate-decision-v2/index.html (+5ms) 
+22:03:55   ├─ /matrix/answers/superpipeline-gate-pull-back-v2/index.html (+6ms) 
+22:03:55   ├─ /matrix/answers/superpipeline-question-answer-v2/index.html (+6ms) 
+22:03:55   ├─ /matrix/cards/agentpod-checks-waiting-v2/index.html (+4ms) 
+22:03:55   ├─ /matrix/cards/superpipeline-attention-v2/index.html (+5ms) 
+22:03:55   ├─ /matrix/cards/superpipeline-delivery-v2/index.html (+6ms) 
+22:03:55   ├─ /matrix/cards/superpipeline-elicitation/index.html (+6ms) 
+22:03:55   ├─ /matrix/cards/superpipeline-gate/index.html (+6ms) 
+22:03:55   ├─ /matrix/cards/superpipeline-gate-v1/index.html (+6ms) 
+22:03:55   ├─ /matrix/cards/superpipeline-gate-v2/index.html (+9ms) 
+22:03:55   ├─ /matrix/cards/superpipeline-question-v2/index.html (+7ms) 
+22:03:55   ├─ /matrix/notices/agentpod-check-failed-v2/index.html (+5ms) 
+22:03:55   ├─ /matrix/notices/agentpod-check-overridden-v2/index.html (+5ms) 
+22:03:55   ├─ /matrix/notices/agentpod-decision-pulled-back-v2/index.html (+5ms) 
+22:03:55   ├─ /matrix/notices/agentpod-decision-released-v2/index.html (+5ms) 
+22:03:55   ├─ /matrix/notices/agentpod-gate-progress-v2/index.html (+5ms) 
+22:03:55   ├─ /matrix/notices/superpipeline-decision-escalated-v1/index.html (+5ms) 
+22:03:55   ├─ /matrix/notices/superpipeline-decision-reminded-v1/index.html (+6ms) 
+22:03:55   ├─ /matrix/permissions/agentpod-permission/index.html (+5ms) 
+22:03:55   ├─ /matrix/permissions/agentpod-permission-answer-v2/index.html (+5ms) 
+22:03:55   ├─ /matrix/permissions/agentpod-permission-outcome-v1/index.html (+6ms) 
+22:03:55   ├─ /matrix/permissions/agentpod-permission-v1/index.html (+6ms) 
+22:03:55   ├─ /matrix/permissions/agentpod-permission-v2/index.html (+5ms) 
+22:03:55   ├─ /matrix/receipts/superpipeline-attention-outcome-v1/index.html (+4ms) 
+22:03:55   ├─ /matrix/receipts/superpipeline-gate-outcome-v1/index.html (+4ms) 
+22:03:55   ├─ /packages/index.html (+6ms) 
+22:03:55   ├─ /packages/cloudevents/index.html (+19ms) 
+22:03:55   ├─ /packages/ecosystem-identity/index.html (+5ms) 
+22:03:55   ├─ /packages/event-schemas/index.html (+4ms) 
+22:03:55   ├─ /packages/matrix-events/index.html (+4ms) 
+22:03:55   ├─ /packages/outbox/index.html (+4ms) 
+22:03:55   ├─ /relay/index.html (+5ms) 
+22:03:55   ├─ /status/index.html (+6ms) 
+22:03:55   ├─ /versioning/index.html (+7ms) 
+22:03:55   ├─ /what-it-is/index.html (+6ms) 
+22:03:55 ✓ Completed in 4.06s.
+
+22:03:55 [build] ✓ Completed in 5.63s.
+22:03:55 [starlight:pagefind] Building search index with Pagefind...
+22:03:55 [starlight:pagefind] Found 57 HTML files.
+22:03:56 [starlight:pagefind] Finished building search index in 227ms.
+22:03:56 [@astrojs/sitemap] `sitemap-index.xml` created at `dist`
+22:03:56 [build] 57 page(s) built in 7.49s
+22:03:56 [build] Complete!
