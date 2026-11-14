@@ -11,9 +11,9 @@ no destructive cleanup is authorized by this implementation plan.
    worktree. A retry registers only that exact clean checkout. Preserve and reject
    dirty, changed, unjournaled or conflicting checkouts. Retain intents alongside
    state; archive/retention cleanup is future work. No filesystem reset/deletion.
-2. **Transactional service storage.** Replace provisional JSON state with SQLite
-   and migrations outside bench data; keep journal semantics and state-failure
-   regressions. Status must be read-only. Define reconciliation for partial mirror
+2. **Transactional service storage (implemented, verification below).** SQLite
+   schema v1 and legacy import now replace JSON outside bench data; keep journal semantics and state-failure
+   regressions. Status is read-only. Define reconciliation for partial mirror
    clones as well as worktrees; the current journal covers worktree creation only.
 3. **Supervised execution and fencing.** One managed writer, explicit stop/reap
    before reassignment, no timeout-based takeover. Test crashed parents and living
@@ -46,3 +46,11 @@ For each checkpoint: run required checks, commit in this repository, verify remo
 PR state before pushing, and record concrete verification and remaining limits.
 Production tags remain operator-only. Cleanup requires a reviewed dry-run list;
 keep that approval distinct from permission to implement the product.
+
+## Published checkpoints
+
+- `c874bf6`: initial CLI, journaled clean-worktree adoption, failure experiments
+  and full phase checklist. Local checks and Forge push CI passed.
+- Next checkpoint in progress: versioned SQLite state, legacy import, rollback
+  behavior and read-only status. macOS race tests and Linux quota/SIGKILL failure verification pass. Publication
+  is the next action.

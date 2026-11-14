@@ -4,7 +4,6 @@ package bench
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -71,6 +70,8 @@ func (s Store) validate() error {
 	return nil
 }
 
+// The host-wide OS lock also serializes mirror/worktree operations. SQLite
+// transactions make the authoritative record update atomic independently.
 func (s Store) transaction(fn func(database) error) error {
 	if err := s.validate(); err != nil {
 		return err
@@ -86,32 +87,79 @@ func (s Store) transaction(fn func(database) error) error {
 	if err = syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
 		return err
 	}
-	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN) // process exit also releases the lock
-	db := database{}
-	raw, err := os.ReadFile(filepath.Join(s.State, "benches.json"))
-	if err == nil {
-		if err = json.Unmarshal(raw, &db); err != nil {
-			return fmt.Errorf("invalid state: %w", err)
-		}
-	} else if !os.IsNotExist(err) {
-		return err
-	}
-	if db == nil {
-		return errors.New("invalid state: null database")
-	}
-	for key, b := range db {
-		if b == nil || b.Key != key || b.Path == "" || b.Mirror == "" {
-			return errors.New("invalid bench record")
-		}
-	}
-	if err = fn(db); err != nil {
-		return err
-	}
-	raw, err = json.MarshalIndent(db, "", "  ")
+	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+	db, err := s.openSQL(false)
 	if err != nil {
 		return err
 	}
-	return atomicWrite(s.State, filepath.Join(s.State, "benches.json"), raw)
+	defer db.Close()
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err = s.migrate(tx); err != nil {
+		return err
+	}
+	records, err := loadRecords(tx)
+	if err != nil {
+		return err
+	}
+	if err = fn(records); err != nil {
+		return err
+	}
+	if err = validRecords(records); err != nil {
+		return err
+	}
+	for key, b := range records {
+		raw, e := json.Marshal(b)
+		if e != nil {
+			return e
+		}
+		if _, e = tx.Exec("INSERT INTO benches(key, record) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET record=excluded.record WHERE record != excluded.record", key, string(raw)); e != nil {
+			return e
+		}
+	}
+	return tx.Commit()
+}
+
+// Status does not create directories, lock files, databases or journal files.
+func (s Store) read(fn func(database) error) error {
+	if err := s.validate(); err != nil {
+		return err
+	}
+	lock, err := os.Open(filepath.Join(s.State, "lock"))
+	if err == nil {
+		defer lock.Close()
+		if err = syscall.Flock(int(lock.Fd()), syscall.LOCK_SH); err != nil {
+			return err
+		}
+		defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	if _, err = os.Stat(filepath.Join(s.State, "bench.db")); os.IsNotExist(err) {
+		records, e := s.legacy()
+		if e != nil {
+			return e
+		}
+		return fn(records)
+	} else if err != nil {
+		return err
+	}
+	db, err := s.openSQL(true)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	if err = checkVersion(db); err != nil {
+		return err
+	}
+	records, err := loadRecords(db)
+	if err != nil {
+		return err
+	}
+	return fn(records)
 }
 
 func atomicWrite(dirPath, target string, raw []byte) error {

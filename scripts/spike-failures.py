@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import shutil
 import signal
+import sqlite3
 import subprocess
 import sys
 import tarfile
@@ -42,6 +43,16 @@ git(remote, 'symbolic-ref', 'HEAD', 'refs/heads/main')
 
 state = root / 'mnt/state'
 data = root / 'data'
+
+def snapshot(directory=state):
+    db_path=directory / 'bench.db'
+    if not db_path.exists():
+        return b'{}'
+    with sqlite3.connect(str(db_path)) as db:
+        tables=db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='benches'").fetchall()
+        records={} if not tables else {key:json.loads(record) for key,record in db.execute('SELECT key,record FROM benches')}
+    return json.dumps(records,sort_keys=True).encode()
+
 def command(verb, key='task', *flags, state_dir=state, data_dir=data):
     return [binary, verb, '--state', str(state_dir), '--data', str(data_dir), *map(str, flags), key]
 
@@ -65,20 +76,27 @@ checkout = Path(b['Path'])
 git(checkout, 'add', '.')
 git(checkout, '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '-m', 'checkpoint')
 sha = git(checkout, 'rev-parse', 'HEAD')
-original = (state / 'benches.json').read_bytes()
-fill(state / 'filler')
-p = run(command('checkpoint', 'task', '--token', token))
-assert p.returncode != 0 and ('space' in p.stdout.lower() or 'quota' in p.stdout.lower()), p.stdout
-assert (state / 'benches.json').read_bytes() == original
+original = snapshot()
+# Exhaust state after the remote accepts the push, before the local SQL update.
+fill_hook = remote / 'hooks/post-receive'
+fill_program = root / 'fill-state.py'
+fill_program.write_text("import errno,sys\nf=open(sys.argv[1],'wb',buffering=0)\ntry:\n while True: f.write(b'x'*1048576)\nexcept OSError as e:\n assert e.errno in (errno.ENOSPC,errno.EDQUOT),e\n")
+fill_hook.write_text('#!/bin/sh\nexec python3 "'+str(fill_program)+'" "'+str(state / 'filler')+'"\n')
+fill_hook.chmod(0o700)
+p = run(command('checkpoint' , 'task', '--token', token))
+assert p.returncode != 0, p.stdout
+print('EXPECTED SQLite write failure:', p.stdout.strip(), flush=True)
+assert snapshot() == original
 assert git(remote, 'rev-parse', 'refs/heads/bench/task') == sha
 print('PASS: real state-write failure after successful push preserves prior state and lease', flush=True)
 (state / 'filler').unlink()
+fill_hook.unlink()
 cli('checkpoint', 'task', '--token', token)
-original = (state / 'benches.json').read_bytes()
+original = snapshot()
 fill(state / 'filler')
 p = run(command('release', 'task', '--token', token))
 assert p.returncode != 0, p.stdout
-assert (state / 'benches.json').read_bytes() == original
+assert snapshot() == original
 assert json.loads(original)['task']['Lease']['Token'] == token
 (state / 'filler').unlink()
 cli('release', 'task', '--token', token)
@@ -125,7 +143,7 @@ args = command('create', 'orphan', '--repo', remote, state_dir=crash_state, data
 interrupt(args, 'create')
 orphan = crash_data / 'benches/orphan'
 assert (orphan / 'file').read_text() == 'base\n'
-assert not (crash_state / 'benches.json').exists()
+assert json.loads(snapshot(crash_state)) == {}
 p = run(args)
 assert p.returncode == 0, p.stdout
 registered = json.loads(p.stdout)
@@ -139,9 +157,9 @@ token = l['Lease']['Token']
 git(checkout, 'add', '.')
 git(checkout, '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '-m', 'next')
 sha = git(checkout, 'rev-parse', 'HEAD')
-old = (state / 'benches.json').read_bytes()
+old = snapshot()
 interrupt(command('checkpoint', 'task', '--token', token), 'push')
-assert (state / 'benches.json').read_bytes() == old
+assert snapshot() == old
 assert git(remote, 'rev-parse', 'refs/heads/bench/task') == sha
 assert run(command('lease', 'task', '--holder', 'third')).returncode != 0
 cli('checkpoint', 'task', '--token', token)

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -197,7 +198,7 @@ func (s Store) Release(key, token string) error {
 }
 func (s Store) Status(key string) ([]Bench, error) {
 	var result []Bench
-	err := s.transaction(func(db database) error {
+	err := s.read(func(db database) error {
 		if key != "" {
 			b, err := get(db, key)
 			if err != nil {
@@ -215,6 +216,7 @@ func (s Store) Status(key string) ([]Bench, error) {
 		}
 		return nil
 	})
+	sort.Slice(result, func(i, j int) bool { return result[i].Key < result[j].Key })
 	return result, err
 }
 func publicLease(l *Lease) *Lease {
