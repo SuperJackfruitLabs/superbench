@@ -22,12 +22,13 @@ no destructive cleanup is authorized by this implementation plan.
    provisioning remain pending; cooperative shell leases are not fenced.
 4. **Host storage management (implemented, validation below).** Fixed-policy quota
    helper, reservation ledger, free-space admission, shared caches, frozen pnpm/npm
-   setup, atomic mirror publication and bounded/reserved logs. Service installation,
-   inode limits, TOML hooks and automatic collection remain pending.
+   setup, atomic mirror publication and bounded/reserved logs. A staged Linux service installer is now verified separately. Inode limits,
+   TOML hooks and automatic collection remain pending.
 5. **benchd and local CLI (API implemented; archive pending).** Kernel peer uid
    authorization, bounded durable request receipts, strict pinned treaty vectors,
    redacted status and crash reconciliation. See [service verification](service.md).
-   Service installation and checkpoint-verified archive/retention remain pending.
+   Service installation has a verified Linux payload; checkpoint-verified
+   archive/retention remains pending.
 6. **Suite pilot.** Charter ownership change and treaty API/event contracts before
    adapters; one opt-in board and a clean-checkout verification path. No production
    tag or deployment is part of this local implementation turn.
@@ -44,7 +45,7 @@ A core checkpoint does not constitute completion of a phase or the product.
 | Phase | Required outcome | Current evidence |
 |---|---|---|
 | 0 | Host disk alert, reviewed cleanup dry-run, code-stage branch/checkpoint rules | Not implemented by this repository; inspect estate and board settings before changes |
-| 1 | Standalone CLI and host service; durable state/leases; checkpoints/recovery; quotas, shared mirrors/stores; verified archive/reap | CLI, journals, SQLite, fenced Linux execution and host storage tested; local service API added; installation, archive/reap and integration pending |
+| 1 | Standalone CLI and host service; durable state/leases; checkpoints/recovery; quotas, shared mirrors/stores; verified archive/reap | CLI, journals, SQLite, fenced Linux execution and host storage tested; local service API added; installer verified; archive/reap and integration pending |
 | 2 | Suite adapters, card panel, locality scoring, witness events; read-only web, file/diff/log/timeline views, terminal attach and MCP | Pending; charter/treaty contracts precede consumers; visual mockups before UI |
 | 3 | Remote editor launch/browser IDE; second-host recovery drill; per-bench isolation; Salaam layout and execution-host integration | Pending |
 
@@ -65,5 +66,9 @@ keep that approval distinct from permission to implement the product.
   log budgets; local and staged verification recorded in docs/storage.md.
   `32b3859`, stacked PR #3.
 - Local daemon slice: strict local API, authenticated Unix peers, durable receipts
-  and remote CLI. Treaty and charter are proposed separately. Installation,
-  history and archive/reap are next.
+  and remote CLI. Treaty and charter are proposed separately; service PR #4
+  passed local and Forge CI plus staged Linux recovery tests. History and
+  archive/reap remain pending.
+- Linux service installation: staged payload, private stable account, delegated
+  execution and fixed sudo helper verified with a disposable systemd unit.
+  No production service was installed or started.

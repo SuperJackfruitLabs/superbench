@@ -50,9 +50,9 @@ or delete old data automatically.
 Install the helper root-owned and non-writable by the service account, with sudo
 permission only for that fixed executable. Do not grant generic shell/XFS-tool
 sudo access. Policy overrides are accepted only for direct-root administration,
-not setuid or sudo callers. Production service provisioning and its sudo rule
-are the next implementation slice; no privileged daemon is installed by these
-commands alone.
+not setuid or sudo callers. The [Linux installer](install.md) supplies the service account and the fixed
+sudo rule in managed mode. It never installs a privileged daemon or starts a
+service automatically.
 
 ## Configure a fresh managed host
 
@@ -129,8 +129,8 @@ Schema 3 protects quota and log-limit metadata from older binaries. Schemas 1/2
 can upgrade through `bench migrate` or a successful mutating operation. Upgrading
 under an active old supervised execution is refused: stop it with the installed
 binary first. Read-only status never changes schema. Stronger uid/mount isolation,
-inode quotas, service installation, TOML hooks, automatic cache collection and
-archive/reap are not established by this checkpoint.
+inode quotas, TOML hooks, automatic cache collection and archive/reap remain
+pending. A separately verified service installer is documented in [install.md](install.md).
 
 ## Verification
 

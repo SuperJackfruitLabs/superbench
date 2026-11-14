@@ -1,0 +1,3 @@
+# Only installed for managed storage. The helper validates its own fixed policy
+# and rejects policy overrides from sudo callers. No shell or XFS tools allowed.
+superbench ALL=(root) NOPASSWD: /usr/local/libexec/bench-quota

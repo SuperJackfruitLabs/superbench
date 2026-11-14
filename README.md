@@ -42,6 +42,9 @@ connect. Linux supervised execution requires a delegated cgroup root. See
 [the service API](docs/service.md) for permissions, stable request IDs, restart
 reconciliation and operational limits.
 
+For Linux installation, stage and review the [systemd payload](docs/install.md).
+Its installer prepares files and accounts without starting the service.
+
 ## Managed storage
 
 Linux hosts can configure a dedicated XFS data mount with per-bench and shared
@@ -103,7 +106,7 @@ atomic transaction.
   while conflicting files require review and a pushed checkpoint may need retrying
   if saving state failed.
   No automatic deletion/reset is attempted.
-- Archive/retention, service provisioning, remote authentication, UI and suite
+- Archive/retention, remote authentication, UI and suite
   integrations are not implemented. The local API authenticates Unix peer uids.
 - Only trusted repositories are suitable. Local git configuration and hooks apply.
   Verification should use a separate clean checkout of the pushed checkpoint.
