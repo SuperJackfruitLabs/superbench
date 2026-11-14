@@ -2,7 +2,8 @@
 
 - Engine in internal/bench; host quota policy in internal/hoststorage; CLI front
   doors in cmd/bench and cmd/bench-quota. The helper accepts fixed-policy logical
-  allocations only, never arbitrary filesystem paths, limits or XFS commands.
+  allocations and empty-directory retirement only, never arbitrary filesystem
+  paths, limits or XFS commands.
 - State stays outside bench data. Never expire a lease just because time passed.
 - Leases coordinate trusted callers; do not claim filesystem isolation.
 - Checkpoints require clean committed work and remote confirmation. Never force-push,
@@ -11,9 +12,15 @@
   charter review before integration. No production deployment or tags.
 - Run `sh scripts/check.sh` before publishing. External runtime imports are the pinned SQLite driver in storage adapters and
   x/sys/unix in the macOS peer-credential adapter. Protocol/client/service layers
-  follow the edges in the architecture test; the engine never imports the service.
+  follow the edges in the architecture test; the engine never imports the service. The reap layer only snapshots/verifies
+  approved directory entries; the engine owns lifecycle and intent authority.
 
 - Linux payloads live in deploy/linux. The installer stages files, preserves changed
   configuration and never starts/enables a service. Managed sudo permits only the
   fixed helper; keep state/ledger separate from bounded data. Check scripts require
   Python 3 as well as Go; privileged installation drills use disposable hosts only.
+
+- Archive/reap must preserve remote checkpoint evidence. Reap requires a concrete
+  reviewed manifest; retry deletes only unchanged remaining approved entries.
+  Quota release removes only an empty fixed logical directory and retires its ID
+  after XFS reports zero blocks/inodes. Never recursively delete as root.

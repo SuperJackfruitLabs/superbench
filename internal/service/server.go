@@ -244,7 +244,7 @@ func operationError(e error) (int, string, string) {
 		return 404, "not_found", "unknown bench"
 	case errors.Is(e, bench.ErrLease):
 		return 403, "forbidden", "valid holder capability required"
-	case errors.Is(e, bench.ErrBusy) || errors.Is(e, bench.ErrExists) || errors.Is(e, bench.ErrNotFenced) || errors.Is(e, bench.ErrCheckpoint) || errors.Is(e, bench.ErrDirty):
+	case errors.Is(e, bench.ErrArchived) || errors.Is(e, bench.ErrBusy) || errors.Is(e, bench.ErrExists) || errors.Is(e, bench.ErrNotFenced) || errors.Is(e, bench.ErrCheckpoint) || errors.Is(e, bench.ErrDirty):
 		return 409, "conflict", "bench state conflicts with this operation"
 	}
 	return 422, "operation_failed", "operation failed; inspect retained bench state and local logs"

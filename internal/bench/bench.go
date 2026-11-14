@@ -123,6 +123,9 @@ func (s Store) Lease(key, holder string) (*Bench, error) {
 		if err != nil {
 			return err
 		}
+		if b.ArchivedAt != "" {
+			return ErrArchived
+		}
 		if b.Lease != nil {
 			return fmt.Errorf("%w by %s; no automatic expiry", ErrBusy, b.Lease.Holder)
 		}

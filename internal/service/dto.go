@@ -24,6 +24,9 @@ type benchDTO struct {
 	Branch     string    `json:"branch"`
 	Path       string    `json:"path"`
 	Checkpoint string    `json:"checkpoint"`
+	ArchivedAt string    `json:"archived_at,omitempty"`
+	Reaping    bool      `json:"reaping,omitempty"`
+	ReapedAt   string    `json:"reaped_at,omitempty"`
 	ProjectID  uint32    `json:"project_id"`
 	QuotaBytes uint64    `json:"quota_bytes"`
 	Lease      *leaseDTO `json:"lease,omitempty"`
@@ -39,7 +42,7 @@ func benchView(b *bench.Bench, token bool) *benchDTO {
 	if b == nil {
 		return nil
 	}
-	v := &benchDTO{Key: b.Key, Repository: displayRepository(b.Repo), Branch: b.Branch, Path: b.Path, Checkpoint: b.Checkpoint, ProjectID: b.ProjectID, QuotaBytes: b.QuotaBytes}
+	v := &benchDTO{Key: b.Key, Repository: displayRepository(b.Repo), Branch: b.Branch, Path: b.Path, Checkpoint: b.Checkpoint, ProjectID: b.ProjectID, QuotaBytes: b.QuotaBytes, ArchivedAt: b.ArchivedAt, Reaping: b.ReapingDigest != "" && b.ReapedAt == "", ReapedAt: b.ReapedAt}
 	if b.Lease != nil {
 		mode := "cooperative"
 		if b.Lease.Execution != nil {

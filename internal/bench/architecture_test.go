@@ -50,10 +50,10 @@ func TestArchitecture(t *testing.T) {
 			rel, _ := filepath.Rel(root, filepath.Dir(path))
 			rel = filepath.ToSlash(rel)
 			edges := map[string][]string{
-				"internal/bench":   {"internal/hoststorage"},
+				"internal/bench":   {"internal/hoststorage", "internal/reap"},
 				"internal/client":  {"internal/protocol"},
 				"internal/service": {"internal/bench", "internal/protocol"},
-				"cmd/bench":        {"internal/bench", "internal/client", "internal/protocol"},
+				"cmd/bench":        {"internal/bench", "internal/client", "internal/protocol", "internal/reap"},
 				"cmd/benchd":       {"internal/bench", "internal/service"},
 				"cmd/bench-quota":  {"internal/hoststorage"},
 			}

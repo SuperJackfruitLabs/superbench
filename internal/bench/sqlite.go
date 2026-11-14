@@ -12,7 +12,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const schemaVersion = 3
+const schemaVersion = 4
 
 type reader interface {
 	Query(string, ...any) (*sql.Rows, error)
@@ -69,6 +69,9 @@ func validRecords(records database) error {
 		if b == nil || b.Key != key || b.Path == "" || b.Mirror == "" {
 			return errors.New("invalid bench record")
 		}
+		if b.ArchivedAt != "" && b.Lease != nil || b.ReapingDigest != "" && b.ArchivedAt == "" || b.ReapedAt != "" && b.ReapingDigest == "" {
+			return errors.New("invalid bench record")
+		}
 	}
 	return nil
 }
@@ -97,7 +100,7 @@ func (s Store) migrate(tx *sql.Tx) error {
 	if version == schemaVersion {
 		return nil
 	}
-	if version == 1 || version == 2 {
+	if version == 1 || version == 2 || version == 3 {
 		records, err := loadRecords(tx)
 		if err != nil {
 			return err
@@ -107,7 +110,7 @@ func (s Store) migrate(tx *sql.Tx) error {
 				return errors.New("stop supervised executions with the installed binary before upgrading state")
 			}
 		}
-		_, err = tx.Exec("PRAGMA user_version=3")
+		_, err = tx.Exec("PRAGMA user_version=4")
 		return err
 	}
 	if version != 0 {
@@ -129,7 +132,7 @@ func (s Store) migrate(tx *sql.Tx) error {
 			return e
 		}
 	}
-	_, err = tx.Exec("PRAGMA user_version=3")
+	_, err = tx.Exec("PRAGMA user_version=4")
 	return err
 }
 func loadRecords(r reader) (database, error) {
