@@ -161,3 +161,18 @@ func TestIgnoredBindCannotCommitLeaseWithoutBindingAndCorruptIDRefuses(t *testin
 		t.Fatal("corrupt operation ID adopted", err)
 	}
 }
+
+func TestIgnoredAdmissionCannotAuthorizePlanningEffects(t *testing.T) {
+	db := store(t)
+	if _, err := db.Exec(`CREATE TRIGGER ignore_admission BEFORE INSERT ON workspace_operations BEGIN SELECT RAISE(IGNORE); END`); err != nil {
+		t.Fatal(err)
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	if err = Begin(tx, intent("ignored-admission"), ""); !errors.Is(err, ErrAuthority) {
+		t.Fatal("missing durable intent acknowledged", err)
+	}
+}

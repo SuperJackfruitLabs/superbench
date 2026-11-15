@@ -154,8 +154,18 @@ func Begin(tx *sql.Tx, i Intent, benchID string) error {
 	if count >= MaxOperations {
 		return errors.New("operation binding capacity exhausted")
 	}
-	_, err = tx.Exec(`INSERT INTO workspace_operations (`+`id,`+columns+`) VALUES (?,?,?,?,?,?,?,?,'','','','admitted')`, i.Target.ID(), i.Target.UID, i.Target.RequestID, i.Target.Digest, i.Key, i.Operation, i.Epoch, benchID)
-	return err
+	result, err := tx.Exec(`INSERT INTO workspace_operations (`+`id,`+columns+`) VALUES (?,?,?,?,?,?,?,?,'','','','admitted')`, i.Target.ID(), i.Target.UID, i.Target.RequestID, i.Target.Digest, i.Key, i.Operation, i.Epoch, benchID)
+	if err != nil {
+		return err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return ErrAuthority
+	}
+	return nil
 }
 
 // Bind is called in the SAME SQL transaction that saves this exact lease.
