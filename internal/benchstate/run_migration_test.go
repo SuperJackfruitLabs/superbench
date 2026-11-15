@@ -30,7 +30,7 @@ func TestSchema25Migrates24WithoutInventingOperationRuns(t *testing.T) {
 	if err = migrateForTest(db, t.TempDir(), nil); err != nil {
 		t.Fatal(err)
 	}
-	assertVersion(t, db, 25)
+	assertVersion(t, db, SchemaVersion)
 	var count int
 	if err = db.QueryRow(`SELECT count(*) FROM workspace_operation_runs`).Scan(&count); err != nil || count != 0 {
 		t.Fatal(count, err)

@@ -179,7 +179,7 @@ func validateLease(b *model.Bench) error {
 		}
 		seen[id] = true
 	}
-	if w.Phase == "materializing" && (l.Execution != nil || len(l.RetainedRuns) != 0 || l.StopRequested) {
+	if w.Phase == "materializing" && (l.Execution != nil || len(l.RetainedRuns) != 0 || l.StopRequested && l.Continuation != "") {
 		return invalid
 	}
 	if e := l.Execution; e != nil {
