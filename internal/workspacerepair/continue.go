@@ -9,6 +9,7 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/benchstate"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/initrepair"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/operationcontrol"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/transferguard"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspace"
 )
@@ -41,6 +42,9 @@ func (m Manager) Continue(ctx context.Context, key, id, token string) (out *Resu
 	}()
 	err = m.Prep.Gate(key, func() error {
 		return m.Prep.Update(func(rows benchstate.Database, tx *sql.Tx) error {
+			if err := operationcontrol.GuardContext(ctx, tx, rows[key]); err != nil {
+				return err
+			}
 			b := rows[key]
 			if b == nil || b.Workspace == nil || b.Workspace.InitializationRepair == nil || b.Workspace.InitializationRepair.ID != id {
 				return errors.New("initialization repair epoch is not current")

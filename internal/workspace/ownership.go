@@ -147,12 +147,12 @@ func (l Lifecycle) Release(ctx context.Context, key, token string) (*model.Bench
 	}
 	var committed *model.Bench
 	err = l.Within(func(update Update) error {
-		if err := update(func(rows benchstate.Database, _ *sql.Tx) error {
+		if err := update(func(rows benchstate.Database, tx *sql.Tx) error {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
 			b := rows[key]
-			if err := l.owner(b, token); err != nil {
+			if err := l.ownerContext(ctx, tx, b, token); err != nil {
 				return err
 			}
 			if b.Workspace.Phase != "ready" || b.Workspace.Pending != nil || b.Workspace.Checkpoint == nil {
@@ -184,7 +184,7 @@ func (l Lifecycle) Release(ctx context.Context, key, token string) (*model.Bench
 			if !reflect.DeepEqual(b, committed) {
 				return errors.New("workspace release ownership or checkpoint changed")
 			}
-			if err := l.owner(b, token); err != nil {
+			if err := l.ownerContext(ctx, tx, b, token); err != nil {
 				return err
 			}
 			current, err := l.Inspect(ctx, b, true)

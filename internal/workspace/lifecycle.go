@@ -304,7 +304,7 @@ func (l Lifecycle) Checkpoint(ctx context.Context, key, token string) (*model.Be
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-			if err := l.owner(rows[key], token); err != nil {
+			if err := l.ownerContext(ctx, tx, rows[key], token); err != nil {
 				return err
 			}
 			if err := transferguard.Check(ctx, transferguard.Config{State: l.State, Data: l.Data, Git: l.Git, Timeout: l.Timeout}, tx, rows[key]); err != nil {
@@ -382,7 +382,7 @@ func (l Lifecycle) Checkpoint(ctx context.Context, key, token string) (*model.Be
 				if !reflect.DeepEqual(rows[key], committed) || !reflect.DeepEqual(actual, manifest) {
 					return errors.New("workspace pending generation or owner changed")
 				}
-				if err := l.owner(rows[key], token); err != nil {
+				if err := l.ownerContext(ctx, tx, rows[key], token); err != nil {
 					return err
 				}
 				if err := transferguard.Check(ctx, transferguard.Config{State: l.State, Data: l.Data, Git: l.Git, Timeout: l.Timeout}, tx, rows[key]); err != nil {
@@ -412,7 +412,7 @@ func (l Lifecycle) Checkpoint(ctx context.Context, key, token string) (*model.Be
 			if !reflect.DeepEqual(rows[key], committed) {
 				return errors.New("workspace ownership changed before checkpoint save")
 			}
-			if err := l.owner(rows[key], token); err != nil {
+			if err := l.ownerContext(ctx, tx, rows[key], token); err != nil {
 				return err
 			}
 			if err := transferguard.Check(ctx, transferguard.Config{State: l.State, Data: l.Data, Git: l.Git, Timeout: l.Timeout}, tx, rows[key]); err != nil {
@@ -457,7 +457,7 @@ func (l Lifecycle) FinishInitialization(ctx context.Context, key, token string) 
 	if err := l.Within(func(update Update) error {
 		return update(func(rows benchstate.Database, tx *sql.Tx) error {
 			b := rows[key]
-			if err := l.initialization(b, token); err != nil {
+			if err := l.initializationContext(ctx, tx, b, token); err != nil {
 				return err
 			}
 			if err := transferguard.Check(ctx, transferguard.Config{State: l.State, Data: l.Data, Git: l.Git, Timeout: l.Timeout}, tx, b); err != nil {
@@ -485,7 +485,7 @@ func (l Lifecycle) FinishInitialization(ctx context.Context, key, token string) 
 			if !reflect.DeepEqual(b, committed) {
 				return errors.New("workspace initialization ownership changed")
 			}
-			if err := l.initialization(b, token); err != nil {
+			if err := l.initializationContext(ctx, tx, b, token); err != nil {
 				return err
 			}
 			if err := transferguard.Check(ctx, transferguard.Config{State: l.State, Data: l.Data, Git: l.Git, Timeout: l.Timeout}, tx, b); err != nil {
@@ -510,7 +510,7 @@ func (l Lifecycle) FinishInitialization(ctx context.Context, key, token string) 
 			if !reflect.DeepEqual(b, committed) {
 				return errors.New("workspace initialization ownership changed")
 			}
-			if err := l.initialization(b, token); err != nil {
+			if err := l.initializationContext(ctx, tx, b, token); err != nil {
 				return err
 			}
 			if err := transferguard.Check(ctx, transferguard.Config{State: l.State, Data: l.Data, Git: l.Git, Timeout: l.Timeout}, tx, b); err != nil {
