@@ -15,12 +15,12 @@ import (
 func TestWorkspaceTransferFlagsRefuseBeforeEffects(t *testing.T) {
 	ambient := strings.Repeat("e", 32)
 	t.Setenv("BENCH_LEASE_TOKEN", ambient)
-	for _, op := range []string{"inspect-transfer", "begin-transfer", "continue-transfer"} {
+	for _, op := range []string{"inspect-transfer", "begin-transfer", "continue-transfer", "inspect-missing-transfer", "begin-missing-transfer", "continue-missing-transfer"} {
 		forbidden := [][]string{{"--socket", ""}, {"--socket", "/unused/socket"}, {"--token", ""}, {"--token", "synthetic"}, {"--holder", "worker"}, {"--request-id", "request"}, {"--repository-name", "api"}, {"--repair-id", "repair"}, {"--rerun-once", "api"}, {"--initialize=false"}, {"--archive-grace", "0"}, {"--state", ""}, {"--target", ""}, {"--transfer-id", ""}, {"--plan", ""}, {"--approve", ""}, {"--unknown-flag"}}
-		if op != "inspect-transfer" {
+		if !strings.HasPrefix(op, "inspect-") {
 			forbidden = append(forbidden, []string{"--target", "destination"}, []string{"--quota-bytes", "0"})
 		}
-		if op != "begin-transfer" {
+		if !strings.HasPrefix(op, "begin-") {
 			forbidden = append(forbidden, []string{"--plan", "/unused/plan"}, []string{"--approve", "digest"})
 		} else {
 			forbidden = append(forbidden, []string{"--transfer-id", "transfer-1"})
@@ -58,6 +58,12 @@ func TestWorkspaceTransferRequiresConcreteInputsBeforeEffects(t *testing.T) {
 		{"inspect-transfer", "--target", "destination", "source"},
 		{"inspect-transfer", "--transfer-id", "transfer-1", "source"},
 		{"inspect-transfer", "--target", "destination", "--transfer-id", "transfer-1"},
+		{"inspect-missing-transfer", "--target", "destination", "source"},
+		{"inspect-missing-transfer", "--transfer-id", "transfer-1", "source"},
+		{"inspect-missing-transfer", "--target", "destination", "--transfer-id", "transfer-1"},
+		{"begin-missing-transfer", "source"},
+		{"continue-missing-transfer", "source"},
+		{"continue-missing-transfer", "--transfer-id", "transfer-1"},
 		{"begin-transfer", "source"},
 		{"continue-transfer", "source"},
 		{"continue-transfer", "--transfer-id", "transfer-1"},
@@ -88,11 +94,13 @@ func TestWorkspaceTransferRequiresConcreteInputsBeforeEffects(t *testing.T) {
 	if err := syscall.Mkfifo(filepath.Join(root, "pipe"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"unknown.json", "trailing.json", "oversized.json", "symlink", "pipe"} {
-		var stdout, stderr bytes.Buffer
-		err := workspaceCLIContext(context.Background(), []string{"begin-transfer", "--state", filepath.Join(root, "state"), "--data", filepath.Join(root, "data"), "--plan", filepath.Join(root, name), "--approve", strings.Repeat("a", 64), "source"}, &stdout, &stderr)
-		if err == nil || stdout.Len() != 0 {
-			t.Fatal("unsafe transfer plan accepted", name, err)
+	for _, op := range []string{"begin-transfer", "begin-missing-transfer"} {
+		for _, name := range []string{"unknown.json", "trailing.json", "oversized.json", "symlink", "pipe"} {
+			var stdout, stderr bytes.Buffer
+			err := workspaceCLIContext(context.Background(), []string{op, "--state", filepath.Join(root, "state"), "--data", filepath.Join(root, "data"), "--plan", filepath.Join(root, name), "--approve", strings.Repeat("a", 64), "source"}, &stdout, &stderr)
+			if err == nil || stdout.Len() != 0 {
+				t.Fatal("unsafe transfer plan accepted", name, err)
+			}
 		}
 	}
 	if _, err := os.Lstat(filepath.Join(root, "state")); !os.IsNotExist(err) {

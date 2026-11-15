@@ -13,6 +13,7 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/repository"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/statepath"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspacecopy"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspacepolicy"
 )
 
@@ -54,65 +55,7 @@ var ErrTransfer = errors.New("workspace ownership has a durable transfer; use it
 
 var ErrInitializationRepair = errors.New("workspace initialization has an explicit repair epoch; use its repair commands")
 
-func privateRecord(b *model.Bench) *model.Bench {
-	if b == nil {
-		return nil
-	}
-	c := *b
-	if b.Workspace != nil {
-		w := *b.Workspace
-		w.Members = append([]model.WorkspaceMember(nil), w.Members...)
-		if w.Transfer != nil {
-			t := *w.Transfer
-			w.Transfer = &t
-		}
-		if w.TransferredFrom != nil {
-			t := *w.TransferredFrom
-			w.TransferredFrom = &t
-		}
-		if w.InitializationRepair != nil {
-			r := *w.InitializationRepair
-			r.RetiredRuns = append([]string(nil), r.RetiredRuns...)
-			r.UncertainOnce = append([]string(nil), r.UncertainOnce...)
-			w.InitializationRepair = &r
-		}
-		w.Unmerged = append([]model.WorkspaceMergeEvidence(nil), w.Unmerged...)
-		if w.Archive != nil {
-			archive := *w.Archive
-			archive.Merge = append([]model.WorkspaceMergeEvidence(nil), archive.Merge...)
-			w.Archive = &archive
-		}
-		if w.RecoveredFrom != nil {
-			origin := *w.RecoveredFrom
-			w.RecoveredFrom = &origin
-		}
-		w.Preparation = append([]model.WorkspacePreparation(nil), w.Preparation...)
-		cloneCheckpoint := func(cp *model.WorkspaceCheckpoint) *model.WorkspaceCheckpoint {
-			if cp == nil {
-				return nil
-			}
-			copy := *cp
-			copy.Members = append([]model.WorkspaceCommit(nil), cp.Members...)
-			return &copy
-		}
-		w.Pending, w.Checkpoint = cloneCheckpoint(w.Pending), cloneCheckpoint(w.Checkpoint)
-		if w.Stage != nil {
-			stage := *w.Stage
-			w.Stage = &stage
-		}
-		c.Workspace = &w
-	}
-	if b.Lease != nil {
-		l := *b.Lease
-		l.RetainedRuns = append([]string(nil), l.RetainedRuns...)
-		if l.Execution != nil {
-			e := *l.Execution
-			l.Execution = &e
-		}
-		c.Lease = &l
-	}
-	return &c
-}
+func privateRecord(b *model.Bench) *model.Bench { return workspacecopy.Copy(b) }
 
 // Clone owns all mutable workspace and lease slices returned to lifecycle callers.
 func Clone(b *model.Bench) *model.Bench { return privateRecord(b) }
@@ -240,6 +183,9 @@ func (m Manager) stage(ctx context.Context, request stagingRequest) (*model.Benc
 				if !request.matches(b) {
 					return errors.New("workspace creation conflicts with an existing bench")
 				}
+				if err := m.stageTransferCheck(ctx, tx, b); err != nil {
+					return err
+				}
 				found = privateRecord(b)
 			}
 			return nil
@@ -293,12 +239,15 @@ func (m Manager) stage(ctx context.Context, request stagingRequest) (*model.Benc
 					return err
 				}
 			}
-			if err = update(func(rows benchstate.Database, _ *sql.Tx) error {
+			if err = update(func(rows benchstate.Database, tx *sql.Tx) error {
 				if err := ctx.Err(); err != nil {
 					return err
 				}
 				if _, ok := rows[request.key]; ok {
 					return errors.New("workspace identity appeared during source selection")
+				}
+				if err := m.stageTransferCheck(ctx, tx, candidate); err != nil {
+					return err
 				}
 				rows[request.key] = privateRecord(candidate)
 				return nil
@@ -314,6 +263,13 @@ func (m Manager) stage(ctx context.Context, request stagingRequest) (*model.Benc
 		allocated := privateRecord(committed)
 		if err := ctx.Err(); err != nil {
 			return err
+		}
+		if committed.Workspace.TransferredFrom != nil {
+			if err := update(func(_ benchstate.Database, tx *sql.Tx) error {
+				return m.stageTransferCheck(ctx, tx, committed)
+			}); err != nil {
+				return err
+			}
 		}
 		if err := m.Allocate(allocated); err != nil {
 			return err
@@ -335,7 +291,7 @@ func (m Manager) stage(ctx context.Context, request stagingRequest) (*model.Benc
 			if err := gateCtx.Err(); err != nil {
 				return err
 			}
-			return update(func(rows benchstate.Database, _ *sql.Tx) error {
+			return update(func(rows benchstate.Database, tx *sql.Tx) error {
 				if err := gateCtx.Err(); err != nil {
 					return err
 				}
@@ -345,15 +301,18 @@ func (m Manager) stage(ctx context.Context, request stagingRequest) (*model.Benc
 				if !reflect.DeepEqual(rows[request.key], committed) || !reflect.DeepEqual(stagedPlan(committed), plan) {
 					return errors.New("workspace initialization ownership or pinned vector changed")
 				}
-				return nil
+				return m.stageTransferCheck(gateCtx, tx, rows[request.key])
 			})
 		}
-		if err := update(func(rows benchstate.Database, _ *sql.Tx) error {
+		if err := update(func(rows benchstate.Database, tx *sql.Tx) error {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
 			if !reflect.DeepEqual(rows[request.key], committed) {
 				return errors.New("workspace initialization ownership changed")
+			}
+			if err := m.stageTransferCheck(ctx, tx, allocated); err != nil {
+				return err
 			}
 			rows[request.key] = privateRecord(allocated)
 			return nil
@@ -367,12 +326,15 @@ func (m Manager) stage(ctx context.Context, request stagingRequest) (*model.Benc
 		}
 		finished := privateRecord(committed)
 		finished.Workspace.Phase = "initializing"
-		if err := update(func(rows benchstate.Database, _ *sql.Tx) error {
+		if err := update(func(rows benchstate.Database, tx *sql.Tx) error {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
 			if !reflect.DeepEqual(rows[request.key], committed) {
 				return errors.New("workspace initialization ownership changed")
+			}
+			if err := m.stageTransferCheck(ctx, tx, finished); err != nil {
+				return err
 			}
 			rows[request.key] = privateRecord(finished)
 			return nil

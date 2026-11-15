@@ -2,6 +2,7 @@ package workspaceprep
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/benchstate"
@@ -15,7 +16,7 @@ import (
 func (m Manager) openCapture(ctx context.Context, key, token, continuation string, e *execution.Execution) (*output.Capture, error) {
 	var capture *output.Capture
 	err := m.Gate(key, func() error {
-		return m.Read(func(rows benchstate.Database) error {
+		return m.Update(func(rows benchstate.Database, tx *sql.Tx) error {
 			b, err := owned(rows, key, token)
 			if err != nil {
 				return err
@@ -24,6 +25,9 @@ func (m Manager) openCapture(ctx context.Context, key, token, continuation strin
 				return err
 			}
 			if err = m.preparable(b); err != nil {
+				return err
+			}
+			if err := m.transferAdmission(ctx, tx, b); err != nil {
 				return err
 			}
 			if continuation == "" || b.Lease.Continuation != continuation || !sameExecution(b.Lease.Execution, e) || b.Lease.Execution.Phase != "starting" {

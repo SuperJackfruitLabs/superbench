@@ -1,6 +1,9 @@
 package benchstate
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"reflect"
 	"slices"
@@ -9,6 +12,7 @@ import (
 )
 
 type identityRecord struct {
+	rowDigest           string
 	workspace           *model.Workspace
 	path                string
 	requested           uint64
@@ -53,6 +57,9 @@ func Capture(records Database) IdentitySnapshot {
 	for key, b := range records {
 		entry := identityRecord{}
 		if b != nil && b.Workspace != nil {
+			raw, _ := json.Marshal(b)
+			sum := sha256.Sum256(raw)
+			entry.rowDigest = hex.EncodeToString(sum[:])
 			w := *b.Workspace
 			if w.RecoveredFrom != nil {
 				source := *w.RecoveredFrom
@@ -63,10 +70,7 @@ func Capture(records Database) IdentitySnapshot {
 				origin := *w.TransferredFrom
 				w.TransferredFrom = &origin
 			}
-			if w.Transfer != nil {
-				transfer := *w.Transfer
-				entry.transfer = &transfer
-			}
+			entry.transfer = copyTransfer(w.Transfer)
 			w.Transfer = nil
 			entry.repair = copyInitializationRepair(w.InitializationRepair)
 			w.InitializationRepair = nil

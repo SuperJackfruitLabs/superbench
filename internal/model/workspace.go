@@ -27,7 +27,20 @@ type Workspace struct {
 
 // WorkspaceTransfer permanently relinquishes source task-ref writer authority.
 // Initialization readiness remains independent from transfer availability.
-type WorkspaceTransfer struct{ ID, Digest, TargetKey, TargetID, CreationID, Phase string }
+type WorkspaceTransfer struct {
+	ID, Digest, TargetKey, TargetID, CreationID, Phase string
+	Recovery                                           *WorkspaceTransferRecovery `json:",omitempty"`
+}
+
+// WorkspaceTransferRecovery retains retired source authority as evidence only.
+// It neither releases history nor asserts that lost task work was checkpointed.
+type WorkspaceTransferRecovery struct {
+	Mode, SourceRowDigest, RetiredAt, Holder string
+	Execution                                *Execution      `json:",omitempty"`
+	Stage                                    *WorkspaceStage `json:",omitempty"`
+	Runs                                     []WorkspaceRetiredRun
+}
+type WorkspaceRetiredRun struct{ ID, Digest string }
 type WorkspaceTransferOrigin struct{ ID, Digest, SourceKey, SourceID string }
 
 // WorkspaceInitializationRepair preserves explicit initialization handoff and

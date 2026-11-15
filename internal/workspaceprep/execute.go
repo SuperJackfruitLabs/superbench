@@ -32,6 +32,9 @@ func (m Manager) execute(ctx context.Context, key, token string, plan memberPlan
 			if err = m.preparable(b); err != nil {
 				return err
 			}
+			if err := m.transferAdmission(ctx, tx, b); err != nil {
+				return err
+			}
 			if b.Lease.Execution != nil {
 				return errors.New("workspace already has an execution")
 			}
@@ -137,6 +140,9 @@ func (m Manager) execute(ctx context.Context, key, token string, plan memberPlan
 		if err = m.preparable(b); err != nil {
 			return err
 		}
+		if err := m.transferAdmission(ctx, tx, b); err != nil {
+			return err
+		}
 		if b.Lease.Continuation != continuation || b.Lease.Execution == nil || b.Lease.Execution.ID != stage.ID {
 			return errors.New("workspace stage ownership changed before success save")
 		}
@@ -156,12 +162,15 @@ func (m Manager) execute(ctx context.Context, key, token string, plan memberPlan
 
 func (m Manager) start(ctx context.Context, key, token, continuation string, plan memberPlan, cmd *exec.Cmd, e *execution.Execution) error {
 	return m.Gate(key, func() error {
-		return m.Update(func(rows benchstate.Database, _ *sql.Tx) error {
+		return m.Update(func(rows benchstate.Database, tx *sql.Tx) error {
 			b, err := owned(rows, key, token)
 			if err != nil {
 				return err
 			}
 			if err = m.preparable(b); err != nil {
+				return err
+			}
+			if err := m.transferAdmission(ctx, tx, b); err != nil {
 				return err
 			}
 			if b.Lease.Continuation != continuation || b.Lease.Execution == nil || b.Lease.Execution.ID != e.ID || b.Lease.Execution.Phase != "starting" {

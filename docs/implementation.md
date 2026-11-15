@@ -264,7 +264,9 @@ Native/Linux required checks and live transfer, repair, API, aggregate and Git-c
 regressions passed; see [transfer verification evidence](workspace-transfer-output.txt).
 See [original task-ref transfer](workspace-transfer.md). This checkpoint requires
 present source checkouts within one host state/data pair. Missing-checkout
-reconciliation and cross-host recovery, including independently verified fencing
+reconciliation is implemented separately and under verification; see
+[missing-checkout recovery](workspace-missing-transfer.md). Its source archive/reap
+path and cross-host recovery, including independently verified fencing
 and rollback-resistant return quarantine, remain required work.
 
 ## Remaining retention work

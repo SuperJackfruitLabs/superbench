@@ -11,6 +11,7 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/benchstate"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/initrepair"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/transferguard"
 )
 
 func (m Manager) Claim(ctx context.Context, p Plan, id string) (out *Result, operationErr error) {
@@ -30,6 +31,20 @@ func (m Manager) Claim(ctx context.Context, p Plan, id string) (out *Result, ope
 	}
 	var token string
 	var locks captureLocks
+
+	// Revoke only the exact owner authenticated or committed below. Reconciliation
+	// runs after leaving the keyed gate and SQL callback, including replay errors.
+	defer func() {
+		if token == "" {
+			return
+		}
+		if ctxErr := ctx.Err(); ctxErr != nil || errors.Is(operationErr, transferguard.ErrGuard) {
+			_, stopErr := m.Prep.Stop(p.Key, token, false)
+			current, readErr := m.view(p.Key, id, token, false)
+			out = current
+			operationErr = errors.Join(operationErr, ctxErr, stopErr, readErr)
+		}
+	}()
 	err = m.Prep.Gate(p.Key, func() error {
 		defer func() { locks.close() }()
 		return m.Prep.Update(func(rows benchstate.Database, tx *sql.Tx) error {
@@ -51,7 +66,7 @@ func (m Manager) Claim(ctx context.Context, p Plan, id string) (out *Result, ope
 					return errors.New("initialization repair is stopped or terminal; inspect a new repair")
 				}
 				token = b.Lease.Token
-				return nil
+				return transferguard.Check(ctx, transferguard.Config{State: m.Prep.State, Data: m.Prep.Data, Git: m.Prep.Git}, tx, b)
 			} else if e != sql.ErrNoRows {
 				return e
 			}
@@ -160,15 +175,22 @@ func (m Manager) Claim(ctx context.Context, p Plan, id string) (out *Result, ope
 	if err != nil {
 		return nil, err
 	}
-	// Include the final state read in the cancellation boundary. A canceled
-	// caller must not receive a still-launchable new repair grant.
-	defer func() {
-		if ctxErr := ctx.Err(); ctxErr != nil && token != "" {
-			_, stopErr := m.Prep.Stop(p.Key, token, false)
-			current, readErr := m.view(p.Key, id, token, false)
-			out = current
-			operationErr = errors.Join(operationErr, ctxErr, stopErr, readErr)
+
+	// A source may have changed while claim committed or its prior reply was lost.
+	// Recheck before exporting a fresh capability; completed metadata replay does
+	// not depend on a source allocation that may already have been retired.
+	if token != "" {
+		if err = m.Prep.Gate(p.Key, func() error {
+			return m.Prep.Update(func(rows benchstate.Database, tx *sql.Tx) error {
+				b := rows[p.Key]
+				if b == nil || b.Lease == nil || b.Lease.Token != token {
+					return errors.New("initialization repair owner changed before grant")
+				}
+				return transferguard.Check(ctx, transferguard.Config{State: m.Prep.State, Data: m.Prep.Data, Git: m.Prep.Git}, tx, b)
+			})
+		}); err != nil {
+			return nil, err
 		}
-	}()
+	}
 	return m.view(p.Key, id, token, true)
 }

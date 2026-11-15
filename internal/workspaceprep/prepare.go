@@ -203,6 +203,9 @@ func (m Manager) Prepare(ctx context.Context, key, token, selector string, offli
 		if e = m.preparable(current); e != nil {
 			return e
 		}
+		if err := m.transferAdmission(ctx, tx, current); err != nil {
+			return err
+		}
 		if e = m.stopped(current); e != nil {
 			return e
 		}
@@ -243,6 +246,9 @@ func (m Manager) member(ctx context.Context, key, token string, plan memberPlan,
 			return err
 		}
 		if err = m.preparable(b); err != nil {
+			return err
+		}
+		if err := m.transferAdmission(ctx, tx, b); err != nil {
 			return err
 		}
 		if err = ctx.Err(); err != nil {

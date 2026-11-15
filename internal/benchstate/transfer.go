@@ -60,17 +60,20 @@ func transferTransition(old identityRecord, b *model.Bench, before IdentitySnaps
 	if old.transfer == nil && next == nil {
 		return true
 	}
-	if next == nil || b.Lease != nil || old.lease != nil || old.pending != nil || b.Workspace.Pending != nil || old.stage != nil || b.Workspace.Stage != nil || !reflect.DeepEqual(old.checkpoint, b.Workspace.Checkpoint) || !slices.Equal(old.preparation, b.Workspace.Preparation) || !slices.Equal(old.unmerged, b.Workspace.Unmerged) || !reflect.DeepEqual(old.repair, b.Workspace.InitializationRepair) || old.project != b.ProjectID || old.bytes != b.QuotaBytes || old.inodes != b.QuotaInodes {
+	if next == nil || b.Lease != nil || old.pending != nil || b.Workspace.Pending != nil || b.Workspace.Stage != nil || !reflect.DeepEqual(old.checkpoint, b.Workspace.Checkpoint) || !slices.Equal(old.preparation, b.Workspace.Preparation) || !slices.Equal(old.unmerged, b.Workspace.Unmerged) || !reflect.DeepEqual(old.repair, b.Workspace.InitializationRepair) || old.project != b.ProjectID || old.bytes != b.QuotaBytes || old.inodes != b.QuotaInodes {
 		return false
 	}
 	if old.transfer == nil {
+		if !retirementTransition(old, next.Recovery) {
+			return false
+		}
 		_, existed := before[next.TargetKey]
 		return !existed && after[next.TargetKey] == nil && old.phase == "ready" && b.Workspace.Phase == "ready" && old.archive == nil && b.Workspace.Archive == nil && old.checkpoint != nil && next.Phase == "relinquishing"
 	}
 	a, c := *old.transfer, *next
 	a.Phase = ""
 	c.Phase = ""
-	if a != c {
+	if !reflect.DeepEqual(a, c) {
 		return false
 	}
 	if old.transfer.Phase == "relinquishing" {

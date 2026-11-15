@@ -16,6 +16,7 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/repository"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/statepath"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/transferguard"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspacepolicy"
 )
 
@@ -25,6 +26,7 @@ import (
 type Lifecycle struct {
 	// Only the reviewed local repair flow may continue this initialization epoch.
 	InitializationRepairID string
+	TransferID             string
 	State, Data            string
 	Timeout                time.Duration
 	Within                 func(func(Update) error) error
@@ -215,6 +217,9 @@ func (l Lifecycle) owner(b *model.Bench, token string) error {
 	if b.Workspace.Phase != "ready" && b.Workspace.InitializationRepair != nil && l.InitializationRepairID != b.Workspace.InitializationRepair.ID {
 		return ErrInitializationRepair
 	}
+	if err := transferguard.Authority(b, l.TransferID, l.InitializationRepairID); err != nil {
+		return err
+	}
 	if b.Lease == nil || token == "" || b.Lease.Token != token || b.Workspace.Phase != "prepared" && b.Workspace.Phase != "ready" {
 		return errors.New("workspace checkpoint requires its prepared held owner")
 	}
@@ -295,11 +300,14 @@ func (l Lifecycle) Checkpoint(ctx context.Context, key, token string) (*model.Be
 	}
 	var committed *model.Bench
 	err = l.Within(func(update Update) error {
-		if err := update(func(rows benchstate.Database, _ *sql.Tx) error {
+		if err := update(func(rows benchstate.Database, tx *sql.Tx) error {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
 			if err := l.owner(rows[key], token); err != nil {
+				return err
+			}
+			if err := transferguard.Check(ctx, transferguard.Config{State: l.State, Data: l.Data, Git: l.Git, Timeout: l.Timeout}, tx, rows[key]); err != nil {
 				return err
 			}
 			if rows[key].Workspace.Phase == "prepared" {
@@ -339,7 +347,7 @@ func (l Lifecycle) Checkpoint(ctx context.Context, key, token string) (*model.Be
 			}
 			pending.Digest = checkpointset.Digest(raw)
 			candidate.Workspace.Pending = pending
-			if err := update(func(rows benchstate.Database, _ *sql.Tx) error {
+			if err := update(func(rows benchstate.Database, tx *sql.Tx) error {
 				if err := ctx.Err(); err != nil {
 					return err
 				}
@@ -364,7 +372,7 @@ func (l Lifecycle) Checkpoint(ctx context.Context, key, token string) (*model.Be
 			return err
 		}
 		c.Gate = func(gateCtx context.Context, actual checkpointset.Manifest) error {
-			return update(func(rows benchstate.Database, _ *sql.Tx) error {
+			return update(func(rows benchstate.Database, tx *sql.Tx) error {
 				if err := gateCtx.Err(); err != nil {
 					return err
 				}
@@ -375,6 +383,9 @@ func (l Lifecycle) Checkpoint(ctx context.Context, key, token string) (*model.Be
 					return errors.New("workspace pending generation or owner changed")
 				}
 				if err := l.owner(rows[key], token); err != nil {
+					return err
+				}
+				if err := transferguard.Check(ctx, transferguard.Config{State: l.State, Data: l.Data, Git: l.Git, Timeout: l.Timeout}, tx, rows[key]); err != nil {
 					return err
 				}
 				return nil
@@ -394,7 +405,7 @@ func (l Lifecycle) Checkpoint(ctx context.Context, key, token string) (*model.Be
 		if finished.Workspace.Phase == "ready" && l.NoteCheckpoint != nil {
 			l.NoteCheckpoint(ctx, finished)
 		}
-		if err := update(func(rows benchstate.Database, _ *sql.Tx) error {
+		if err := update(func(rows benchstate.Database, tx *sql.Tx) error {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
@@ -402,6 +413,9 @@ func (l Lifecycle) Checkpoint(ctx context.Context, key, token string) (*model.Be
 				return errors.New("workspace ownership changed before checkpoint save")
 			}
 			if err := l.owner(rows[key], token); err != nil {
+				return err
+			}
+			if err := transferguard.Check(ctx, transferguard.Config{State: l.State, Data: l.Data, Git: l.Git, Timeout: l.Timeout}, tx, rows[key]); err != nil {
 				return err
 			}
 			if rows[key].Workspace.Phase == "prepared" {
@@ -441,9 +455,12 @@ func (l Lifecycle) FinishInitialization(ctx context.Context, key, token string) 
 	var committed *model.Bench
 	// Reject ready operational leases before Checkpoint can publish anything.
 	if err := l.Within(func(update Update) error {
-		return update(func(rows benchstate.Database, _ *sql.Tx) error {
+		return update(func(rows benchstate.Database, tx *sql.Tx) error {
 			b := rows[key]
 			if err := l.initialization(b, token); err != nil {
+				return err
+			}
+			if err := transferguard.Check(ctx, transferguard.Config{State: l.State, Data: l.Data, Git: l.Git, Timeout: l.Timeout}, tx, b); err != nil {
 				return err
 			}
 			committed = privateRecord(b)
@@ -460,7 +477,7 @@ func (l Lifecycle) FinishInitialization(ctx context.Context, key, token string) 
 		return committed, err
 	}
 	err = l.Within(func(update Update) error {
-		if err := update(func(rows benchstate.Database, _ *sql.Tx) error {
+		if err := update(func(rows benchstate.Database, tx *sql.Tx) error {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
@@ -469,6 +486,9 @@ func (l Lifecycle) FinishInitialization(ctx context.Context, key, token string) 
 				return errors.New("workspace initialization ownership changed")
 			}
 			if err := l.initialization(b, token); err != nil {
+				return err
+			}
+			if err := transferguard.Check(ctx, transferguard.Config{State: l.State, Data: l.Data, Git: l.Git, Timeout: l.Timeout}, tx, b); err != nil {
 				return err
 			}
 			if b.Workspace.Pending != nil || b.Workspace.Checkpoint == nil {
@@ -491,6 +511,9 @@ func (l Lifecycle) FinishInitialization(ctx context.Context, key, token string) 
 				return errors.New("workspace initialization ownership changed")
 			}
 			if err := l.initialization(b, token); err != nil {
+				return err
+			}
+			if err := transferguard.Check(ctx, transferguard.Config{State: l.State, Data: l.Data, Git: l.Git, Timeout: l.Timeout}, tx, b); err != nil {
 				return err
 			}
 			vector, err := l.Inspect(ctx, b, true)

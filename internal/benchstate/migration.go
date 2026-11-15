@@ -33,13 +33,13 @@ func Migrate(tx *sql.Tx, state string, pinMigratedInodes func(*model.Bench) erro
 	if version == SchemaVersion {
 		return nil
 	}
-	if version >= 1 && version <= 20 {
+	if version >= 1 && version <= 21 {
 		records, err := Load(tx)
 		if err != nil {
 			return err
 		}
 		for _, b := range records {
-			if b.Workspace != nil && (version < 14 || version == 14 && workspacepolicy.ValidateSchema14(b) != nil || version == 15 && workspacepolicy.ValidateSchema15(b) != nil || version == 16 && workspacepolicy.ValidateSchema16(b) != nil || version == 17 && workspacepolicy.ValidateSchema17(b) != nil || (version == 18 || version == 19) && workspacepolicy.ValidateSchema19(b) != nil || version == 20 && workspacepolicy.ValidateSchema20(b) != nil) {
+			if b.Workspace != nil && (version < 14 || version == 14 && workspacepolicy.ValidateSchema14(b) != nil || version == 15 && workspacepolicy.ValidateSchema15(b) != nil || version == 16 && workspacepolicy.ValidateSchema16(b) != nil || version == 17 && workspacepolicy.ValidateSchema17(b) != nil || (version == 18 || version == 19) && workspacepolicy.ValidateSchema19(b) != nil || version == 20 && workspacepolicy.ValidateSchema20(b) != nil || version == 21 && workspacepolicy.ValidateSchema21(b) != nil) {
 				return errors.New("aggregate workspace cannot be adopted from an older state schema")
 			}
 			if b.Lease != nil && b.Lease.Execution != nil && b.Lease.Execution.Phase != "stopped" {
@@ -56,7 +56,11 @@ func Migrate(tx *sql.Tx, state string, pinMigratedInodes func(*model.Bench) erro
 				return err
 			}
 		}
-		if err := historicalTransfers(tx); err != nil {
+		if version < 21 {
+			if err := historicalTransfers(tx); err != nil {
+				return err
+			}
+		} else if err := historicalTransferPlans(tx); err != nil {
 			return err
 		}
 		for key, b := range records {
@@ -94,7 +98,7 @@ func Migrate(tx *sql.Tx, state string, pinMigratedInodes func(*model.Bench) erro
 		if err = reftransfer.Schema(tx); err != nil {
 			return err
 		}
-		_, err = tx.Exec("PRAGMA user_version=21")
+		_, err = tx.Exec("PRAGMA user_version=22")
 		return err
 	}
 	if version != 0 {
@@ -137,7 +141,7 @@ func Migrate(tx *sql.Tx, state string, pinMigratedInodes func(*model.Bench) erro
 	if err = reftransfer.Schema(tx); err != nil {
 		return err
 	}
-	_, err = tx.Exec("PRAGMA user_version=21")
+	_, err = tx.Exec("PRAGMA user_version=22")
 	return err
 }
 

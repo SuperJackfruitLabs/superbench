@@ -34,7 +34,7 @@ func TestSchema20MigrationPreservesRawAuthorityAndRepairJournal(t *testing.T) {
 	if err := migrateForTest(db, t.TempDir(), nil); err != nil {
 		t.Fatal(err)
 	}
-	assertVersion(t, db, 21)
+	assertVersion(t, db, 22)
 	if before != databaseAuthority(t, db) {
 		t.Fatal("migration rewrote existing authority")
 	}

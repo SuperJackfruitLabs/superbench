@@ -47,9 +47,9 @@ class Drill(api.Drill):
             return
         before = self.record("source")
         result = subprocess.run([self.args.previous_cli, "status", "--state", str(self.state), "--data", str(self.data)], capture_output=True, text=True, timeout=20)
-        assert result.returncode != 0 and "unsupported state schema 21 (expected 20)" in result.stderr
+        assert result.returncode != 0 and "unsupported state schema 22 (expected 20)" in result.stderr
         assert self.record("source") == before
-        print("PASS: schema20 binary refuses schema21 without altering source authority", flush=True)
+        print("PASS: schema20 binary refuses schema22 without altering source authority", flush=True)
 
 
 def file_snapshot(root):
