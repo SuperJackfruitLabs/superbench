@@ -64,6 +64,10 @@ func (s *Server) serveV2(w http.ResponseWriter, r *http.Request) {
 		s.replyV2(w, request, nil, 403, "forbidden", "operator authority required")
 		return
 	}
+	if s.promoteNormal(r) != nil {
+		s.replyV2(w, request, nil, 503, "unavailable", "normal connection limit reached")
+		return
+	}
 	select {
 	case s.slots <- struct{}{}:
 		defer func() { <-s.slots }()

@@ -60,3 +60,14 @@ func newOperationIntent(request protocolv2.Request, uid uint32, digest string) (
 	}
 	return i, nil
 }
+
+func (s *Server) promoteNormal(r *http.Request) error {
+	if !s.proposedCancellation {
+		return nil
+	}
+	c, _ := r.Context().Value(connectionKey{}).(*peerConn)
+	if c == nil {
+		return nil
+	} // In-process handler tests have no transport reservation.
+	return c.promote()
+}

@@ -123,6 +123,10 @@ func Serve(ctx context.Context, c Config) error {
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if s.proposedCancellation {
+		r.Close = true
+		w.Header().Set("Connection", "close")
+	}
 	if strings.HasPrefix(r.URL.Path, "/v2/") {
 		s.serveV2(w, r)
 		return
@@ -142,6 +146,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method == "GET" && r.URL.Path == "/healthz" {
+		if s.promoteNormal(r) != nil {
+			s.reply(w, protocol.Request{}, nil, 503, "unavailable", "normal connection limit reached")
+			return
+		}
 		s.reply(w, protocol.Request{}, map[string]any{"service": "superbench", "version": protocol.Version}, 200, "", "")
 		return
 	}
@@ -179,6 +187,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			s.reply(w, request, nil, status, code, message)
 			return
 		}
+	}
+	if s.promoteNormal(r) != nil {
+		s.reply(w, request, nil, 503, "unavailable", "normal connection limit reached")
+		return
 	}
 	select {
 	case s.slots <- struct{}{}:

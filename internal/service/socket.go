@@ -11,18 +11,30 @@ import (
 )
 
 type uidKey struct{}
+type connectionKey struct{}
 type peerConn struct {
 	net.Conn
-	uid  uint32
-	slot chan struct{}
-	once sync.Once
+	uid    uint32
+	slot   chan struct{}
+	normal chan struct{}
+	mu     sync.Mutex
+	closed bool
 }
 
-func (c *peerConn) Close() error { e := c.Conn.Close(); c.once.Do(func() { <-c.slot }); return e }
+func (c *peerConn) Close() error {
+	c.mu.Lock()
+	if !c.closed {
+		c.closed = true
+		<-c.slot
+	}
+	c.mu.Unlock()
+	return c.Conn.Close()
+}
 
 type peerListener struct {
 	net.Listener
-	slots chan struct{}
+	slots  chan struct{}
+	normal chan struct{}
 }
 
 func (l peerListener) Accept() (net.Conn, error) {
@@ -62,7 +74,7 @@ func (l peerListener) Accept() (net.Conn, error) {
 			release()
 			return nil, peerErr
 		}
-		return &peerConn{Conn: c, uid: uid, slot: l.slots}, nil
+		return &peerConn{Conn: c, uid: uid, slot: l.slots, normal: l.normal}, nil
 	}
 }
 func connContext(ctx context.Context, c net.Conn) context.Context {
@@ -70,9 +82,14 @@ func connContext(ctx context.Context, c net.Conn) context.Context {
 	if !ok {
 		return ctx
 	}
+	ctx = context.WithValue(ctx, connectionKey{}, p)
 	return context.WithValue(ctx, uidKey{}, p.uid)
 }
 func listen(path, state string) (net.Listener, *os.File, error) {
+	return listenMode(path, state, false)
+}
+
+func listenMode(path, state string, private bool) (net.Listener, *os.File, error) {
 	if !filepath.IsAbs(path) || !filepath.IsAbs(state) {
 		return nil, nil, errors.New("absolute socket/state paths required")
 	}
@@ -123,5 +140,27 @@ func listen(path, state string) (net.Listener, *os.File, error) {
 		base.Close()
 		return fail(e)
 	}
+	if private {
+		return peerListener{Listener: base, slots: make(chan struct{}, 8), normal: make(chan struct{}, 64)}, lock, nil
+	}
 	return peerListener{Listener: base, slots: make(chan struct{}, 64)}, lock, nil
+}
+
+func (c *peerConn) promote() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed {
+		return net.ErrClosed
+	}
+	if c.normal == nil || c.slot == c.normal {
+		return nil
+	}
+	select {
+	case c.normal <- struct{}{}:
+		<-c.slot
+		c.slot = c.normal
+		return nil
+	default:
+		return errors.New("normal connection limit reached")
+	}
 }
