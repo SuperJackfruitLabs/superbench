@@ -8,7 +8,7 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/operationcontrol"
 )
 
-func TestSchema24Migrates23WithoutInventingManagedControl(t *testing.T) {
+func TestLatestMigrates23WithoutInventingManagedControl(t *testing.T) {
 	b := aggregate()
 	db := oldDatabase(t, 23, b)
 	_, err := db.Exec(`CREATE TABLE workspace_operations(id TEXT PRIMARY KEY,owner INTEGER NOT NULL,request_id TEXT NOT NULL,digest TEXT NOT NULL,key TEXT NOT NULL,operation TEXT NOT NULL,epoch TEXT NOT NULL,bench_id TEXT NOT NULL,holder TEXT NOT NULL,token_hash TEXT NOT NULL,continuation_hash TEXT NOT NULL,phase TEXT NOT NULL,UNIQUE(owner,request_id))`)
@@ -30,7 +30,7 @@ func TestSchema24Migrates23WithoutInventingManagedControl(t *testing.T) {
 	if err = migrateForTest(db, t.TempDir(), nil); err != nil {
 		t.Fatal(err)
 	}
-	assertVersion(t, db, 24)
+	assertVersion(t, db, SchemaVersion)
 	got, err := operationcontrol.Get(db, i.Target)
 	if err != nil || got.Control != (operationcontrol.Control{}) || got.Phase != "admitted" {
 		t.Fatal("legacy control was certified or changed", got, err)
@@ -47,6 +47,9 @@ func TestSchema23CannotAdoptFutureManagedControl(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err = operationcontrol.Schema(tx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = tx.Exec(`DROP TABLE workspace_operation_runs`); err != nil {
 		t.Fatal(err)
 	}
 	i := operationcontrol.Intent{Target: operationcontrol.Target{UID: 1, RequestID: "future", Digest: strings.Repeat("a", 64)}, Key: "card", Operation: "create", Epoch: strings.Repeat("b", 32)}

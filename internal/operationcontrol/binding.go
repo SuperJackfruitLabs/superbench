@@ -73,7 +73,10 @@ func Schema(tx *sql.Tx) error {
  control_state TEXT NOT NULL DEFAULT '',control_root TEXT NOT NULL DEFAULT '',control_host TEXT NOT NULL DEFAULT '',control_boot TEXT NOT NULL DEFAULT '',
  UNIQUE(owner,request_id));
  CREATE UNIQUE INDEX IF NOT EXISTS workspace_operation_active ON workspace_operations(key) WHERE phase IN ('admitted','bound')`)
-	return err
+	if err != nil {
+		return err
+	}
+	return runSchema(tx)
 }
 func hash(s string) string { v := sha256.Sum256([]byte(s)); return hex.EncodeToString(v[:]) }
 func validBinding(b Binding) bool {

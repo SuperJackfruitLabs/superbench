@@ -34,7 +34,11 @@ func LoadKinds(r Reader, state string) (Database, error) {
 		return nil, err
 	}
 	if version < SchemaVersion {
-		if version == 23 {
+		if version == 24 {
+			if err := operationcontrol.ValidateSchema24(r); err != nil {
+				return nil, err
+			}
+		} else if version == 23 {
 			if err := operationcontrol.ValidateSchema23(r); err != nil {
 				return nil, err
 			}

@@ -100,7 +100,7 @@ func (m Manager) execute(ctx context.Context, key, token string, plan memberPlan
 			b.Lease.Execution = stage
 			b.Workspace.Stage = &model.WorkspaceStage{Name: plan.member.Name, Digest: plan.digest}
 			continuation = b.Lease.Continuation
-			return history.Start(tx, history.Record{ID: id, Key: key, Holder: b.Lease.Holder, StartedAt: time.Now().UTC()})
+			return operationcontrol.StartHistory(ctx, tx, b, history.Record{ID: id, Key: key, Holder: b.Lease.Holder, StartedAt: time.Now().UTC()})
 		})
 	})
 	if err != nil {

@@ -11,7 +11,22 @@ type LegacyReader interface {
 
 // ValidateSchema23 refuses future authority in an older schema. Legitimate old
 // bindings have no control provenance and can only migrate as cooperative.
-func ValidateSchema23(r LegacyReader) error {
+func RejectRunAuthority(r Reader) error {
+	var count int
+	if err := r.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type='table' AND name='workspace_operation_runs'`).Scan(&count); err != nil {
+		return err
+	}
+	if count != 0 {
+		return ErrAuthority
+	}
+	return nil
+}
+func ValidateSchema23(r LegacyReader) error { return validateHistoricalBindings(r, false) }
+func ValidateSchema24(r LegacyReader) error { return validateHistoricalBindings(r, true) }
+func validateHistoricalBindings(r LegacyReader, withControl bool) error {
+	if err := RejectRunAuthority(r); err != nil {
+		return err
+	}
 	var exists int
 	if err := r.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type='table' AND name='workspace_operations'`).Scan(&exists); err != nil || exists == 0 {
 		return err
@@ -20,10 +35,14 @@ func ValidateSchema23(r LegacyReader) error {
 	if err := r.QueryRow(`SELECT group_concat(name,',') FROM (SELECT name FROM pragma_table_info('workspace_operations') ORDER BY cid)`).Scan(&header); err != nil {
 		return err
 	}
-	if header != "id,"+legacyColumns {
+	expected := legacyColumns
+	if withControl {
+		expected = columns
+	}
+	if header != "id,"+expected {
 		return ErrAuthority
 	}
-	rows, err := r.Query(`SELECT id,` + legacyColumns + ` FROM workspace_operations`)
+	rows, err := r.Query(`SELECT id,` + expected + ` FROM workspace_operations`)
 	if err != nil {
 		return err
 	}
@@ -35,7 +54,7 @@ func ValidateSchema23(r LegacyReader) error {
 		if count > MaxOperations {
 			return ErrAuthority
 		}
-		b, err := scanBinding(rows, false)
+		b, err := scanBinding(rows, withControl)
 		if err != nil {
 			return err
 		}

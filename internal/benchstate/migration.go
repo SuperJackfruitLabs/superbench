@@ -34,8 +34,12 @@ func Migrate(tx *sql.Tx, state string, pinMigratedInodes func(*model.Bench) erro
 	if version == SchemaVersion {
 		return nil
 	}
-	if version >= 1 && version <= 23 {
-		if version == 23 {
+	if version >= 1 && version <= 24 {
+		if version == 24 {
+			if err := operationcontrol.ValidateSchema24(tx); err != nil {
+				return err
+			}
+		} else if version == 23 {
 			if err := operationcontrol.ValidateSchema23(tx); err != nil {
 				return err
 			}
@@ -114,7 +118,7 @@ func Migrate(tx *sql.Tx, state string, pinMigratedInodes func(*model.Bench) erro
 		if err != nil {
 			return err
 		}
-		_, err = tx.Exec("PRAGMA user_version=24")
+		_, err = tx.Exec("PRAGMA user_version=25")
 		return err
 	}
 	if version != 0 {
@@ -160,7 +164,7 @@ func Migrate(tx *sql.Tx, state string, pinMigratedInodes func(*model.Bench) erro
 	if err = operationcontrol.Schema(tx); err != nil {
 		return err
 	}
-	_, err = tx.Exec("PRAGMA user_version=24")
+	_, err = tx.Exec("PRAGMA user_version=25")
 	return err
 }
 
@@ -210,6 +214,9 @@ func historicalHistory(r Reader) error {
 
 // An older schema cannot claim operation provenance or cancellation authority.
 func historicalOperations(r Reader) error {
+	if err := operationcontrol.RejectRunAuthority(r); err != nil {
+		return err
+	}
 	var n int
 	if err := r.QueryRow("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='workspace_operations'").Scan(&n); err != nil || n == 0 {
 		return err

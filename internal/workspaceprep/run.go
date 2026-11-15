@@ -205,7 +205,7 @@ func (m Manager) Run(ctx context.Context, key, token, selector string, args []st
 			b.Lease.Execution = stage
 			b.Workspace.Stage = nil
 			continuation = b.Lease.Continuation
-			return history.Start(tx, history.Record{ID: id, Key: key, Holder: b.Lease.Holder, StartedAt: time.Now().UTC()})
+			return operationcontrol.StartHistory(ctx, tx, b, history.Record{ID: id, Key: key, Holder: b.Lease.Holder, StartedAt: time.Now().UTC()})
 		})
 	})
 	if err != nil {
