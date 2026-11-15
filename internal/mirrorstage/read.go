@@ -30,6 +30,9 @@ func readRecord(dir, name string, v any) error {
 	return readBound(anchor, name, v)
 }
 func readBound(anchor *boundDir, name string, v any) error {
+	return readLimit(anchor, name, v, MaxRecordBytes)
+}
+func readLimit(anchor *boundDir, name string, v any, limit int) error {
 	if filepath.Base(name) != name || name == "." || name == ".." {
 		return errors.New("fixed journal record name required")
 	}
@@ -45,14 +48,14 @@ func readBound(anchor *boundDir, name string, v any) error {
 	if e != nil {
 		return e
 	}
-	if !info.Mode().IsRegular() || info.Mode().Perm() != 0600 || info.Size() > MaxRecordBytes {
+	if !info.Mode().IsRegular() || info.Mode().Perm() != 0600 || info.Size() > int64(limit) {
 		return errors.New("bounded private mirror stage record required")
 	}
-	raw, e := io.ReadAll(io.LimitReader(f, MaxRecordBytes+1))
+	raw, e := io.ReadAll(io.LimitReader(f, int64(limit)+1))
 	if e != nil {
 		return e
 	}
-	if len(raw) > MaxRecordBytes {
+	if len(raw) > limit {
 		return errors.New("mirror stage record exceeds bound")
 	}
 	if e = reap.CheckJSON(raw); e != nil {
@@ -127,6 +130,9 @@ func Load(state, parent, id string) (*Intent, *Root, error) {
 		return nil, nil, e
 	}
 	_, offset := p.CreatedAt.Zone()
+	if p.ControlRoot != "" && (!filepath.IsAbs(p.ControlRoot) || filepath.Clean(p.ControlRoot) != p.ControlRoot) {
+		return nil, nil, errors.New("noncanonical managed Git control provenance")
+	}
 	if p.Version != Version || p.ID != id || p.State != state || p.Parent != parent || p.Stage != filepath.Join(parent, ".clone-"+id) || p.Mirror != filepath.Join(parent, filepath.Base(p.Mirror)) || len(filepath.Base(p.Mirror)) != 68 || filepath.Ext(p.Mirror) != ".git" || p.CreatedAt.IsZero() || offset != 0 || root.ID != id {
 		return nil, nil, errors.New("mirror stage identity differs from its reservation")
 	}

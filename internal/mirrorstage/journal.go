@@ -27,6 +27,7 @@ type Identity struct {
 
 type Intent struct {
 	Version, ID, State, Parent, Mirror, Stage string
+	ControlRoot                               string
 	ParentIdentity                            Identity
 	CreatedAt                                 time.Time
 }
@@ -93,6 +94,9 @@ func save(dir, name string, value any) error {
 	return saveBound(bound, name, value)
 }
 func saveBound(dir *boundDir, name string, value any) error {
+	return saveLimit(dir, name, value, MaxRecordBytes)
+}
+func saveLimit(dir *boundDir, name string, value any, limit int) error {
 	if filepath.Base(name) != name || name == "." || name == ".." {
 		return errors.New("fixed journal record name required")
 	}
@@ -100,7 +104,7 @@ func saveBound(dir *boundDir, name string, value any) error {
 	if e != nil {
 		return e
 	}
-	if len(raw) > MaxRecordBytes {
+	if len(raw) > limit {
 		return errors.New("mirror stage record exceeds bound")
 	}
 	if e = dir.check(); e != nil {
@@ -125,6 +129,19 @@ func saveBound(dir *boundDir, name string, value any) error {
 // actual identity before a caller can start Git. Failed clones retain both files
 // and records for an explicit review. Published mirrors are never candidates.
 func Create(state, parent, mirror string) (*Intent, error) {
+	return create(state, parent, mirror, "")
+}
+
+// CreateManaged pins the configured Git-control root before any clone effect.
+// This records provenance only; reconciliation must still prove writers fenced.
+func CreateManaged(state, parent, mirror, controlRoot string) (*Intent, error) {
+	if !filepath.IsAbs(controlRoot) || filepath.Clean(controlRoot) != controlRoot {
+		return nil, errors.New("canonical managed Git control root required")
+	}
+	return create(state, parent, mirror, controlRoot)
+}
+
+func create(state, parent, mirror, controlRoot string) (*Intent, error) {
 	if e := statepath.Validate(state, parent); e != nil {
 		return nil, e
 	}
@@ -186,7 +203,7 @@ func Create(state, parent, mirror string) (*Intent, error) {
 		return nil, e
 	}
 	id := hex.EncodeToString(random[:])
-	p := &Intent{Version: Version, ID: id, State: state, Parent: parent, Mirror: mirror, Stage: filepath.Join(parent, ".clone-"+id), CreatedAt: time.Now().UTC(), ParentIdentity: parentDir.id}
+	p := &Intent{Version: Version, ID: id, State: state, Parent: parent, Mirror: mirror, Stage: filepath.Join(parent, ".clone-"+id), CreatedAt: time.Now().UTC(), ParentIdentity: parentDir.id, ControlRoot: controlRoot}
 	if e = createStage(p, stateDir, dir, parentDir); e != nil {
 		return nil, e
 	}
