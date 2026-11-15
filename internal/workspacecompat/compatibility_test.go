@@ -212,14 +212,23 @@ func TestScalarMutationsRefuseBeforeAnyEffects(t *testing.T) {
 	}
 }
 
-func TestAutoarchiveSkipsAggregateWhileProcessingLegacy(t *testing.T) {
-	store, _ := fixture(t)
+func TestAutoarchivePreservesAggregateOwnerWhileProcessingLegacy(t *testing.T) {
+	store, group := fixture(t)
+	before, err := store.Snapshot(group.Key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := tree(t, group.Path)
 	report, err := (&autoarchive.Manager{Store: store}).Tick(context.Background(), 10)
 	if err != nil || len(report.Results) != 2 {
 		t.Fatalf("mixed maintenance blocked: %+v %v", report, err)
 	}
-	if report.Results[0].Key != "group" || report.Results[0].Status != "skipped" || report.Results[0].Error != "" {
+	if report.Results[0].Key != "group" || report.Results[0].Status != "leased" || report.Results[0].Error != "" {
 		t.Fatalf("workspace archive attempted: %+v", report.Results[0])
+	}
+	after, err := store.Snapshot(group.Key)
+	if err != nil || !reflect.DeepEqual(before, after) || !reflect.DeepEqual(files, tree(t, group.Path)) {
+		t.Fatal("maintenance changed aggregate ownership or files", err)
 	}
 	if report.Results[1].Key != "legacy" || report.Results[1].Status != "not eligible" {
 		t.Fatalf("legacy maintenance lost: %+v", report.Results[1])

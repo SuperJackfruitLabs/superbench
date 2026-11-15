@@ -19,6 +19,8 @@ type identityRecord struct {
 	pending, checkpoint *model.WorkspaceCheckpoint
 	preparation         []model.WorkspacePreparation
 	stage               *model.WorkspaceStage
+	archive             *model.WorkspaceArchive
+	unmerged            []model.WorkspaceMergeEvidence
 }
 
 // IdentitySnapshot owns copied immutable metadata and lifecycle evidence.
@@ -62,6 +64,10 @@ func Capture(records Database) IdentitySnapshot {
 			w.Stage = nil
 			entry.preparation = append([]model.WorkspacePreparation(nil), w.Preparation...)
 			w.Preparation = nil
+			entry.archive = copyArchive(w.Archive)
+			entry.unmerged = append([]model.WorkspaceMergeEvidence(nil), w.Unmerged...)
+			w.Archive = nil
+			w.Unmerged = nil
 			entry.phase = w.Phase
 			entry.pending = copyCheckpoint(w.Pending)
 			entry.checkpoint = copyCheckpoint(w.Checkpoint)
@@ -124,6 +130,12 @@ func phaseTransition(old string, b *model.Bench) bool {
 		return next == "prepared"
 	case "prepared":
 		return next == "initializing" || next == "ready" && b.Workspace.Checkpoint != nil && b.Workspace.Pending == nil && b.Lease == nil
+	case "ready":
+		return next == "archived" && b.Workspace.Archive != nil && b.Lease == nil
+	case "archived":
+		return next == "reaping"
+	case "reaping":
+		return next == "reaped"
 	}
 	return false
 }
@@ -218,6 +230,47 @@ func stageTransition(old identityRecord, b *model.Bench) bool {
 	return true
 }
 
+func copyArchive(a *model.WorkspaceArchive) *model.WorkspaceArchive {
+	if a == nil {
+		return nil
+	}
+	c := *a
+	c.Merge = append([]model.WorkspaceMergeEvidence(nil), a.Merge...)
+	return &c
+}
+func unmergedTransition(old identityRecord, b *model.Bench) bool {
+	if slices.Equal(old.unmerged, b.Workspace.Unmerged) {
+		return true
+	}
+	return old.archive == nil && old.phase == "ready" && b.Workspace.Phase == "ready" && old.lease != nil && b.Lease != nil && old.pending != nil && b.Workspace.Pending == nil && !reflect.DeepEqual(old.checkpoint, b.Workspace.Checkpoint)
+}
+func archiveTransition(old identityRecord, b *model.Bench) bool {
+	next := b.Workspace.Archive
+	if old.archive == nil {
+		if next == nil {
+			return true
+		}
+		return old.phase == "ready" && b.Workspace.Phase == "archived" && old.lease == nil && b.Lease == nil && old.pending == nil && b.Workspace.Pending == nil && reflect.DeepEqual(old.checkpoint, b.Workspace.Checkpoint) && slices.Equal(old.preparation, b.Workspace.Preparation) && slices.Equal(old.unmerged, b.Workspace.Unmerged)
+	}
+	if next == nil || old.project != b.ProjectID || old.bytes != b.QuotaBytes || old.inodes != b.QuotaInodes || !reflect.DeepEqual(old.checkpoint, b.Workspace.Checkpoint) || !slices.Equal(old.preparation, b.Workspace.Preparation) || !slices.Equal(old.unmerged, b.Workspace.Unmerged) {
+		return false
+	}
+	a, c := *old.archive, *next
+	a.FrozenAt = ""
+	c.FrozenAt = ""
+	a.ReapingDigest = ""
+	c.ReapingDigest = ""
+	a.ReapedAt = ""
+	c.ReapedAt = ""
+	if !reflect.DeepEqual(a, c) {
+		return false
+	}
+	if old.archive.FrozenAt != "" && old.archive.FrozenAt != next.FrozenAt || old.archive.ReapingDigest != "" && old.archive.ReapingDigest != next.ReapingDigest || old.archive.ReapedAt != "" && old.archive.ReapedAt != next.ReapedAt {
+		return false
+	}
+	return true
+}
+
 func ValidateTransition(before IdentitySnapshot, after Database) error {
 	invalid := errors.New("immutable workspace identity, ownership or lifecycle changed")
 	for key, old := range before {
@@ -237,13 +290,15 @@ func ValidateTransition(before IdentitySnapshot, after Database) error {
 		w.Checkpoint = nil
 		w.Preparation = nil
 		w.Stage = nil
+		w.Archive = nil
+		w.Unmerged = nil
 		if !reflect.DeepEqual(old.workspace, &w) || old.path != b.Path || old.requested != b.RequestedQuotaBytes {
 			return invalid
 		}
 		if old.project != 0 && (old.project != b.ProjectID || old.bytes != b.QuotaBytes || old.inodes != b.QuotaInodes) {
 			return invalid
 		}
-		if !stageTransition(old, b) || !preparationTransition(old, b) || !checkpointTransition(old, b.Workspace) || !phaseTransition(old.phase, b) || !leaseTransition(old.lease, b) {
+		if !archiveTransition(old, b) || !unmergedTransition(old, b) || !stageTransition(old, b) || !preparationTransition(old, b) || !checkpointTransition(old, b.Workspace) || !phaseTransition(old.phase, b) || !leaseTransition(old.lease, b) {
 			return invalid
 		}
 	}

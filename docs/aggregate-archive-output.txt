@@ -1,0 +1,93 @@
+Aggregate archive and reviewed reap verification — 2026-11-15
+
+Baseline: merged recovery b947bd287e2a0e01f425b7bca6d11bbc9f1e9e54.
+Final frozen source: superbench-aggregate-archive-final-source.tar.gz
+SHA256: 4e000feacb2972ee610ec3f739786f39b17d2df14df7b875d4dffded87ce85b6
+Destination hash verified before extraction. All 347 archived files matched the
+worktree after verification. This evidence file was added afterward.
+
+Native Go 1.26.4 darwin/arm64:
+  sh scripts/check.sh — exit 0
+  Formatting, four installer tests, vet, all race tests and three builds passed.
+  workspace: 96.264s; workspacearchive: 61.620s; workspacecompat: 3.086s;
+  workspaceflow: 95.540s; workspaceprep: 116.761s.
+  Log: /private/tmp/superbench-aggregate-archive-final-native-check.log
+
+Approved disposable Linux verification, Go 1.26.4 linux/amd64:
+  Source: /var/tmp/superbench-verification/aggregate-archive-final-source-20261115
+  sh scripts/check.sh passed before the sequential driver built and ran drills.
+  Formatting, four installer tests, vet, all race tests and three builds passed.
+  workspace: 38.777s; workspacearchive: 22.542s; workspacecompat: 2.082s;
+  workspaceflow: 36.707s; workspaceprep: 49.277s.
+  CLI SHA256: 15bc51d4ecc7457838105c0edb3d24ce10bdede475c150c30a6dff17175725a8
+  Log: /var/tmp/superbench-verification/aggregate-archive-final-linux-check.log
+
+Disposable 512MiB loop-XFS and owned cgroup drill passed:
+  TestManagedWorkspaceArchiveLifecycle (4.85s):
+    One 32MiB project covers both members. Whole-tree archive removes write
+    permissions; the actual file owner can read but cannot write either member
+    after dropping DAC bypass. A schema-17 CLI refuses schema 18 without changing
+    archive authority. Reviewed reap removes the approved tree, retires the one
+    quota project with its identity retained, and removes the empty root.
+    Reap and creation replay preserve terminal inventory without recreating it.
+  TestManagedWorkspaceExecutionLifecycle (7.74s):
+    Acquisition, once/each preparation, member/root commands, descendant fencing,
+    failed outcomes, stop revocation and atomic history release passed.
+  TestManagedWorkspaceRecoveryLifecycle (6.71s):
+    Independent recovery project, fresh receipts/genesis and replay preserve a
+    running source owner. Schema-16 CLI refuses schema 18 before effects.
+  TestManagedWorkspaceAggregateQuota (0.78s):
+    Shared byte/inode cap enforced in both write orders; exact retry preserves
+    the full ledger. Schema-13 CLI refuses schema 18.
+  TestManagedWorkspacePreparationLifecycle (3.09s):
+    Partial preparation preserves completed proof and the same owner; retry
+    confirms the full vector and releases held histories before readiness.
+  The driver advanced to Git regressions only after wrapper cleanup succeeded.
+  Log: /var/tmp/superbench-verification/aggregate-archive-final-managed-check.log
+
+Git control regression drill: all eight groups passed.
+  Old CLI reproduces detached-hook and external clean-filter writer escapes.
+  Fixed control Git suppresses hooks/unrelated tags and fences filter children.
+  Explicit payload Git still runs hooks inside its fenced scope.
+  Server rejection preserves the held owner for explicit retry.
+  SIGKILL retains a schema-18 control intent; status does not fence, schema-12
+  refuses and the next mutation recovers before handoff.
+  Warm creation suppresses post-checkout hooks without changing configuration.
+  Original final log: aggregate-archive-final-git-control-check.log.
+  The long SSH driver connections remained open after their remote scripts ended.
+  A separate stdin-closed rerun confirmed cleanup and exit 0, emitted
+  FINAL_GIT_CONTROL_EXIT_0 and reproduced the same binary hash. Completed driver
+  transports were then closed; no test process was restarted due to a timeout.
+  Authoritative rerun log:
+    /var/tmp/superbench-verification/aggregate-archive-final-git-control-recheck.log
+
+Native/Linux race coverage additionally verifies:
+  Complete seal/pins/task refs, mirror identity, member HEADs/registrations and
+  administrative locks before archive; held and dirty later members refuse.
+  Durable permission intent and exact retry after SQL failure or partial freeze.
+  Callback nil structures and changed identity/digest/timestamps cannot publish
+  an archive intent; only validated merge evidence may be added.
+  Automatic completion refuses genesis-only evidence, partial merges, manual
+  member policy, moved/deleted task refs, changed targets and hidden policy bytes.
+  Changed members need prior unmerged proof; integrated unchanged baselines work.
+  Reap plans bind ID, full vector, seal/digest, freeze, grace and all entries.
+  Raw Git blob comparison marks .git control files, ignored output and hidden
+  tracked modifications non-recoverable; manual archive preserves those bytes.
+  Changed approved content, new files, linked/ambiguous journals and early reap
+  refuse; interrupted deletion and partial registration cleanup retry safely.
+  Quota retirement followed by SQL failure preserves the retired identity.
+  Only exact absent member registrations are removed, never other worktrees or
+  checkpoint/task refs; recovery from archived and reaped seals remains possible.
+  Initialization replay after archive/reap cannot recreate a lease or storage.
+  Scalar reap extraction preserves existing guards and retry ordering.
+
+Findings resolved before final source:
+  The initial full run exposed an obsolete maintenance assertion expecting all
+  aggregates skipped. It now expects leased and proves ownership/files unchanged.
+  Final audit also requires a changed member in stored automatic merge evidence;
+  baseline manual archives remain valid. Focused race tests and full checks pass.
+
+Scope: internal aggregate archive/reap and whole-vector automatic completion.
+No installed service or production data changed. Public v2 service/CLI,
+original task-ref transfer, native supervised laptop preparation, broader
+collection and the Developer Experience board pilot remain pending.

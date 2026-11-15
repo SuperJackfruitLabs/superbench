@@ -23,15 +23,16 @@ import (
 // remote publication. Stopped must independently prove the held writer fenced;
 // Released records release of every retained stage in the final transaction.
 type Lifecycle struct {
-	State, Data string
-	Timeout     time.Duration
-	Within      func(func(Update) error) error
-	Git         func(context.Context, string, ...string) (string, error)
-	Admit       func() error
-	Allocate    func(*model.Bench) error
-	Stopped     func(*model.Bench) error
-	Prepared    func(*model.Bench) error
-	Released    func(*sql.Tx, *model.Bench) error
+	State, Data    string
+	Timeout        time.Duration
+	Within         func(func(Update) error) error
+	Git            func(context.Context, string, ...string) (string, error)
+	Admit          func() error
+	Allocate       func(*model.Bench) error
+	Stopped        func(*model.Bench) error
+	Prepared       func(*model.Bench) error
+	Released       func(*sql.Tx, *model.Bench) error
+	NoteCheckpoint func(context.Context, *model.Bench)
 }
 
 func (l Lifecycle) bounded(ctx context.Context) (context.Context, context.CancelFunc, error) {
@@ -381,6 +382,9 @@ func (l Lifecycle) Checkpoint(ctx context.Context, key, token string) (*model.Be
 		finished.Workspace.Pending = nil
 		if seal.BenchID != finished.Workspace.ID || seal.Digest != finished.Workspace.Checkpoint.Digest {
 			return errors.New("workspace completed checkpoint differs from its pending generation")
+		}
+		if finished.Workspace.Phase == "ready" && l.NoteCheckpoint != nil {
+			l.NoteCheckpoint(ctx, finished)
 		}
 		if err := update(func(rows benchstate.Database, _ *sql.Tx) error {
 			if err := ctx.Err(); err != nil {

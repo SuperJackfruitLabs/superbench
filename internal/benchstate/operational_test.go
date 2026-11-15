@@ -126,7 +126,7 @@ func TestSchema15MigrationPreservesValidHistoricalReadyProofs(t *testing.T) {
 		if err := migrateForTest(db, t.TempDir(), nil); err != nil {
 			t.Fatal(err)
 		}
-		assertVersion(t, db, 17)
+		assertVersion(t, db, 18)
 		rows, err := Load(db)
 		if err != nil {
 			t.Fatal(err)
