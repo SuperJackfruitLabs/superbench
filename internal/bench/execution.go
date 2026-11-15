@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/execution"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/history"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/localprep"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/output"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/retention"
@@ -334,6 +335,9 @@ func (s Store) stop(key, token string, admin bool, continuation string, internal
 }
 
 func (s Store) ensureStopped(b *Bench) error {
+	if err := localprep.CheckHandoff(s.State, b); err != nil {
+		return err
+	}
 	if b.Lease == nil || b.Lease.Execution == nil {
 		return nil
 	}

@@ -7,6 +7,8 @@ has no TCP listener or dependency on another suite product.
 ## Build and use
 
 Requires Go 1.26.4 and git on Linux or macOS. Run `go build -o bin/bench ./cmd/bench`.
+
+For explicit cooperative laptop setup, see [local preparation](docs/cooperative-local-preparation.md).
 Flags precede the task key. Output is JSON. Use absolute paths for local git remotes.
 
 ```sh
