@@ -3,6 +3,7 @@ package benchstate
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 )
 
 // Update validates one callback transition and writes its records in the
@@ -30,6 +31,14 @@ func Update(tx *sql.Tx, fn func(Database, *sql.Tx) error) error {
 		if _, e = tx.Exec("INSERT INTO benches(key, record) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET record=excluded.record WHERE record != excluded.record", key, string(raw)); e != nil {
 			return e
 		}
+		var stored string
+		if e = tx.QueryRow("SELECT record FROM benches WHERE key=?", key).Scan(&stored); e != nil {
+			return e
+		}
+		if stored != string(raw) {
+			return errors.New("core transition was not durably retained")
+		}
+
 	}
 	return nil
 }
