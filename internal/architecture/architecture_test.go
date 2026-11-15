@@ -60,7 +60,7 @@ func TestArchitecture(t *testing.T) {
 				"internal/prepproof":         {"internal/model", "internal/history"},
 				"internal/transferguard":     {"internal/setup", "internal/model", "internal/reftransfer", "internal/worktreetransfer", "internal/hoststorage", "internal/repository"},
 				"internal/runprotection":     {"internal/model"},
-				"internal/hoststorage":       {"internal/quotahelper", "internal/model", "internal/output"},
+				"internal/hoststorage":       {"internal/hostpolicy", "internal/quotahelper", "internal/model", "internal/output"},
 				"internal/stageexec":         {"internal/execution", "internal/output"},
 				"internal/quotahelper":       {"internal/operationcontrol"},
 				"internal/operationcancel":   {"internal/benchstate", "internal/history", "internal/model", "internal/operationcontrol", "internal/reap", "internal/retention"},
