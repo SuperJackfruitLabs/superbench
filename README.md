@@ -122,9 +122,10 @@ Local reviewed [initialization repair](docs/initialization-repair.md) adds an
 explicit fresh epoch for stopped grouped setup while preserving its evidence.
 Reviewed [original task-ref transfer](docs/workspace-transfer.md) permanently
 relinquishes a source before warming a fresh local destination on its branches.
-Reviewed [missing-checkout recovery](docs/workspace-missing-transfer.md) is under
-verification. It retains surviving files and administrative evidence and rebuilds
-only the last complete confirmed checkpoint; source archive/reap remains pending.
+Reviewed [missing-checkout recovery](docs/workspace-missing-transfer.md) retains
+surviving files and administrative evidence and rebuilds only the last complete
+confirmed checkpoint. Native/Linux checks and managed recovery regressions
+[passed](docs/workspace-missing-transfer-output.txt); source archive/reap remains pending.
 If create/recover stops after creating its worktree but before registration, retry
 with exactly the same arguments. The intent pins the original SHA; adoption
 requires the expected path, shared git directory, branch, HEAD and clean files.

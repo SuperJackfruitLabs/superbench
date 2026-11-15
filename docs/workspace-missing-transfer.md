@@ -5,7 +5,8 @@ the last remotely confirmed whole checkpoint in a fresh workspace on the origina
 task branches. It does not recover missing uncommitted files, certify unknown run
 outcomes, or treat a missing directory as proof that a writer stopped.
 
-This implementation is under verification. The current scope is one host with
+Native/Linux required checks and managed recovery regressions
+[passed](workspace-missing-transfer-output.txt). The current scope is one host with
 the original private state, registered mirrors and authoritative storage ledger
 still available. Missing-source archive/reap and cross-host recovery remain open.
 
@@ -93,9 +94,10 @@ alone does not confer writer authority.
 
 ## Remaining acceptance
 
-Full native/Linux checks, the complete managed recovery drill and regression
-evidence must pass before publication. Retained missing-source registrations,
-history and shared evidence must not be removed through ordinary cleanup.
+The verified scope and retained coverage limits are recorded in the
+[verification evidence](workspace-missing-transfer-output.txt). Retained
+missing-source registrations, history and shared evidence must not be removed
+through ordinary cleanup.
 Source archive/reap needs its own absent-member-aware approval and quota
 retirement path. Cross-host takeover additionally needs independently verified
 infrastructure fencing and return quarantine outside a restorable workspace
