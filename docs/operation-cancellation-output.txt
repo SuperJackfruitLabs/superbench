@@ -119,5 +119,68 @@ exact-conclusion replay. Focused race checks also cover normal-finished epochs
 requiring complete first proof, missing proof, foreign UID/digest/epoch, changed
 control or marker, missing rows, ignored conclusion inserts and later owners.
 The previously pinned managed runtime above remains evidence for its exact 4f
-revision; schema27 changes production code and requires separately pinned checks
-and managed runtime evidence before a final readiness claim.
+revision; schema27 changes production code. Its separately pinned required checks and
+managed runtime are recorded below; binary equivalence is not claimed.
+
+Schema27 final verification checkpoint:
+Source: 3be61d9bc1d8746a6a67bbbaffcc9cfce5150813
+Source archive SHA256: fa01e3fca15e63be66ba1e4bb4ecb98e7f1b55d4065e502f6bef50d08be2e533
+718 tracked files; exact content/mode manifests unchanged after both complete
+required checks and the managed run. Public production Serve remains disabled.
+
+Required native Go 1.26.4 darwin/arm64 sh scripts/check.sh: PASS, exit0.
+Required Linux Go 1.26.4 amd64 sh scripts/check.sh: PASS, exit0.
+Native required log SHA256: ed059a67fecaa651ecd59b3ba13833d750f6298b952e1103b262728c0178fce2
+Linux required log SHA256: e865a44688b8dbb76c0f613eec15f95bfcebeba8c804554c2f445b5b294b5430
+
+Final required native build SHA256:
+  superbench-check-bin 4c70beaa4181e38349331b838746628891693ca85f1944f7bee1b9ca8a30c226
+  superbench-check-quota 67b0abb4102bb5ea3d3bd59766695902bc9a19beae0fae72acb8c21a74c35c93
+  superbench-check-daemon 5572f02632ad1405ec71fe9de7234fb233622fe86988efe9ddf4688da17435a0
+
+Final required Linux build SHA256:
+  superbench-check-bin bc827d42afde9818cf8888f72ce43a3cb2ed8daff6b72faa602758c77d235ce7
+  superbench-check-quota f68f9b37f07ef92bbb22f6b735d159dea2ad6be5d12d83b398b75bf1d73e9ed9
+  superbench-check-daemon 38521d3ba7646ac50cc665dee43a9f64fe9b73d5490354010e067d3d51805e52
+
+Same five-case managed rerun: PASS, exit0. Actual daemon, clients, hooks and
+payload UID1001 with zero effective capabilities; only the fixed helper UID0.
+The same private mount/network/etc/run, owned512MiB XFS and delegated cgroup
+boundary was used. No host service or policy was installed or changed.
+New actual runtime artifacts SHA256:
+  bench bc827d42afde9818cf8888f72ce43a3cb2ed8daff6b72faa602758c77d235ce7
+  helper f68f9b37f07ef92bbb22f6b735d159dea2ad6be5d12d83b398b75bf1d73e9ed9
+  testbin 46f922dcc3b68a47ca47ae3b80e82050e75ebc330dfa05fd63b23a9a782831e7
+  driver 882b5f46e02f1b7fad1bfef490fdfd941cae693cc4bc6e770d435224d0670430
+  api_driver f641d75abe0431502355222503c481ecca263c51ef2c3eafc2fbfd7d2d8c2b6c
+  wrapper ec23424d3d643adb01e55e414ad2d9d441d5792adc63bfe361a0597d9edd2c20
+  corpus 0d0dca060902df3706bf3d0c1322c1ea1fbfb22ac5cb50a3243e761906848255
+  launcher f2f6010c1792fe4f1c367ed7dc37d301172f518dde5e938f5c33294c32982c17
+
+PASS: durable completed cutoff survives lost delivery and daemon restart; verified cancel ACK permits exact historical replay only
+PASS: controller-loss writer fenced; actual partial capture sealed with unknown exit; SQL finalization failure never confirmed; exact retry launches nothing
+PASS: old epoch cannot stop later owner or same-token future run; disconnect does not cancel; exact current operation fences without admin-stop fallback
+PASS: exact scoped shared helper survives controller death while queued; ACK independent of policy lock; deny/quiescence precedes cancellation without bench admission
+PASS: deterministic durable materializing owner precedes queued bench helper; restart cancellation ACK independent of policy lock; actual deny/quiescence precedes retained stopped-materialization terminal
+UNCOVERED: explicit repair of stopped materialization; public enablement; cross-host cancellation; macOS descendant fencing
+
+Independent cleanup: controller521602 absent; exact owned trial and cgroup
+absent; no associated loop, host mount or process-scope reference. All seven
+artifact pins and complete source manifest unchanged. Fixture cleanup had first
+proved namespace quiescence before removing its owned runtime.
+Runtime log SHA256:
+  8bf16da1210c86a330cefa4c5e62f12326185343583fa83d9e5d739d5931b22a
+Compact runtime/independent-cleanup bundle SHA256:
+  69f9579761106b2e38248403bbe7c16536e2c1d7ee94e7778fc5c4e81dd3bc88
+
+The real SQLite/retention regression separately collected the released log and
+pruned its history, then finalized exact cancellation without any writer effects.
+Normal-finished rows without a conclusion still needed full first proof; missing
+proof and foreign/changed authority refused, and later ownership was untouched.
+
+Preparation failures were retained separately: the first source packing attempt
+failed its mode check before compilation, and a managed wrapper preflight refused
+a missing protected evidence directory before mount/helper/daemon effects. Both
+were corrected with fresh owned paths without changing source or relaxing guards.
+This checkpoint does not complete stopped-materialization repair, public contract
+acceptance/enablement, cross-host cancellation or native macOS descendant fencing.
