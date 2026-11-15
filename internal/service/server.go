@@ -27,13 +27,15 @@ type Config struct {
 	ArchiveInterval    time.Duration
 }
 type Server struct {
-	config    Config
-	ctx       context.Context
-	receipts  *receipts
-	slots     chan struct{}
-	handlers  sync.WaitGroup
-	admission sync.Mutex
-	closing   bool
+	proposedCancellation bool
+	cancelWake           chan struct{}
+	config               Config
+	ctx                  context.Context
+	receipts             *receipts
+	slots                chan struct{}
+	handlers             sync.WaitGroup
+	admission            sync.Mutex
+	closing              bool
 }
 
 func Serve(ctx context.Context, c Config) error {
