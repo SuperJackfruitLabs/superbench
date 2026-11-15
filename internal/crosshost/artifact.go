@@ -61,6 +61,9 @@ func destination(d Destination) bool {
 	return hexadecimal(d.HostID, 64) && hexadecimal(d.StateID, 32) && hexadecimal(d.WorkspaceID, 32) && key.MatchString(d.Key) && key.MatchString(d.CreationID)
 }
 
+// Valid checks the complete destination identity without granting import authority.
+func (d Destination) Valid() bool { return destination(d) }
+
 func (a Artifact) validate() error {
 	invalid := errors.New("invalid cross-host handoff artifact")
 	s, d := a.Source, a.Destination

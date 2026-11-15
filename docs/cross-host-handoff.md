@@ -43,3 +43,10 @@ a parser and a new file beside the database cannot provide that guarantee.
 An unreachable source still requires independent fencing and its own reviewed
 recovery procedure. This flow creates no network lease service or alternative
 issuer. Actual cross-host Git/runtime and crash/replay tests remain required.
+
+The private journal implementation retains a state incarnation, unique
+destination offers, one export per source and imports bound to the exact offer.
+It checks writes by reading them back and retains terminal identity on replay.
+It has not been activated by a core migration or wired into source retirement
+and destination creation. Its SQL tests demonstrate journal behavior only;
+they do not demonstrate a stopped source, a completed import or usable commands.
