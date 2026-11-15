@@ -16,6 +16,7 @@ import select
 import socket
 import sys
 import signal
+import shutil
 import sqlite3
 import subprocess
 import time
@@ -150,7 +151,9 @@ def main():
 
         def run(self, words, expected=0):
             command = ['/usr/bin/setpriv', '--reuid=1001', '--regid=1001', '--clear-groups', *map(str, words)]
-            result = subprocess.run(command, capture_output=True, text=True, timeout=45, env=self.environment)
+            def delegated():
+                (cg / 'cgroup.procs').write_text(str(os.getpid()))
+            result = subprocess.run(command, capture_output=True, text=True, timeout=45, env=self.environment, preexec_fn=delegated)
             assert result.returncode == expected, (str(words[0]), result.returncode, result.stderr)
             return result
 
@@ -201,6 +204,7 @@ def main():
             env = dict(self.environment, SUPERBENCH_CANCELLATION_TRIAL=str(root),
                 SUPERBENCH_CANCELLATION_CGROUP_ROOT=str(cg), GOMAXPROCS='2')
             def unprivileged():
+                (cg / 'cgroup.procs').write_text(str(os.getpid()))
                 os.setgroups([]); os.setgid(1001); os.setuid(1001)
             self.daemon = subprocess.Popen([args.testbin, '-test.run=^TestManagedCancellationDaemon$',
                 '-test.timeout=15m', '-test.v'], env=env, stdout=self.log, stderr=self.log, preexec_fn=unprivileged)
@@ -215,6 +219,25 @@ def main():
                     return False
             wait_for(ready, 'private daemon ready')
             assert_uid(self.daemon.pid, 1001)
+            assert Path('/proc', str(self.daemon.pid), 'cgroup').read_text().strip().endswith('/' + cg.name)
+
+        def diagnostic(self, payload):
+            path = root / 'source-request.json'
+            path.write_text(json.dumps(payload)); path.chmod(0o600); os.chown(path, 1001, 1001)
+            env = dict(self.environment, SUPERBENCH_CANCELLATION_DIGEST_FILE=str(path),
+                SUPERBENCH_CANCELLATION_TRIAL=str(root), SUPERBENCH_CANCELLATION_CGROUP_ROOT=str(cg),
+                SUPERBENCH_CANCELLATION_DIAGNOSTIC_ONLY='1', GOMAXPROCS='2')
+            def unprivileged():
+                (cg / 'cgroup.procs').write_text(str(os.getpid()))
+                os.setgroups([]); os.setgid(1001); os.setuid(1001)
+            result = subprocess.run([args.testbin, '-test.run=^TestManagedCancellationDiagnostic$', '-test.v', '-test.timeout=2m'],
+                env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=130, preexec_fn=unprivileged)
+            (evidence / 'diagnostic.log').write_text(result.stdout + result.stderr)
+            assert result.returncode == 0, 'diagnostic helper failed'
+            print(result.stdout, flush=True)
+            for directory in (root / 'state', root / 'quota-ledger'):
+                if directory.is_dir():
+                    shutil.copytree(directory, evidence / ('diagnostic-' + directory.name), symlinks=True)
 
         def digest(self, payload):
             path = root / 'source-request.json'
@@ -320,9 +343,13 @@ def main():
 
     d = None
     try:
-        d = Drill(); d.start()
+        d = Drill()
         create = d.payload('create', key='warm', checkpoint_repository='a', repositories=d.members, initialize=True,
             quota_bytes=32 << 20, request_id='warm-create')
+        if os.environ.get('SUPERBENCH_CANCELLATION_DIAGNOSTIC_ONLY') == '1':
+            d.diagnostic(create)
+            return
+        d.start()
         _, historical = d.request(create)
         for name in ('a', 'b'):
             assert (d.data / 'benches/warm' / name / '.bench/output/uid').read_text().strip() == '1001'
@@ -439,6 +466,14 @@ def main():
             except BaseException:
                 (root / 'PRESERVE-LIVE-HELPER').write_text('daemon/helper quiescence unresolved')
         preserve_unresolved(root, evidence)
+        if sys.exc_info()[0] is not None:
+            # Diagnostic copies never authorize adoption/replay. Preserve exact
+            # database/ledger/log evidence before disposable-fixture cleanup.
+            for directory in (root / 'state', root / 'quota-ledger'):
+                if directory.is_dir():
+                    shutil.copytree(directory, evidence / ('failed-' + directory.name), symlinks=True)
+            if Path('/etc/superbench/storage.json').is_file():
+                (evidence / 'failed-storage.json').write_bytes(Path('/etc/superbench/storage.json').read_bytes())
 
 
 if __name__ == '__main__':
