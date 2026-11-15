@@ -132,8 +132,9 @@ If create/recover stops after creating its worktree but before registration, ret
 with exactly the same arguments. The intent pins the original SHA; adoption
 requires the expected path, shared git directory, branch, HEAD and clean files.
 Conflicts are preserved for manual review. Intents are retained as creation records.
-Partial mirror clones are staged before publication; abandoned clone directories
-remain bounded for operator review. Filesystem and SQLite changes are not one
+Partial mirror clones have durable ownership journals before publication.
+[Reviewed staging collection](docs/mirror-clones.md) requires original managed
+Linux writer fencing; cooperative and legacy abandoned directories remain protected. Filesystem and SQLite changes are not one
 atomic transaction.
 
 ## Safety boundaries and deliberate limitations

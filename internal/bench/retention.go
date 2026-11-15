@@ -35,27 +35,8 @@ func (s Store) History(key string, limit int) ([]history.Record, error) {
 func (s Store) ReconcileLog(id string) (*history.Record, error) {
 	var out *history.Record
 	e := s.transactionSQL(func(records database, tx *sql.Tx) error {
-		r, e := history.Get(tx, id)
-		if e != nil {
-			return e
-		}
-		if r.ReleasedAt.IsZero() || protectedRuns(records)[id] {
-			return errors.New("release/reconcile the execution before sealing its log")
-		}
-		f, entry, e := retention.LockSnapshot(s.State, id)
-		if e != nil {
-			return e
-		}
-		defer f.Close()
-		info, e := f.Stat()
-		if e != nil {
-			return e
-		}
-		if e = history.Seal(tx, id, entry, info.Size(), nil, false); e != nil {
-			return e
-		}
-		r, e = history.Get(tx, id)
-		out = &r
+		var e error
+		out, e = retention.Reconcile(tx, s.State, id, protectedRuns(records))
 		return e
 	})
 	return out, e

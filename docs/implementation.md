@@ -281,7 +281,9 @@ Reviewed log collection and history are implemented in [retention.md](retention.
 including protected held/failed evidence and durable interruption recovery.
 Approved automatic log policy execution is implemented in [automatic-retention.md](automatic-retention.md); broader collection remains pending. Use a reviewed candidate plan and verify the same files/ownership
 before collection; never treat age as proof that a writer stopped. Shared cache
-and abandoned-clone collection need the same active-writer and namespace checks.
+collection remains pending. [Unpublished clone staging](mirror-clones.md) has
+its own reviewed lifecycle with original managed writer provenance; runtime
+verification is recorded separately before claiming that slice complete.
 
 Receipt collection must not make an old request ID executable again. Existing
 v1 opaque IDs need durable tombstones when their response payload is retired.
