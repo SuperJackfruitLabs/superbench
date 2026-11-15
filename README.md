@@ -120,6 +120,8 @@ and the remaining standalone preparation and pilot work. Local reviewed
 unknown outcome without resuming a command or fabricating setup success.
 Local reviewed [initialization repair](docs/initialization-repair.md) adds an
 explicit fresh epoch for stopped grouped setup while preserving its evidence.
+Reviewed [original task-ref transfer](docs/workspace-transfer.md) permanently
+relinquishes a source before warming a fresh local destination on its branches.
 If create/recover stops after creating its worktree but before registration, retry
 with exactly the same arguments. The intent pins the original SHA; adoption
 requires the expected path, shared git directory, branch, HEAD and clean files.

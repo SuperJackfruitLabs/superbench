@@ -21,7 +21,14 @@ type Workspace struct {
 	Archive              *WorkspaceArchive              `json:",omitempty"`
 	Unmerged             []WorkspaceMergeEvidence       `json:",omitempty"`
 	InitializationRepair *WorkspaceInitializationRepair `json:",omitempty"`
+	Transfer             *WorkspaceTransfer             `json:",omitempty"`
+	TransferredFrom      *WorkspaceTransferOrigin       `json:",omitempty"`
 }
+
+// WorkspaceTransfer permanently relinquishes source task-ref writer authority.
+// Initialization readiness remains independent from transfer availability.
+type WorkspaceTransfer struct{ ID, Digest, TargetKey, TargetID, CreationID, Phase string }
+type WorkspaceTransferOrigin struct{ ID, Digest, SourceKey, SourceID string }
 
 // WorkspaceInitializationRepair preserves explicit initialization handoff and
 // unreleased history authority across reviewed repair claims.

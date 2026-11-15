@@ -50,6 +50,8 @@ func ValidateStage(creationID string, spec Spec) error {
 	return nil
 }
 
+var ErrTransfer = errors.New("workspace ownership has a durable transfer; use its transfer commands")
+
 var ErrInitializationRepair = errors.New("workspace initialization has an explicit repair epoch; use its repair commands")
 
 func privateRecord(b *model.Bench) *model.Bench {
@@ -60,6 +62,14 @@ func privateRecord(b *model.Bench) *model.Bench {
 	if b.Workspace != nil {
 		w := *b.Workspace
 		w.Members = append([]model.WorkspaceMember(nil), w.Members...)
+		if w.Transfer != nil {
+			t := *w.Transfer
+			w.Transfer = &t
+		}
+		if w.TransferredFrom != nil {
+			t := *w.TransferredFrom
+			w.TransferredFrom = &t
+		}
 		if w.InitializationRepair != nil {
 			r := *w.InitializationRepair
 			r.RetiredRuns = append([]string(nil), r.RetiredRuns...)
@@ -155,6 +165,9 @@ func recordPlan(p Plan, creationID string, explicit uint64) (*model.Bench, error
 // Stage persists the complete source vector and its initialization owner before
 // quota or checkout effects. Errors return the last committed private record.
 func (m Manager) Stage(ctx context.Context, creationID string, spec Spec) (*model.Bench, error) {
+	if spec.TransferID != "" {
+		return m.stageTransferred(ctx, creationID, spec)
+	}
 	if err := ValidateStage(creationID, spec); err != nil {
 		return nil, err
 	}
@@ -171,7 +184,11 @@ func (m Manager) Stage(ctx context.Context, creationID string, spec Spec) (*mode
 // Both fresh creation and recovery enter the same durable ownership/allocation
 // sequence; only source selection and exact retry identity differ.
 type stagingRequest struct {
+	validate        func(benchstate.Database, *sql.Tx) error
 	key, creationID string
+	transferID      string
+	identity        func() string
+	transferredFrom *model.WorkspaceTransferOrigin
 	explicitQuota   uint64
 	recoveredFrom   *model.WorkspaceRecovery
 	matches         func(*model.Bench) bool
@@ -204,11 +221,19 @@ func (m Manager) stage(ctx context.Context, request stagingRequest) (*model.Benc
 	err := m.Within(func(update Update) error {
 		// Even an idempotent retry first enters migration/lookup under the host lock.
 		var found *model.Bench
-		if err := update(func(rows benchstate.Database, _ *sql.Tx) error {
+		if err := update(func(rows benchstate.Database, tx *sql.Tx) error {
+			if request.validate != nil {
+				if err := request.validate(rows, tx); err != nil {
+					return err
+				}
+			}
 			if err := ctx.Err(); err != nil {
 				return err
 			}
 			if b, ok := rows[request.key]; ok {
+				if b.Workspace != nil && (b.Workspace.Transfer != nil || b.Workspace.TransferredFrom != nil && request.transferID != b.Workspace.TransferredFrom.ID) {
+					return ErrTransfer
+				}
 				if b.Workspace != nil && b.Workspace.InitializationRepair != nil {
 					return ErrInitializationRepair
 				}
@@ -255,6 +280,11 @@ func (m Manager) stage(ctx context.Context, request stagingRequest) (*model.Benc
 			candidate, err := recordPlan(plan, request.creationID, request.explicitQuota)
 			if err != nil {
 				return err
+			}
+			if request.transferredFrom != nil {
+				origin := *request.transferredFrom
+				candidate.Workspace.TransferredFrom = &origin
+				candidate.Workspace.ID = request.identity()
 			}
 			if request.recoveredFrom != nil {
 				origin := *request.recoveredFrom

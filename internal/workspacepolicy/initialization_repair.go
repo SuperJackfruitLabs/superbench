@@ -45,7 +45,7 @@ func validateInitializationRepair(b *model.Bench) error {
 
 // ValidateSchema19 rejects repair authority unknown to prior state versions.
 func ValidateSchema19(b *model.Bench) error {
-	if err := Validate(b); err != nil {
+	if err := ValidateSchema20(b); err != nil {
 		return err
 	}
 	if b.Workspace.InitializationRepair != nil {

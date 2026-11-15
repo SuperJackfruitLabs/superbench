@@ -1,0 +1,137 @@
+Original task-ref transfer verification — 2026-11-15
+
+Scope: cooperative same-host transfer with existing source checkouts, in owned
+fixtures. No installed service, production rollout or suite consumer acceptance.
+Missing-checkout and cross-host original-ref recovery remain required work.
+
+Source and artifact identity
+----------------------------
+Frozen source archive SHA256:
+b5d4c1519eac2f11119211da77adb5f7631c7d5c0657da14570109a2fac2448b
+470 regular source files; Go 1.26.4.
+Final evidence and implementation-status changes are documentation only; the
+sole runtime-script assertion correction is recorded below.
+
+Frozen Linux binary SHA256:
+bench 03b26e86ccbe9645e058d3e53d8c1a02bee27e92d01759a5bc036363e24fac7f
+benchd a19f2275bf3abcf184d4d4c7422af3c8bc18cc999cc6a46649379d25966420f3
+bench-quota 6a6a342f03abe9fa66d75f30080bf9025224a1946560839b2ad92ceaf0da91cd
+workspaceflow.test 5ba4227de194f56764487304a812e381d36d177006eed5b1a6ab4b347b240d2f
+
+Required checks
+---------------
+Native macOS arm64 final frozen source: sh scripts/check.sh EXIT 0.
+Linux amd64 frozen source: sh scripts/check.sh EXIT 0; separate frozen builds EXIT 0.
+Both checks run formatting, four installer tests, vet, 41 passing packages under
+race detection and three builds. Native tests do not establish managed descendant fencing.
+Focused real-Git tests additionally exercise stale plan/index/file/ref/row
+refusal, concurrent approvals, partial detachment, stopped destination repair,
+SQL failure during target registration and final journal completion, later-owner
+grant privacy, preserved integration bases and exact source provenance, immutable
+seal verification, and retained schema-20 ordinary reap-plan retries.
+
+Managed same-host transfer drill
+--------------------------------
+Owned private mount namespace, 512MiB XFS/project quota image and cgroup subtree;
+actual two-repository hooks and an ignored sparse artifact of 65MiB logical size.
+The sparse artifact exceeds the previous 64MiB logical snapshot bound while
+remaining within the fixture's actual 32MiB project allocation.
+PASS: held/live source refuses review; surviving writer is explicitly fenced, unknown history reviewed and checkpoint released before transfer
+PASS: schema20 binary refuses schema21 without altering source authority
+PASS: partial metadata-only relinquishment retains source bytes/once evidence and permanent blocking; exact retry initializes independent quota/identity on original task refs
+PASS: destination advances original task ref under supervision; source immutable seal/pins permit read-only archive and reviewed retirement of only old allocation/registrations
+UNCOVERED original-ref-transfer: lost/unreachable source host fencing, cross-host quarantine/authority, stale simultaneous takeover, injected quota-retirement interruption; this drill verifies cooperative same-host transfer only
+DONE: managed same-host original task-ref transfer assertions passed; no consumer pilot or production rollout is claimed
+
+Runtime stage markers
+---------------------
+/var/tmp/superbench-verification/transfer-source-20261115.tar.gz: OK
+linux-check exit 0
+build-check exit 0
+handoff-check exit 0
+initialization-check exit 0
+api-check exit 0
+managed-check exit 0
+git-control-check exit 1
+Corrected full Git-control drill exit 0.
+The original driver stopped at a regression fixture that still expected schema20.
+Its first six Git-control cases passed before that assertion. Corrected that one
+expectation to schema21; retained the original frozen source and reran all eight
+Git-control cases with the SAME frozen binaries. No production Go code changed.
+Corrected script SHA256:
+d86eff3d09cddffcefde0601d9988dd03d5eddcd01d4ba2132b504e51f2e8b6e
+
+Initialization-repair regression
+--------------------------------
+PASS: schema19 CLI refuses schema21 without changing stopped initialization state
+PASS: stopped partial initialization requires reviewed unknown history and explicit once approval; fresh claims preserve A and persistent uncertainty, then continue reaches sealed ready without old receipt revival
+PASS: prepared pending initialization repairs the exact published generation without rerunning hooks; completed historical create receipt never exports the fresh grant
+PASS: matching durable creation without an HTTP receipt refuses redispatch without deleting receipt evidence
+DONE: managed initialization repair drill passed; no suite consumer or production rollout is claimed
+
+Existing public API regression
+-----------------------------
+The runtime substitutes owned identities and returned capabilities into pinned
+templates. Its UNCOVERED labels are retained below; one passing driver is not
+proof of every complete public lifecycle invariant.
+PASS: fresh selected setup cannot release missing proofs; stale unselected inputs retain the owner until full preparation
+PASS: later-member initialization failure preserves the first member and receipt; same owned initialization repairs without repeating that member
+PASS: every remote A push hook, including the first immutable pin, observes the durable whole pending vector; second-member failure cannot release and retries the same generation
+PASS: stopped supervisor retains ownership; explicit admin fence stops setsid descendants and revoked continuation cannot revive
+PASS: reviewed local crash-history observation preserves supervised provenance and unknown outcome; exact replay survives release without reviving command receipts or ownership
+PASS: crashed supervisor retains ownership; explicit admin fence stops setsid descendants and revoked continuation cannot revive
+PASS: actual v2 CLI preserves member cwd/exit7/token reuse; distinct recovery gets fresh hooks/project; local reviewed reap and reaped-seal recovery preserve source refs
+PASS: mixed status is complete and private; real reader/operator UID gates and canonical request binding prevent capability adoption
+PASS: bounded receipt exhaustion blocks growth while stop/admin/checkpoint/release/archive and explicitly approved local reap remain usable
+UNCOVERED warm-creation: all sources journaled before checkout; one initialization owner
+COVERED partial-initialization
+UNCOVERED exact-recovery: exact seal/digest and all pins before registration
+UNCOVERED new-owner: refresh only remote tracking
+COVERED execution-release
+COVERED execution-retained
+COVERED setup-completion
+COVERED pending-publication
+COVERED admin-recovery
+UNCOVERED archive-review: durable freeze intent before modes
+UNCOVERED reap-retry: remaining approved entries only; quota retirement retry
+UNCOVERED mixed-status: oversize global response fails without truncation
+COVERED receipt-replay
+COVERED capacity-reconciliation
+UNCOVERED complete-public-lifecycle: canonical cases are typed templates; runtime substitutes only owned trial identities and actual returned capabilities
+DONE: public workspace API drill passed; uncovered obligations above remain separate
+
+Existing aggregate managed regression
+-------------------------------------
+Six groups passed: total quota, preparation, execution, recovery, archive and
+schema-18 refusal against current schema21.
+--- PASS: TestManagedWorkspaceArchiveLifecycle (5.50s)
+--- PASS: TestManagedWorkspaceExecutionLifecycle (7.89s)
+--- PASS: TestManagedWorkspaceRecoveryLifecycle (7.20s)
+--- PASS: TestManagedWorkspaceHistorySchema18Refusal (0.09s)
+--- PASS: TestManagedWorkspaceAggregateQuota (0.87s)
+--- PASS: TestManagedWorkspacePreparationLifecycle (3.12s)
+PASS
+
+Existing Git-control regression, corrected full rerun
+---------------------------------------------------
+PASS: retained old CLI reproduces both pre-push and reference-transaction detached writers creating untracked files after lease release, outside the execution cgroup
+PASS: fixed control checkpoint/release launches neither client hook nor descendant, preserves repository hook/followTags configuration, leaves checkout clean and publishes no unrelated annotated tag
+PASS: explicit user Git commands still execute both configured hooks; detached setsid descendants stay in the execution cgroup and are fenced before clean checkpoint/release
+PASS: server pre-receive and reference-transaction rejection still block checkpoint and retain the same lease; removing the server rejection permits explicit recovery
+PASS: retained schema-12 CLI also releases a Git-clean checkout while an external pass-through clean filter leaves an unfenced delayed writer alive
+PASS: managed control Git contains an external pass-through clean filter and fences its detached writer before checkpoint/release while preserving tracked bytes and filter configuration
+PASS: SIGKILL of a paused control controller leaves a durable schema-21 intent and live known scope; status does not fence, schema-12 CLI refuses, and the next mutation recovers/fences before handoff or a later lease grant
+PASS: a warm shared-mirror worktree creation suppresses configured post-checkout hooks without changing the repository hook configuration
+DONE: Git control-hook isolation and user-command cgroup fencing passed
+
+Limits
+------
+Missing-checkout original-ref reconciliation, unreachable-source infrastructure
+fencing, cross-host provenance and rollback-resistant return quarantine remain
+unimplemented. This drill does not cover stale simultaneous cross-host takeover
+or injected quota-retirement interruption. Local transaction/concurrency tests
+are separate evidence and do not establish distributed takeover authority.
+Native laptop preparation, broader collection, suite adapters and the Developer
+Experience board pilot remain open. Grouped v2 consumer acceptance is not proved.
+No unknown outcome became hook success. No historical command receipt changed or
+became executable. No unreviewed cleanup, production deployment or tag occurred.

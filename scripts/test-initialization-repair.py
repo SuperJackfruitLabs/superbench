@@ -78,9 +78,9 @@ class Drill(api.Drill):
             return
         before = self.record("repair")
         result = subprocess.run([self.args.previous_cli, "status", "--state", str(self.state), "--data", str(self.data)], capture_output=True, text=True, timeout=20)
-        assert result.returncode != 0 and "unsupported state schema 20 (expected 19)" in result.stderr
+        assert result.returncode != 0 and "unsupported state schema 21 (expected 19)" in result.stderr
         assert self.record("repair") == before
-        print("PASS: schema19 CLI refuses schema20 without changing stopped initialization state", flush=True)
+        print("PASS: schema19 CLI refuses schema21 without changing stopped initialization state", flush=True)
 
 
 def uncertain_initialization(d, members):

@@ -54,6 +54,9 @@ func Validate(b *model.Bench) error {
 	if err := validateInitializationRepair(b); err != nil {
 		return invalid
 	}
+	if err := validateTransfer(b); err != nil {
+		return invalid
+	}
 	if !filepath.IsAbs(b.Path) || filepath.Clean(b.Path) != b.Path {
 		return invalid
 	}

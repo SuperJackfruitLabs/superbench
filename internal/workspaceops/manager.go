@@ -85,6 +85,9 @@ func (m Manager) Preflight(r protocolv2.Request) error {
 		return err
 	}
 	b := &rows[0]
+	if b.Workspace.Transfer != nil && r.Operation != "archive" && r.Operation != "inspect-archive" && r.Operation != "reap" || creating && b.Workspace.TransferredFrom != nil {
+		return ErrConflict
+	}
 	if b.Workspace.InitializationRepair != nil && (creating || b.Workspace.Phase != "ready" && r.Operation != "stop" && r.Operation != "stop_admin") {
 		return ErrConflict
 	}

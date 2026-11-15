@@ -16,7 +16,7 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspacepolicy"
 )
 
-const SchemaVersion = 20
+const SchemaVersion = 21
 
 type Database map[string]*model.Bench
 
@@ -70,7 +70,7 @@ func Validate(records Database) error {
 			return errors.New("invalid bench record")
 		}
 	}
-	return nil
+	return validateTransferLinks(records)
 }
 func Legacy(state string) (Database, error) {
 	records := Database{}

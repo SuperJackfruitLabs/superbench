@@ -88,6 +88,9 @@ func (s Store) InitializeWorkspaceContext(ctx context.Context, creationID string
 }
 
 func (s Store) finishWorkspaceInitialization(ctx context.Context, b *Bench) (result *Bench, operationErr error) {
+	if b.Workspace.Transfer != nil || b.Workspace.TransferredFrom != nil {
+		return nil, workspace.ErrTransfer
+	}
 	if b.Workspace.InitializationRepair != nil {
 		return nil, workspace.ErrInitializationRepair
 	}

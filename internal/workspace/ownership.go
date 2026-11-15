@@ -39,6 +39,9 @@ func (l Lifecycle) Acquire(ctx context.Context, key, holder string) (*model.Benc
 			if err := workspacepolicy.Validate(b); err != nil {
 				return err
 			}
+			if b.Workspace.Transfer != nil {
+				return ErrTransfer
+			}
 			if b.Workspace.Phase != "ready" || b.Workspace.Pending != nil || b.Lease != nil {
 				// The requester has not acquired this owner, so no private record
 				// containing another holder's capability may escape on refusal.
