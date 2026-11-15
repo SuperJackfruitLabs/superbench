@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/handoffguard"
 )
 
 // Update validates one callback transition and writes its records in the
@@ -24,6 +25,9 @@ func Update(tx *sql.Tx, fn func(Database, *sql.Tx) error) error {
 		return err
 	}
 	for key, b := range records {
+		if err = handoffguard.Advance(tx, b); err != nil {
+			return err
+		}
 		raw, e := json.Marshal(b)
 		if e != nil {
 			return e

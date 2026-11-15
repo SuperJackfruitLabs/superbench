@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/handoffguard"
 	"path/filepath"
 	"reflect"
 	"time"
@@ -69,6 +70,9 @@ type approval struct {
 func Check(ctx context.Context, c Config, db reftransfer.Reader, target *model.Bench) error {
 	if target == nil || target.Workspace == nil || target.Workspace.Phase == "ready" || target.Workspace.TransferredFrom == nil {
 		return nil
+	}
+	if target.Workspace.TransferredFrom.CrossHost != nil {
+		return handoffguard.Current(ctx, db, target)
 	}
 	if err := check(ctx, c, db, target); err != nil {
 		return errors.Join(ErrGuard, err)

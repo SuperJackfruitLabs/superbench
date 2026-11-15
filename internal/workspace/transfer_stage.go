@@ -52,6 +52,9 @@ func (m Manager) stageTransferred(ctx context.Context, creationID string, spec S
 			return errors.New("workspace transfer source is not permanently relinquished")
 		}
 		t := b.Workspace.Transfer
+		if t.CrossHost != nil {
+			return errors.New("cross-host export cannot stage a local transfer")
+		}
 		if (j.Phase != "relinquished" && j.Phase != "completed") || t.Phase != "transferred" || t.ID != j.ID || t.Digest != j.Digest || t.TargetID != j.TargetID || t.TargetKey != j.TargetKey || t.CreationID != j.CreationID || j.TargetKey != spec.Key || j.CreationID != creationID || spec.CheckpointRepository != b.Workspace.CheckpointRepository {
 			return errors.New("workspace transfer journal and destination do not agree")
 		}

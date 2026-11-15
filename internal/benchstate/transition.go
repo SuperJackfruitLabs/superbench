@@ -68,6 +68,10 @@ func Capture(records Database) IdentitySnapshot {
 			w.Members = append([]model.WorkspaceMember(nil), w.Members...)
 			if w.TransferredFrom != nil {
 				origin := *w.TransferredFrom
+				if origin.CrossHost != nil {
+					h := *origin.CrossHost
+					origin.CrossHost = &h
+				}
 				w.TransferredFrom = &origin
 			}
 			entry.transfer = copyTransfer(w.Transfer)

@@ -3,6 +3,7 @@ package benchstate
 import (
 	"errors"
 	"fmt"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/handoffjournal"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/initrepair"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/operationcontrol"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspacepolicy"
@@ -14,6 +15,11 @@ func LoadKinds(r Reader, state string) (Database, error) {
 	var version int
 	if err := r.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return nil, err
+	}
+	if version < 29 {
+		if err := handoffjournal.RejectHistorical(r); err != nil {
+			return nil, err
+		}
 	}
 	if version < 27 {
 		if err := operationcontrol.RejectCancellationAuthority(r); err != nil {
@@ -76,7 +82,7 @@ func LoadKinds(r Reader, state string) (Database, error) {
 			return nil, err
 		}
 		for _, b := range records {
-			if b.Workspace != nil && (workspacepolicy.ValidateSchema27(b) != nil || version < 26 && workspacepolicy.ValidateSchema25(b) != nil || version < 14 || version == 14 && workspacepolicy.ValidateSchema14(b) != nil || version == 15 && workspacepolicy.ValidateSchema15(b) != nil || version == 16 && workspacepolicy.ValidateSchema16(b) != nil || version == 17 && workspacepolicy.ValidateSchema17(b) != nil || (version == 18 || version == 19) && workspacepolicy.ValidateSchema19(b) != nil || version == 20 && workspacepolicy.ValidateSchema20(b) != nil || version == 21 && workspacepolicy.ValidateSchema21(b) != nil) {
+			if b.Workspace != nil && (workspacepolicy.ValidateSchema28(b) != nil || version < 28 && workspacepolicy.ValidateSchema27(b) != nil || version < 26 && workspacepolicy.ValidateSchema25(b) != nil || version < 14 || version == 14 && workspacepolicy.ValidateSchema14(b) != nil || version == 15 && workspacepolicy.ValidateSchema15(b) != nil || version == 16 && workspacepolicy.ValidateSchema16(b) != nil || version == 17 && workspacepolicy.ValidateSchema17(b) != nil || (version == 18 || version == 19) && workspacepolicy.ValidateSchema19(b) != nil || version == 20 && workspacepolicy.ValidateSchema20(b) != nil || version == 21 && workspacepolicy.ValidateSchema21(b) != nil) {
 				return nil, errors.New("workspace record requires current state schema")
 			}
 		}

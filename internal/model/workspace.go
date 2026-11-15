@@ -29,6 +29,7 @@ type Workspace struct {
 // Initialization readiness remains independent from transfer availability.
 type WorkspaceTransfer struct {
 	ID, Digest, TargetKey, TargetID, CreationID, Phase string
+	CrossHost                                          *WorkspaceHandoff          `json:",omitempty"`
 	Recovery                                           *WorkspaceTransferRecovery `json:",omitempty"`
 }
 
@@ -41,7 +42,14 @@ type WorkspaceTransferRecovery struct {
 	Runs                                     []WorkspaceRetiredRun
 }
 type WorkspaceRetiredRun struct{ ID, Digest string }
-type WorkspaceTransferOrigin struct{ ID, Digest, SourceKey, SourceID string }
+
+// WorkspaceHandoff binds a transfer to the remote machine/state incarnation.
+// It is evidence, never an attestation or writer capability.
+type WorkspaceHandoff struct{ HostID, StateID, ArtifactDigest string }
+type WorkspaceTransferOrigin struct {
+	ID, Digest, SourceKey, SourceID string
+	CrossHost                       *WorkspaceHandoff `json:",omitempty"`
+}
 
 // WorkspaceInitializationRepair preserves explicit initialization handoff and
 // unreleased history authority across reviewed repair claims.

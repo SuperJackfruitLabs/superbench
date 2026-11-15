@@ -42,7 +42,7 @@ func TestSchema28PreservesSchema27ConclusionsAndDoesNotInventRepairOperations(t 
 	if err := migrateForTest(db, t.TempDir(), nil); err != nil {
 		t.Fatal(err)
 	}
-	assertVersion(t, db, 28)
+	assertVersion(t, db, SchemaVersion)
 	var after, same string
 	var count int
 	if err := db.QueryRow(`SELECT record FROM benches`).Scan(&after); err != nil || after != before {

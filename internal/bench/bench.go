@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/archivepolicy"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/execution"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/handoffjournal"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/history"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/setup"
@@ -24,7 +25,10 @@ func (s Store) createRegistered(ctx context.Context, key string, o Options, reco
 	var warming bool
 	var selectionErr error
 	var result *Bench
-	err := s.transaction(func(db database) error {
+	err := s.transactionSQL(func(db database, tx *sql.Tx) error {
+		if err := handoffjournal.Unreserved(tx, key); err != nil {
+			return err
+		}
 		if !keyPattern.MatchString(key) {
 			return errors.New("key must be 1-80 letters, digits, underscores or hyphens, starting with a letter or digit")
 		}

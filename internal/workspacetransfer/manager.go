@@ -71,6 +71,9 @@ func boundRecord(rows benchstate.Database, tx *sql.Tx, id string) (reftransfer.R
 		return j, nil, errors.New("workspace transfer source ownership changed")
 	}
 	t := b.Workspace.Transfer
+	if t.CrossHost != nil {
+		return j, nil, errors.New("cross-host export cannot resume a local transfer")
+	}
 	if t.ID != j.ID || t.Digest != j.Digest || t.TargetKey != j.TargetKey || t.TargetID != j.TargetID || t.CreationID != j.CreationID || (j.Phase == "started") != (t.Phase == "relinquishing") {
 		return j, nil, errors.New("workspace transfer marker differs from its durable journal")
 	}
