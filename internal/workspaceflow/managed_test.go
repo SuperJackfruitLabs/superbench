@@ -151,10 +151,10 @@ func TestManagedWorkspaceAggregateQuota(t *testing.T) {
 		cmd := exec.CommandContext(checkCtx, old, "status", "--state", state, "--data", data)
 		out, oldErr := cmd.CombinedOutput()
 		done()
-		if oldErr == nil || !strings.Contains(string(out), "unsupported state schema 16 (expected 13)") {
-			t.Fatal("schema13 CLI did not refuse aggregate schema16", oldErr, string(out))
+		if oldErr == nil || !strings.Contains(string(out), "unsupported state schema 17 (expected 13)") {
+			t.Fatal("schema13 CLI did not refuse aggregate schema17", oldErr, string(out))
 		}
-		t.Log("PASS: schema13 CLI refuses schema16 before interpreting aggregate metadata")
+		t.Log("PASS: schema13 CLI refuses schema17 before interpreting aggregate metadata")
 	}
 	for round := 0; round < 2; round++ {
 		first := staged.Workspace.Members[round].Path

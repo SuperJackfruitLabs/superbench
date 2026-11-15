@@ -93,26 +93,8 @@ func (s Store) releaseQuota(b *Bench) error {
 	return nil
 }
 
-func (s Store) ensureBenchQuota(b *Bench) error {
-	c, e := s.hostConfig()
-	if e != nil {
-		return e
-	}
-	if c == nil {
-		if b.ProjectID != 0 {
-			return errors.New("managed bench has no host policy")
-		}
-		return nil
-	}
-	a, e := s.workerStorage().Quota(*c, "bench", b.Key, b.RequestedQuotaBytes)
-	if e != nil {
-		return e
-	}
-	if a.ProjectID != b.ProjectID || a.Bytes != b.QuotaBytes || a.Inodes == 0 || a.Inodes != b.QuotaInodes {
-		return errors.New("bench quota differs from its pinned byte/inode allocation; explicit migration required")
-	}
-	return nil
-}
+func (s Store) ensureBenchQuota(b *Bench) error { return s.workerStorage().EnsureBenchQuota(b) }
+
 func (s Store) pinMigratedInodes(b *Bench) error {
 	if b.ProjectID == 0 || b.QuotaInodes != 0 || b.ReapedAt != "" || b.ReapingDigest != "" {
 		return nil

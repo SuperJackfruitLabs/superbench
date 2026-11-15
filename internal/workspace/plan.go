@@ -68,6 +68,9 @@ func normalize(s Spec) (Spec, error) {
 		if r.Base == "" {
 			r.Base = "main"
 		}
+		if r.Branch == "superbench" || r.Branch == "superbench/checkpoints" || strings.HasPrefix(r.Branch, "superbench/checkpoints/") {
+			return Spec{}, errors.New("workspace task branch conflicts with checkpoint metadata namespace")
+		}
 		for _, branch := range []string{r.Branch, r.Base} {
 			if !utf8.ValidString(branch) || len(branch) > 255 || branch == "HEAD" || branch == "@" || strings.HasPrefix(branch, "-") || strings.HasPrefix(branch, "refs/") || !model.ValidBranchRef("refs/heads/"+branch) {
 				return Spec{}, errors.New("invalid workspace short branch")

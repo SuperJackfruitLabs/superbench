@@ -42,6 +42,9 @@ func Validate(b *model.Bench) error {
 	if err := validatePreparation(b); err != nil {
 		return invalid
 	}
+	if err := validateRecovery(b); err != nil {
+		return invalid
+	}
 	if err := validateCheckpoints(b); err != nil {
 		return invalid
 	}

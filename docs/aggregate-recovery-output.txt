@@ -1,0 +1,71 @@
+Exact-seal aggregate recovery verification — 2026-11-15
+
+Baseline: merged aggregate execution f75db7a7861e03aaa0aa3c69a125ab80e0dcbc33.
+Frozen source: superbench-aggregate-recovery-source.tar.gz
+SHA256: d8d7eeafa37bb6e0c257949728a8788fb0c78f343ac6b802e299f1bff7e28618
+Destination hash verified before extraction. All 330 archived files matched the
+working tree after native verification. This evidence file was added afterward.
+
+Native Go 1.26.4 darwin/arm64:
+  sh scripts/check.sh — exit 0
+  Formatting, four installer tests, vet, all race tests and three builds passed.
+  workspace race suite: 94.957s; workspaceflow: 47.438s; workspaceprep: 117.589s.
+  Log: /private/tmp/superbench-aggregate-recovery-native-check.log
+
+Approved disposable Linux verification, Go 1.26.4 linux/amd64:
+  Source: /var/tmp/superbench-verification/aggregate-recovery-source-20261115
+  sh scripts/check.sh — exit 0
+  Formatting, four installer tests, vet, all race tests and three builds passed.
+  workspace: 39.713s; workspaceflow: 19.359s; workspaceprep: 50.345s.
+  CLI SHA256: a6adb44d35816f5cc26d336f4123ce92c9767e14866680e2534b858c3e74f5c5
+  Log: /var/tmp/superbench-verification/aggregate-recovery-linux-check.log
+
+Disposable 512MiB loop-XFS and owned cgroup drill — exit 0:
+  TestManagedWorkspaceRecoveryLifecycle (6.97s):
+    Recovery of an exact historical seal creates a fresh workspace identity,
+    initialization owner, hook receipts, quota project and genesis checkpoint.
+    The source writer remains running under its original owner throughout target
+    staging and initialization. Its files and state are preserved; it completes
+    normally and releases against its original checkpoint afterward.
+    Schema-16 CLI refuses schema 17 without changing source or target ownership.
+    Completed recovery replay does not rerun preparation.
+  TestManagedWorkspaceExecutionLifecycle (7.63s):
+    Operational acquisition, once/each hooks, member/root payload directories,
+    descendant fencing, configuration changes, failed-payload evidence,
+    explicit-stop revocation and atomic held-history release passed.
+  TestManagedWorkspaceAggregateQuota (0.87s):
+    Two members share one 32MiB/4096-inode project in both write orders.
+    Exact retry preserves identity, lease and all prior ledger assignments.
+    Schema-13 CLI refuses schema 17 before interpreting aggregate metadata.
+  TestManagedWorkspacePreparationLifecycle (3.33s):
+    Partial preparation retains the same owner and completed-member proof;
+    retry seals the complete vector and releases all three stage histories.
+  Wrapper exited successfully after cleaning its owned mount/cgroups/trial.
+  Log: /var/tmp/superbench-verification/aggregate-recovery-managed-check.log
+
+Git control regression drill — exit 0; all eight groups passed:
+  Old CLI reproduces detached hook and external clean-filter writer escapes.
+  Managed control Git suppresses client hooks/unrelated tags and fences filters.
+  Explicit payload Git still runs hooks; descendants remain fenced.
+  Server rejection preserves the held owner until explicit retry.
+  SIGKILL leaves a durable schema-17 intent; status remains observational;
+  old schema-12 CLI refuses and the next mutation fences before handoff.
+  Warm creation suppresses post-checkout hooks without changing configuration.
+  Log: /var/tmp/superbench-verification/aggregate-recovery-git-control-check.log
+
+Native/Linux race coverage also verifies:
+  Exact historical selection despite partially published newer task refs;
+  complete caller allowlist, raw seal digest, metadata ancestry and immutable pins;
+  refusal of missing/changed pins, source-ref overlap and occupied targets;
+  stored-vector retry after partial materialization with remotes unavailable;
+  source-commit quota declarations despite newer configuration;
+  allocation-save failure preserves retryable unallocated intent;
+  fresh genesis and immutable/deep-copied recovery provenance;
+  valid schema-16 migration, historical schema refusal and active-writer guards;
+  cancellation between staged ownership and warm finalization stops that owner;
+  aggregate task refs cannot occupy the private checkpoint metadata namespace.
+
+Scope: internal exact-seal recovery into a fresh identity and distinct task refs.
+No installed service or production data changed. Original task-ref ownership
+transfer, aggregate archive/reap, public v2 service/CLI, native supervised laptop
+preparation, broader collection and the Developer Experience pilot remain pending.

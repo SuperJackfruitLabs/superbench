@@ -45,7 +45,7 @@ A core checkpoint does not constitute completion of a phase or the product.
 | Phase | Required outcome | Current evidence |
 |---|---|---|
 | 0 | Host disk alert, reviewed cleanup dry-run, code-stage branch/checkpoint rules | Not implemented by this repository; inspect estate and board settings before changes |
-| 1 | Standalone CLI and host service; durable state/leases; checkpoints/recovery; quotas, shared mirrors/stores; verified archive/reap | CLI, journals, SQLite, fenced Linux execution and host storage tested; local service API added; installer and reviewed archive/reap verified; reviewed log/history collection and approved automatic log retention implemented; explicit/automatic acquisition setup hooks implemented; creation/recovery warm-up verified on Linux; aggregate creation/acquisition/execution/checkpoint/release implemented internally; laptop preparation, aggregate recovery/archive and public API, broader collection and integration pending |
+| 1 | Standalone CLI and host service; durable state/leases; checkpoints/recovery; quotas, shared mirrors/stores; verified archive/reap | CLI, journals, SQLite, fenced Linux execution and host storage tested; local service API added; installer and reviewed archive/reap verified; reviewed log/history collection and approved automatic log retention implemented; explicit/automatic acquisition setup hooks implemented; creation/recovery warm-up verified on Linux; aggregate creation/acquisition/execution/checkpoint/release implemented internally; laptop preparation, original task-ref transfer, aggregate archive and public API, broader collection and integration pending |
 | 2 | Suite adapters, card panel, locality scoring, witness events; read-only web, file/diff/log/timeline views, terminal attach and MCP | Pending; charter/treaty contracts precede consumers; visual mockups before UI |
 | 3 | Remote editor launch/browser IDE; second-host recovery drill; per-bench isolation; Salaam layout and execution-host integration | Pending |
 
@@ -219,6 +219,14 @@ retain failed stage evidence and atomically release history with ownership.
 Schema 16 permits stopped repair release without treating historical preparation
 as current. See [aggregate execution](aggregate-execution.md) for the internal
 API, ordering and remaining public integration work.
+
+Exact-seal aggregate recovery now rebuilds the selected historical vector into
+a fresh identity and distinct task refs, with immutable source provenance, a
+new allocation and fresh preparation receipts. It preserves source ownership,
+files and pending generations, then confirms a new genesis before readiness.
+See [aggregate recovery](aggregate-recovery.md). Reusing original task refs still
+requires stopped-writer and worktree-ownership reconciliation; the public v2
+producer and aggregate archive/reap remain pending.
 
 ## Remaining retention work
 

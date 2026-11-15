@@ -58,6 +58,10 @@ func privateRecord(b *model.Bench) *model.Bench {
 	if b.Workspace != nil {
 		w := *b.Workspace
 		w.Members = append([]model.WorkspaceMember(nil), w.Members...)
+		if w.RecoveredFrom != nil {
+			origin := *w.RecoveredFrom
+			w.RecoveredFrom = &origin
+		}
 		w.Preparation = append([]model.WorkspacePreparation(nil), w.Preparation...)
 		cloneCheckpoint := func(cp *model.WorkspaceCheckpoint) *model.WorkspaceCheckpoint {
 			if cp == nil {
@@ -98,7 +102,7 @@ func stagedPlan(b *model.Bench) Plan {
 }
 
 func matchesRequest(b *model.Bench, creationID string, spec Spec, data string) bool {
-	if b == nil || b.Workspace == nil || workspacepolicy.Validate(b) != nil {
+	if b == nil || b.Workspace == nil || b.Workspace.RecoveredFrom != nil || workspacepolicy.Validate(b) != nil {
 		return false
 	}
 	w := b.Workspace
@@ -141,6 +145,26 @@ func (m Manager) Stage(ctx context.Context, creationID string, spec Spec) (*mode
 		return nil, err
 	}
 	spec, _ = normalize(spec)
+	return m.stage(ctx, stagingRequest{
+		key: spec.Key, creationID: creationID, explicitQuota: spec.QuotaBytes,
+		matches: func(b *model.Bench) bool { return matchesRequest(b, creationID, spec, m.Data) },
+		selectPlan: func(ctx context.Context, timeout time.Duration) (Plan, error) {
+			return (Planner{Mirrors: repository.Mirrors{State: m.State, Data: m.Data, Timeout: timeout}, Git: m.Git}).Select(ctx, spec)
+		},
+	})
+}
+
+// Both fresh creation and recovery enter the same durable ownership/allocation
+// sequence; only source selection and exact retry identity differ.
+type stagingRequest struct {
+	key, creationID string
+	explicitQuota   uint64
+	recoveredFrom   *model.WorkspaceRecovery
+	matches         func(*model.Bench) bool
+	selectPlan      func(context.Context, time.Duration) (Plan, error)
+}
+
+func (m Manager) stage(ctx context.Context, request stagingRequest) (*model.Bench, error) {
 	timeout := m.Timeout
 	if timeout == 0 {
 		timeout = repository.DefaultTimeout
@@ -170,8 +194,8 @@ func (m Manager) Stage(ctx context.Context, creationID string, spec Spec) (*mode
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-			if b, ok := rows[spec.Key]; ok {
-				if !matchesRequest(b, creationID, spec, m.Data) {
+			if b, ok := rows[request.key]; ok {
+				if !request.matches(b) {
 					return errors.New("workspace creation conflicts with an existing bench")
 				}
 				found = privateRecord(b)
@@ -188,7 +212,7 @@ func (m Manager) Stage(ctx context.Context, creationID string, spec Spec) (*mode
 			return err
 		}
 		if committed == nil {
-			for _, path := range []string{filepath.Join(m.State, "create-"+spec.Key+".json"), filepath.Join(m.Data, "benches", spec.Key)} {
+			for _, path := range []string{filepath.Join(m.State, "create-"+request.key+".json"), filepath.Join(m.Data, "benches", request.key)} {
 				if _, err := os.Lstat(path); err == nil {
 					return errors.New("unregistered workspace files or legacy creation intent exist; preserve and reconcile")
 				} else if !os.IsNotExist(err) {
@@ -204,26 +228,32 @@ func (m Manager) Stage(ctx context.Context, creationID string, spec Spec) (*mode
 			if err := m.Admit(); err != nil {
 				return err
 			}
-			planner := Planner{Mirrors: repository.Mirrors{State: m.State, Data: m.Data, Timeout: timeout}, Git: m.Git}
-			plan, err := planner.Select(ctx, spec)
+			plan, err := request.selectPlan(ctx, timeout)
 			if err != nil {
 				return err
 			}
 			if _, err := validateMaterialization(plan); err != nil {
 				return err
 			}
-			candidate, err := recordPlan(plan, creationID, spec.QuotaBytes)
+			candidate, err := recordPlan(plan, request.creationID, request.explicitQuota)
 			if err != nil {
 				return err
+			}
+			if request.recoveredFrom != nil {
+				origin := *request.recoveredFrom
+				candidate.Workspace.RecoveredFrom = &origin
+				if err := workspacepolicy.Validate(candidate); err != nil {
+					return err
+				}
 			}
 			if err = update(func(rows benchstate.Database, _ *sql.Tx) error {
 				if err := ctx.Err(); err != nil {
 					return err
 				}
-				if _, ok := rows[spec.Key]; ok {
+				if _, ok := rows[request.key]; ok {
 					return errors.New("workspace identity appeared during source selection")
 				}
-				rows[spec.Key] = privateRecord(candidate)
+				rows[request.key] = privateRecord(candidate)
 				return nil
 			}); err != nil {
 				return err
@@ -265,7 +295,7 @@ func (m Manager) Stage(ctx context.Context, creationID string, spec Spec) (*mode
 				if err := ctx.Err(); err != nil {
 					return err
 				}
-				if !reflect.DeepEqual(rows[spec.Key], committed) || !reflect.DeepEqual(stagedPlan(committed), plan) {
+				if !reflect.DeepEqual(rows[request.key], committed) || !reflect.DeepEqual(stagedPlan(committed), plan) {
 					return errors.New("workspace initialization ownership or pinned vector changed")
 				}
 				return nil
@@ -275,10 +305,10 @@ func (m Manager) Stage(ctx context.Context, creationID string, spec Spec) (*mode
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-			if !reflect.DeepEqual(rows[spec.Key], committed) {
+			if !reflect.DeepEqual(rows[request.key], committed) {
 				return errors.New("workspace initialization ownership changed")
 			}
-			rows[spec.Key] = privateRecord(allocated)
+			rows[request.key] = privateRecord(allocated)
 			return nil
 		}); err != nil {
 			return err
@@ -294,10 +324,10 @@ func (m Manager) Stage(ctx context.Context, creationID string, spec Spec) (*mode
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-			if !reflect.DeepEqual(rows[spec.Key], committed) {
+			if !reflect.DeepEqual(rows[request.key], committed) {
 				return errors.New("workspace initialization ownership changed")
 			}
-			rows[spec.Key] = privateRecord(finished)
+			rows[request.key] = privateRecord(finished)
 			return nil
 		}); err != nil {
 			return err

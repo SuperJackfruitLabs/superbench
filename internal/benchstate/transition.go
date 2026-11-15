@@ -50,6 +50,10 @@ func Capture(records Database) IdentitySnapshot {
 		entry := identityRecord{}
 		if b != nil && b.Workspace != nil {
 			w := *b.Workspace
+			if w.RecoveredFrom != nil {
+				source := *w.RecoveredFrom
+				w.RecoveredFrom = &source
+			}
 			w.Members = append([]model.WorkspaceMember(nil), w.Members...)
 			if w.Stage != nil {
 				stage := *w.Stage
