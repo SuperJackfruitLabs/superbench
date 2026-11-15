@@ -92,29 +92,49 @@ func openReceipts(state string) (*receipts, error) {
 	}
 	return &receipts{db: db, active: map[string]bool{}}, nil
 }
-func (r *receipts) claim(uid uint32, id, digest string) (*receipt, error) {
+
+// lookup does not reserve an identity: completed responses precede mutable
+// ownership preflight, while a missing identity still needs admission checks.
+func (r *receipts) lookup(uid uint32, id, digest string) (*receipt, bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	return r.lookupLocked(uid, id, digest)
+}
+func (r *receipts) lookupLocked(uid uint32, id, digest string) (*receipt, bool, error) {
 	key := receiptKey(uid, id)
 	var prior, state string
 	var body []byte
 	var status sql.NullInt64
-	e := r.db.QueryRow("SELECT digest,state,body,status FROM receipts WHERE owner=? AND id=?", uid, id).Scan(&prior, &state, &body, &status)
-	if e == nil {
+	err := r.db.QueryRow("SELECT digest,state,body,status FROM receipts WHERE owner=? AND id=?", uid, id).Scan(&prior, &state, &body, &status)
+	if err == nil {
 		if prior != digest {
-			return nil, errConflict
+			return nil, true, errConflict
 		}
-		if state == "done" {
-			return &receipt{body: body, status: int(status.Int64)}, nil
+		if state == "done" && status.Valid {
+			return &receipt{body: body, status: int(status.Int64)}, true, nil
 		}
 		if r.active[key] {
-			return nil, errInProgress
+			return nil, true, errInProgress
 		}
-		return nil, errInDoubt
+		return nil, true, errInDoubt
 	}
-	if e != sql.ErrNoRows {
-		return nil, e
+	if err != sql.ErrNoRows {
+		return nil, true, err
 	}
+	// Missing durable authority must never permit a second in-process dispatch.
+	if _, retained := r.active[key]; retained {
+		return nil, true, errInDoubt
+	}
+	return nil, false, nil
+}
+func (r *receipts) claim(uid uint32, id, digest string) (*receipt, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if cached, found, err := r.lookupLocked(uid, id, digest); found || err != nil {
+		return cached, err
+	}
+	key := receiptKey(uid, id)
+	var e error
 	var count, bytes, pending int64
 	if e = r.db.QueryRow("SELECT count(*),coalesce(sum(length(body)),0),coalesce(sum(CASE WHEN state='running' THEN 1 ELSE 0 END),0) FROM receipts").Scan(&count, &bytes, &pending); e != nil {
 		return nil, e
@@ -131,10 +151,31 @@ func (r *receipts) claim(uid uint32, id, digest string) (*receipt, error) {
 func (r *receipts) finish(uid uint32, id string, body []byte, status int) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	defer delete(r.active, receiptKey(uid, id))
+	key := receiptKey(uid, id)
+	// Retain an in-process tombstone on failed persistence, including a missing
+	// row. A failure must never reopen the same identity for dispatch.
+	defer func() {
+		if r.active[key] {
+			r.active[key] = false
+		}
+	}()
 	if len(body) > 64<<10 {
 		return errCapacity
 	}
-	_, e := r.db.Exec("UPDATE receipts SET state='done',body=?,status=? WHERE owner=? AND id=?", body, status, uid, id)
-	return e
+	if !r.active[receiptKey(uid, id)] {
+		return errInDoubt
+	}
+	result, e := r.db.Exec("UPDATE receipts SET state='done',body=?,status=? WHERE owner=? AND id=? AND state='running'", body, status, uid, id)
+	if e != nil {
+		return e
+	}
+	changed, e := result.RowsAffected()
+	if e != nil {
+		return e
+	}
+	if changed != 1 {
+		return errInDoubt
+	}
+	delete(r.active, key)
+	return nil
 }

@@ -113,6 +113,9 @@ and investigate; use a separate replacement state/data pair after stopping old w
 ## Implementation status
 
 Phase 1 has started with durable creation intents. See [the implementation sequence](docs/implementation.md).
+The grouped workspace API and CLI are described in
+[workspace API integration](docs/workspace-api.md), including verification limits
+and the remaining standalone preparation and pilot work.
 If create/recover stops after creating its worktree but before registration, retry
 with exactly the same arguments. The intent pins the original SHA; adoption
 requires the expected path, shared git directory, branch, HEAD and clean files.

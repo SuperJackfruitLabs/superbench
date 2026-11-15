@@ -1,0 +1,141 @@
+# Grouped workspace API
+
+The v2 producer is being integrated and verified. It does not enable suite
+consumers or claim that the Developer Experience board pilot has run. The
+accepted host-local boundary remains in Charter; the grouped request and response
+extensions are proposed treaty data. Existing scalar v1 callers remain supported.
+
+The response schema, client/producer corpus and runtime obligation list are pinned
+to treaty `4a49c96ff7fe8ccfb3a832e163e086c06fb394c7`, merged through
+[treaty #34](https://forge.superjackfruit.com/SuperJackfruitLabs/treaty/pulls/34).
+`scripts/sync-workspace-responses.py` reads committed Git objects; tests verify
+the exact revision and three file hashes. Request and scalar-v1 pins remain
+independent. Merging a proposed contract does not establish consumer acceptance.
+
+## CLI
+
+Grouped operations use `bench workspace OP`; existing top-level commands retain
+their scalar behavior. Flags precede the workspace key. `--socket` selects v2 on
+the daemon; omitting it uses local administrative state/data. API operations print
+a validated response envelope, including an authorized retained grant on failure.
+Growth request IDs are printed to stderr; use `--request-id` to preserve one
+across an interrupted socket reply. The client never automatically retries or
+falls back to v1.
+
+For example, `members.json` contains the canonical repository array:
+
+```json
+[
+  {"name":"app","repository":"/absolute/path/to/app.git"},
+  {"name":"library","repository":"/absolute/path/to/library.git"}
+]
+```
+
+```sh
+bench workspace create --socket /run/superbench/api.sock \
+  --repositories members.json --checkpoint-repository app \
+  --request-id create-task-1 task-1
+bench workspace run --socket /run/superbench/api.sock \
+  --holder run-1 --repository-name app --request-id run-task-1 \
+  task-1 -- go test ./...
+bench workspace status --socket /run/superbench/api.sock task-1
+```
+
+Creation/recovery require warm initialization. Recovery takes `--source FILE`
+with the exact repository, bench ID, seal commit and manifest digest, plus an
+explicit repository allowlist. `--repository-name` selects a run/setup member;
+omitted run uses the root and omitted setup prepares every member.
+`BENCH_LEASE_TOKEN` supplies a held owner capability for subsequent commands.
+
+`plan-reap` and `reap --plan FILE --approve DIGEST` are local administration only.
+They print a concrete Plan and redacted workspace inventory respectively.
+Review the complete plan and nonrecoverable bytes before approval. A local
+`archive --archive-grace DURATION` can explicitly choose the initial retention
+deadline; zero is an explicit waiver. It cannot shorten a previously persisted
+deadline, and the socket does not accept a grace override.
+
+Local direct execution does not provide the daemon's exact HTTP receipt replay
+for lease/run/setup. Creation identity remains deterministic for the supplied request
+ID; a later owner's inventory cannot become a new creation grant. Use the daemon
+when durable response replay across client disconnects is required. Standalone
+laptop preparation still needs its own supported execution backend.
+
+## Transport and ownership
+
+`POST /v2/operations` uses the same private Unix socket and kernel peer-UID
+authorization as v1. Request bodies and durable growth responses are bounded to
+64 KiB; read-only responses are bounded to 1 MiB. A global inventory that cannot
+fit returns unavailable rather than dropping registrations. V2 status includes
+both scalar and grouped records with an explicit kind. V2 mutations refuse
+scalar records; callers must use their original API for those records.
+
+Responses expose compact lifecycle observations. They omit repository URLs,
+private member paths, command arguments/environment, raw manifests, continuation
+secrets and history. An authorized creation/recovery or newly granted owner can
+receive the bounded workspace root. Status does not disclose lease tokens.
+
+The operations adapter authorizes a grant separately from response projection.
+Supplying a current token never causes it to be exported again. Successful
+administrative stop can return the retained owner capability only after fencing
+has succeeded and continuation has been revoked. That capability does not revive
+the stopped writer or make stopped initialization restartable.
+
+## Preparation and completion
+
+Creation and recovery initialize the whole repository vector and confirm its
+genesis remotely before reporting ready. A failed partial initialization retains
+its durable identity and owner. Ordinary acquisition prepares the workspace once
+under its new lease. Run and setup acquire raw ownership first and perform their
+own preparation, avoiding duplicate acquisition hooks.
+
+Run selects a member or the workspace root. Omitted or true `checkpoint` means a
+successful payload is followed by a complete-vector checkpoint and release;
+false retains ownership. A failed payload or checkpoint preserves the owner and
+available execution evidence. Successful setup also confirms a complete-vector
+checkpoint and releases. Selecting one setup member does not permit claiming
+initialization ready without the other members' preparation proofs.
+
+Recovery currently creates a fresh workspace and distinct task refs. Original
+task-ref ownership transfer is separate pending work. Archive freezes the whole
+workspace; deletion still requires a concrete reviewed local reap plan and the
+persisted grace deadline. A socket archive request never approves deletion.
+
+## Durable request identity
+
+Growth operations bind the authenticated UID, API version, operation, request ID
+and canonical request body. Completed receipts replay their exact historical
+bytes before mutable ownership preflight, including after release, a new owner
+or archive. A replayed historical capability does not restore an ended lease.
+Current backend ownership checks still govern subsequent actions.
+
+An active receipt returns `in_progress`; interrupted or uncertain work returns
+`operation_in_doubt` without redispatch. Receipt-capacity exhaustion blocks new
+growth but leaves stop, checkpoint, release and archive available. A missing
+creation receipt whose core identity already exists also requires reconciliation;
+it cannot silently resume partial initialization. Completion requires updating
+the owned running receipt. Persistence failure preserves an uncertain identity
+and can return an independently authorized retained grant for reconciliation.
+
+Request receipts are not collected automatically. Retiring response payloads
+requires durable replay protection; deleting completed rows is not collection.
+
+## Verification boundaries
+
+The shared response corpus distinguishes client-observable wire checks from
+producer-only grant, fencing and complete-inventory evidence. Strict response
+parsing cannot independently prove that a host fenced a writer. Producer checks
+and actual managed execution drills must supply that evidence separately.
+
+Current HTTP tests exercise real Git repositories and SQLite through the handler,
+including mixed inventory privacy, lifecycle operations, UID/body/version receipt
+conflicts, exact historical replay, capacity, failed completion persistence and
+missing creation receipts. These handler tests do not establish real Unix peer
+authentication, managed cgroup execution, CLI behavior or a deployed pilot;
+separate runtime verification is required before publication claims.
+
+Supervisor crash recovery also needs a separate history-repair path. If a daemon
+is killed before it seals an aggregate payload's log, administrative stop can
+fence the retained execution and revoke continuation, but release must refuse
+while that run lacks sealed evidence. Do not fabricate a successful outcome or
+discard the record to release ownership. Completing that reconciliation remains
+Phase 1 work alongside stopped-initialization repair.
