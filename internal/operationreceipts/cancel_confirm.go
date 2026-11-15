@@ -10,6 +10,10 @@ import (
 func (r *receipts) confirmCancellation(i operationcontrol.Intent) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	return r.confirmCancellationLocked(i)
+}
+
+func (r *receipts) confirmCancellationLocked(i operationcontrol.Intent) error {
 	stored, err := r.operationIntent(i.Target)
 	if err != nil {
 		return err

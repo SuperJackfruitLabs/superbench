@@ -12,7 +12,11 @@ type WorkCursor struct {
 	UID       uint32
 	RequestID string
 }
+
+const MaxReconciliationItems = operationcontrol.MaxOperations + maxCancelTombstones
+
 type ReconciliationWork struct {
+	Target    operationcontrol.Target
 	Intent    operationcontrol.Intent
 	Completed bool
 }
@@ -27,14 +31,21 @@ func (r *receipts) ReconciliationBatch(after WorkCursor) ([]ReconciliationWork, 
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	var count int
+	var count, tombstones int
 	if err := r.db.QueryRow(`SELECT count(*) FROM operation_intents`).Scan(&count); err != nil {
 		return nil, WorkCursor{}, err
 	}
-	if count > 10000 {
+	if err := r.db.QueryRow(`SELECT count(*) FROM operation_cancels`).Scan(&tombstones); err != nil {
+		return nil, WorkCursor{}, err
+	}
+	if count > operationcontrol.MaxOperations || tombstones > maxCancelTombstones {
 		return nil, WorkCursor{}, errInDoubt
 	}
-	rows, err := r.db.Query(`SELECT i.owner,i.id,i.digest,i.key,i.operation,i.epoch,i.core_finalized,r.digest,r.state,r.cancel_state FROM operation_intents i LEFT JOIN receipts r ON r.owner=i.owner AND r.id=i.id WHERE i.owner>? OR (i.owner=? AND i.id>?) ORDER BY i.owner,i.id LIMIT 64`, after.UID, after.UID, after.RequestID)
+	rows, err := r.db.Query(`SELECT owner,id,digest,key,operation,epoch,core_finalized,receipt_digest,state,cancel_state,typed FROM (
+ SELECT i.owner,i.id,i.digest,i.key,i.operation,i.epoch,i.core_finalized,r.digest AS receipt_digest,r.state,r.cancel_state,1 AS typed FROM operation_intents i LEFT JOIN receipts r ON r.owner=i.owner AND r.id=i.id
+ UNION ALL
+ SELECT c.owner,c.id,c.digest,'','','',0,c.digest,'pending',c.state,0 FROM operation_cancels c WHERE NOT EXISTS(SELECT 1 FROM receipts r WHERE r.owner=c.owner AND r.id=c.id)
+ ) WHERE owner>? OR (owner=? AND id>?) ORDER BY owner,id LIMIT 64`, after.UID, after.UID, after.RequestID)
 	if err != nil {
 		return nil, WorkCursor{}, err
 	}
@@ -44,18 +55,22 @@ func (r *receipts) ReconciliationBatch(after WorkCursor) ([]ReconciliationWork, 
 	var scanned int
 	for rows.Next() {
 		var w ReconciliationWork
-		var finalized int
+		var finalized, typed int
 		var digest, state, barrier sql.NullString
-		if err = rows.Scan(&w.Intent.Target.UID, &w.Intent.Target.RequestID, &w.Intent.Target.Digest, &w.Intent.Key, &w.Intent.Operation, &w.Intent.Epoch, &finalized, &digest, &state, &barrier); err != nil {
+		if err = rows.Scan(&w.Intent.Target.UID, &w.Intent.Target.RequestID, &w.Intent.Target.Digest, &w.Intent.Key, &w.Intent.Operation, &w.Intent.Epoch, &finalized, &digest, &state, &barrier, &typed); err != nil {
 			return nil, WorkCursor{}, err
 		}
-		if !w.Intent.Valid() || finalized < 0 || finalized > 1 {
+		w.Target = w.Intent.Target
+		if (typed != 0 && typed != 1) || !w.Target.Valid() || (typed == 1 && !w.Intent.Valid()) || finalized < 0 || finalized > 1 {
 			return nil, WorkCursor{}, errInDoubt
 		}
 		scanned++
 		next = WorkCursor{w.Intent.Target.UID, w.Intent.Target.RequestID}
-		if !digest.Valid || digest.String != w.Intent.Target.Digest || !state.Valid || !barrier.Valid {
+		if !digest.Valid || digest.String != w.Target.Digest || !state.Valid || !barrier.Valid {
 			return nil, WorkCursor{}, errInDoubt
+		}
+		if typed == 0 {
+			w.Intent = operationcontrol.Intent{}
 		}
 		if finalized == 1 {
 			continue

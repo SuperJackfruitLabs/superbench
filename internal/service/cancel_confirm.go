@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/operationcontrol"
 )
 
@@ -14,6 +16,9 @@ func (s *Server) reconcileCancellation(ctx context.Context, t operationcontrol.T
 	if err != nil {
 		return "", err
 	}
+	if inventory.State == "not_admitted" {
+		return s.reconcileNoEffects(ctx, t)
+	}
 	if inventory.State != "cancel_requested" {
 		return inventory.State, nil
 	}
@@ -22,11 +27,38 @@ func (s *Server) reconcileCancellation(ctx context.Context, t operationcontrol.T
 	if err != nil {
 		return "", err
 	}
+	if _, err = manager.Inspect(i); errors.Is(err, sql.ErrNoRows) {
+		return s.reconcileNoEffects(ctx, t)
+	} else if err != nil {
+		return "", err
+	}
 	manager.CheckBarrier = func() error { return r.VerifyCancellationInventory(i, helpers) }
 	if err = manager.Reconcile(ctx, i, helpers); err != nil {
 		return "", err
 	}
 	if err = r.ConfirmCancellation(i); err != nil {
+		return "", err
+	}
+	return "cancelled", nil
+}
+
+func (s *Server) reconcileNoEffects(ctx context.Context, t operationcontrol.Target) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	snapshot, err := s.receipts.NoEffectsInventory(t)
+	if err != nil {
+		return "", err
+	}
+	manager, err := s.config.Store.OperationCancellation()
+	if err != nil {
+		return "", err
+	}
+	manager.CheckBarrier = func() error { return s.receipts.VerifyNoEffects(snapshot) }
+	if err = manager.NoEffects(t); err != nil {
+		return "", err
+	}
+	if err = s.receipts.ConfirmNoEffects(snapshot); err != nil {
 		return "", err
 	}
 	return "cancelled", nil

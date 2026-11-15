@@ -19,7 +19,20 @@ func (r *receipts) CancellationInventory(t operationcontrol.Target) (Cancellatio
 	var state, barrier, digest string
 	if err := r.db.QueryRow(`SELECT state,cancel_state,digest FROM receipts WHERE owner=? AND id=?`, t.UID, t.RequestID).Scan(&state, &barrier, &digest); err != nil {
 		if err == sql.ErrNoRows {
-			return out, errInDoubt
+			if err = r.db.QueryRow(`SELECT digest,state FROM operation_cancels WHERE owner=? AND id=?`, t.UID, t.RequestID).Scan(&digest, &state); err != nil {
+				return out, errInDoubt
+			}
+			if digest != t.Digest {
+				return out, errConflict
+			}
+			if state == "cancelled" {
+				out.State = "cancelled"
+			} else if state == "cancel_requested" {
+				out.State = "not_admitted"
+			} else {
+				return out, errInDoubt
+			}
+			return out, nil
 		}
 		return out, err
 	}

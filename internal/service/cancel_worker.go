@@ -16,7 +16,7 @@ func (s *Server) runOperationReconciler(ctx context.Context, wake <-chan struct{
 		if w.Completed {
 			return s.finalizeOperation(w.Intent)
 		}
-		_, err := s.reconcileCancellation(ctx, w.Intent.Target)
+		_, err := s.reconcileCancellation(ctx, w.Target)
 		return err
 	}, report)
 }
@@ -43,7 +43,7 @@ func runReconciliation(ctx context.Context, r *receipts, wake <-chan struct{}, e
 						err = execute(ctx, w)
 					}
 					mu.Lock()
-					delete(active, w.Intent.Target.ID())
+					delete(active, w.Target.ID())
 					mu.Unlock()
 					if err != nil && report != nil {
 						report(err)
@@ -57,7 +57,7 @@ func runReconciliation(ctx context.Context, r *receipts, wake <-chan struct{}, e
 	defer ticker.Stop()
 	cursor := operationreceipts.WorkCursor{}
 	scan := func() {
-		for inspected := 0; inspected <= 10000; inspected += 64 {
+		for inspected := 0; inspected <= operationreceipts.MaxReconciliationItems; inspected += 64 {
 			if ctx.Err() != nil {
 				return
 			}
@@ -71,7 +71,7 @@ func runReconciliation(ctx context.Context, r *receipts, wake <-chan struct{}, e
 			cursor = next
 			full := false
 			for _, w := range work {
-				id := w.Intent.Target.ID()
+				id := w.Target.ID()
 				mu.Lock()
 				if active[id] {
 					mu.Unlock()

@@ -40,3 +40,38 @@ func TestRestartCursorDoesNotStarveBehindUnreconciledBatch(t *testing.T) {
 		t.Fatal("requested cancellation considered completed")
 	}
 }
+
+func TestRestartInventoryIncludesUnknownTombstonesWithoutInventingEpoch(t *testing.T) {
+	r, err := openReceipts(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.db.Close()
+	for _, id := range []string{"a-pending", "b-terminal", "c-pending"} {
+		target := cutoffIntent(id).Target
+		if _, err = r.requestCancelV2(target.UID, target.RequestID, target.Digest); err != nil {
+			t.Fatal(err)
+		}
+		if id == "b-terminal" {
+			snapshot, err := r.NoEffectsInventory(target)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = r.ConfirmNoEffects(snapshot); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	batch, end, err := r.ReconciliationBatch(WorkCursor{})
+	if err != nil || len(batch) != 2 || end != (WorkCursor{}) {
+		t.Fatal(batch, end, err)
+	}
+	if batch[0].Target.RequestID != "a-pending" || batch[1].Target.RequestID != "c-pending" {
+		t.Fatal(batch)
+	}
+	for _, w := range batch {
+		if !w.Target.Valid() || w.Intent.Valid() || w.Completed {
+			t.Fatal("tombstone invented launch/completion authority", w)
+		}
+	}
+}
