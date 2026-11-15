@@ -15,7 +15,9 @@ import (
 // host configuration. Callers retain responsibility for bounding the context,
 // validating arguments and containing any other Git transport/helpers.
 func Command(ctx context.Context, dir string, args ...string) *exec.Cmd {
-	policy := []string{"--no-replace-objects", "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "push.followTags=false", "-C", dir}
+	// Status and other observations must not refresh an approved index. Required
+	// locks for explicit mutations remain enabled by Git.
+	policy := []string{"--no-optional-locks", "--no-replace-objects", "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "push.followTags=false", "-C", dir}
 	cmd := exec.CommandContext(ctx, "git", append(policy, args...)...)
 	cmd.WaitDelay = 2 * time.Second
 	cmd.Env = Environment(os.Environ())
