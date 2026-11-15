@@ -140,7 +140,7 @@ func TestExecutionSchemaRequiresExplicitOrMutatingUpgrade(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if _, e = db.Exec("PRAGMA user_version=1"); e != nil {
+	if _, e = db.Exec("DROP TABLE workspace_operation_runs; DROP TABLE workspace_operations; PRAGMA user_version=1"); e != nil {
 		t.Fatal(e)
 	}
 	db.Close()
