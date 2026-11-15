@@ -29,6 +29,9 @@ no destructive cleanup is authorized by this implementation plan.
    redacted status and crash reconciliation. See [service verification](service.md).
    Service installation has a verified Linux payload; checkpoint-verified
    archive/reap and approved automatic log retention are verified separately.
+   Grouped v2 operations and `bench workspace` now expose the aggregate lifecycle;
+   see [workspace API verification](workspace-api.md). Suite consumers remain future
+   opt-in integration and the grouped contract remains proposed treaty data.
 6. **Suite pilot.** Charter ownership change and treaty API/event contracts before
    adapters; one opt-in board and a clean-checkout verification path. No production
    tag or deployment is part of this local implementation turn.
@@ -45,7 +48,7 @@ A core checkpoint does not constitute completion of a phase or the product.
 | Phase | Required outcome | Current evidence |
 |---|---|---|
 | 0 | Host disk alert, reviewed cleanup dry-run, code-stage branch/checkpoint rules | Not implemented by this repository; inspect estate and board settings before changes |
-| 1 | Standalone CLI and host service; durable state/leases; checkpoints/recovery; quotas, shared mirrors/stores; verified archive/reap | CLI, journals, SQLite, fenced Linux execution and host storage tested; local service API added; installer and reviewed archive/reap verified; reviewed log/history collection and approved automatic log retention implemented; explicit/automatic acquisition setup hooks implemented; creation/recovery warm-up verified on Linux; aggregate creation/acquisition/execution/checkpoint/release/recovery implemented internally; aggregate archive/reap and whole-vector completion implemented internally; laptop preparation, original task-ref transfer, public API, broader collection and integration pending |
+| 1 | Standalone CLI and host service; durable state/leases; checkpoints/recovery; quotas, shared mirrors/stores; verified archive/reap | CLI, journals, SQLite, fenced Linux execution and host storage tested; installer, archive/reap, reviewed log/history collection and approved automatic log retention verified; explicit/automatic setup and creation/recovery warm-up verified on Linux; aggregate lifecycle now exposed through v2 API and CLI with managed verification; interrupted-history and stopped-initialization repair, laptop preparation, original task-ref transfer, broader collection and integration pending |
 | 2 | Suite adapters, card panel, locality scoring, witness events; read-only web, file/diff/log/timeline views, terminal attach and MCP | Pending; charter/treaty contracts precede consumers; visual mockups before UI |
 | 3 | Remote editor launch/browser IDE; second-host recovery drill; per-bench isolation; Salaam layout and execution-host integration | Pending |
 
@@ -234,6 +237,14 @@ completion requires every member policy and integration proof, including prior
 unmerged observations for changed members. See [aggregate archive](aggregate-archive.md) and its
 [verification evidence](aggregate-archive-output.txt).
 
+Grouped v2 service/client/CLI now project closed, bounded and redacted results,
+with independently authorized grants, exact historical receipt replay and missing
+creation-receipt reconciliation. Setup and lease handoff verify complete current
+preparation; setup repeats that check inside final release. Live runners can seal
+their exact fenced execution after administrative stop without restoring
+continuation or triggering automatic completion. See [workspace API](workspace-api.md)
+for managed verification and the remaining interrupted-history repair limitation.
+
 ## Remaining retention work
 
 Reviewed log collection and history are implemented in [retention.md](retention.md),
@@ -255,7 +266,8 @@ Do not implement collection by simply deleting completed receipt rows.
 The original proposal remains the acceptance source; the checkpoints above do
 not replace its scope. Before calling Phase 1 complete, explicitly verify the
 standalone laptop preparation path (supervised hooks currently require Linux),
-the complete multi-repository CLI/service lifecycle, automatic completion/archive
+the complete multi-repository CLI/service lifecycle including interrupted-history
+and stopped-initialization repair, automatic completion/archive
 lifecycle and broader collection, and the
 AgentPod acquisition/prompt/checkpoint pilot on an opt-in board. The review of
 charter/treaty boundaries must precede suite consumers. Source-level progress or

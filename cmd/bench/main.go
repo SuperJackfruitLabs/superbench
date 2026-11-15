@@ -29,6 +29,9 @@ func main() {
 	}
 }
 func run(args []string) error {
+	if len(args) > 0 && args[0] == "workspace" {
+		return workspaceCLI(args[1:], os.Stdout, os.Stderr)
+	}
 	if len(args) == 0 {
 		return fmt.Errorf("usage: bench <archive-run|retention-preview|retention-enable|retention-disable|retention-status|retention-run|retention-ack-pending|inspect-log|adopt-log|history|reconcile-log|plan-collect|collect|resume-collect|cancel-collect|collections|lease-repair|create-cold|recover-cold|archive|plan-reap|reap|create|recover|lease|checkpoint|release|status|run|stop|migrate|configure-host|host-status|setup> [flags] [key]; flags precede key")
 	}

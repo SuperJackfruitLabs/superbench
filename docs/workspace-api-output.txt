@@ -1,0 +1,74 @@
+Grouped workspace v2 producer verification — 2026-11-15
+
+Contract
+  Treaty response proposal merged through PR #34.
+  Pinned revision: 4a49c96ff7fe8ccfb3a832e163e086c06fb394c7
+  Request and scalar-v1 pins unchanged. No suite consumer/pilot claim.
+
+Source and builds
+  Reviewed Go/CI source archive: 1463e92b58cffed928af684fa33a14a4eb3eecbdb40881d904b63cb990d9e28a
+  Final runtime source archive: 6f7d65f8abbd8b7b140410a9035b09a78279a0645ef61efa2c214aa344e3a7a1
+  Each archive contains 386 source files. Their only difference is the Python
+  runtime assertion strengthened to inspect the first immutable pin push too.
+  All 291 native CI/build/installer inputs match byte for byte. Documentation
+  evidence was added after freezing; no Go source changed afterward.
+  Linux binaries built from the reviewed, byte-identical Go source:
+    bench: 04425df87765c2e40996091f666128e3964f785382f0e2578c7a93db6787a953
+    benchd: ca06d9f0e3d7c5b07cc81167e34e51051394b3059b1f22310c06bbd354cd10cf
+    bench-quota: c19fe03fdf1a7762f2cc119ba1cdfd4b4b1f305d3eeac4f3e4d9a820f324678b
+    workspaceflow.test: 36ef8c1edfdc5cfd77777ab00d03aeb567be80bd35f298de4f5c5a037f0a1c5e
+
+Required checks
+  Go 1.26.4 macOS sh scripts/check.sh: EXIT 0
+  Go 1.26.4 Linux sh scripts/check.sh: durable EXIT 0
+  Formatting, four installer tests, vet, all race suites, three command builds.
+  Additional Linux verification builds: durable EXIT 0
+  Python AST and shell syntax checks: PASS
+
+Managed runtime
+  Final scripts/test-workspace-api.sh: EXIT 0
+  Disposable direct-root private mount namespace, 512 MiB XFS project quotas,
+  unique cgroup subtree, private state/remotes and real Unix peer credentials.
+  No installed service or production deployment changed.
+
+  PASS fresh selected setup cannot release missing other-member proofs.
+  PASS stale unselected inputs retain ownership until full preparation.
+  PASS later-member initialization failure preserves earlier work and receipts.
+  PASS first immutable-pin push observes the durable whole pending vector.
+  PASS second-member publication failure retains the exact generation for retry.
+  PASS admin stop fences setsid descendants; live capture seals and release works.
+  PASS successful-exit stop races retain ownership without automatic completion
+       (native payload and setup regressions); no continuation or proof revival.
+  PASS supervisor SIGKILL leaves its writer until an explicit verified fence;
+       interrupted receipts never redispatch and unsealed history blocks release.
+  PASS historical creation/lease bytes replay after a new owner and daemon restart.
+  PASS actual CLI member cwd, payload exit 7 and supplied-token non-reexport.
+  PASS exact-seal distinct-ref recovery gets fresh identity, quota and preparation.
+  PASS reviewed local reap preserves source refs and exact member registrations;
+       recovery remains possible from a reaped workspace's retained seal.
+  PASS complete mixed inventory, token/path/URL privacy, alternate UID gates and
+       UID/body-bound request identities.
+  PASS 10,000-row receipt pressure refuses growth while stop, administrative stop,
+       checkpoint, release, archive and reviewed local reap remain available.
+
+Existing regressions against the corrected binaries
+  Five managed aggregate lifecycle groups: durable EXIT 0
+  Eight managed Git control/fencing groups: durable EXIT 0
+
+Explicit public-drill coverage limits
+  The drill does not establish every temporal obligation in the pinned corpus.
+  Separate core tests/drills remain the evidence for journal-before-checkout and
+  single-initialization-owner ordering, remote-tracking-only refresh,
+  seal/pins-before-registration recovery ordering, freeze-intent-before-modes,
+  mid-delete retry and quota-retirement retry. Oversized mixed global inventory
+  still needs its own service-level runtime check. The driver uses owned trial
+  identities and actual returned capabilities; it does not execute canonical
+  response templates as a complete public lifecycle conformance suite.
+
+Remaining Phase 1 work
+  Explicit interrupted-history observation/repair (including absent capture),
+  stopped-initialization repair, original task-ref ownership transfer, standalone
+  laptop preparation, broader collection and the opt-in board pilot.
+  Never fabricate an exit outcome or successful setup proof to release a lease.
+  Process fencing does not claim uid/mount isolation; proposal verification is
+  not suite contract acceptance or deployed pilot evidence.

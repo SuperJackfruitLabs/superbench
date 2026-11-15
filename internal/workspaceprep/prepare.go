@@ -131,6 +131,13 @@ func (m Manager) PrepareAcquired(ctx context.Context, acquired *model.Bench, sel
 	if result == nil {
 		result = workspace.Clone(acquired)
 	}
+	if err == nil && selector == "" {
+		verified, verifyErr := m.VerifyPrepared(ctx, key, token)
+		if verified != nil {
+			result = verified
+		}
+		err = verifyErr
+	}
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		stopped, stopErr := m.Stop(key, token, false)
 		if stopped != nil {

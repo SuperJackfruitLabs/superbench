@@ -60,3 +60,26 @@ func TestReceiptOversizeRetainsUncertainOutcome(t *testing.T) {
 		t.Fatal("failed persistence redispatched work", e)
 	}
 }
+
+func TestReceiptMissingRunningRowCannotAcknowledgeOrRedispatch(t *testing.T) {
+	r, err := openReceipts(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.db.Close()
+	if _, err := r.claim(10, "lost", "hash"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.db.Exec("DELETE FROM receipts WHERE owner=10 AND id='lost'"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := r.lookup(10, "lost", "hash"); !errors.Is(err, errInDoubt) {
+		t.Fatal("missing active receipt admitted", err)
+	}
+	if err := r.finish(10, "lost", []byte(`{"ok":true}`), 200); !errors.Is(err, errInDoubt) {
+		t.Fatal("missing receipt acknowledged", err)
+	}
+	if _, err := r.claim(10, "lost", "hash"); !errors.Is(err, errInDoubt) {
+		t.Fatal("missing receipt redispatched", err)
+	}
+}

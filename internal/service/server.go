@@ -9,6 +9,7 @@ import (
 	"mime"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -121,6 +122,10 @@ func Serve(ctx context.Context, c Config) error {
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if strings.HasPrefix(r.URL.Path, "/v2/") {
+		s.serveV2(w, r)
+		return
+	}
 	s.admission.Lock()
 	if s.closing {
 		s.admission.Unlock()

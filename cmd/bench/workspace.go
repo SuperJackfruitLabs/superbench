@@ -1,0 +1,213 @@
+package main
+
+import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"os"
+	"os/signal"
+	"path/filepath"
+	"syscall"
+	"time"
+
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/bench"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/client"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/protocolv2"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspaceapi"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspaceops"
+)
+
+func workspaceCLI(args []string, stdout, stderr io.Writer) error {
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+	return workspaceCLIContext(ctx, args, stdout, stderr)
+}
+
+func workspaceCLIContext(ctx context.Context, args []string, stdout, stderr io.Writer) error {
+	if len(args) == 0 {
+		return errors.New("usage: bench workspace <create|recover|lease|setup|run|checkpoint|release|stop|stop_admin|archive|status|host_status|plan-reap|reap> [flags] [key]; flags precede key")
+	}
+	op := args[0]
+	if op == "host-status" {
+		op = "host_status"
+	}
+	if op == "stop-admin" {
+		op = "stop_admin"
+	}
+	if !protocolv2.Known(op) && op != "plan-reap" && op != "reap" {
+		return fmt.Errorf("unknown workspace operation %q", op)
+	}
+	config, err := os.UserConfigDir()
+	if err != nil {
+		return err
+	}
+	cache, err := os.UserCacheDir()
+	if err != nil {
+		return err
+	}
+	f := flag.NewFlagSet("workspace "+op, flag.ContinueOnError)
+	f.SetOutput(stderr)
+	socket := f.String("socket", "", "benchd Unix socket; uses v2 only")
+	state := f.String("state", filepath.Join(config, "superbench", "state"), "authoritative local state")
+	data := f.String("data", filepath.Join(cache, "superbench", "data"), "local mirrors and checkouts")
+	cgroup := f.String("cgroup-root", "/sys/fs/cgroup/superbench", "delegated local cgroup root")
+	timeout := f.Duration("mirror-timeout", 2*time.Minute, "local managed Git deadline")
+	id := f.String("request-id", "", "reuse this growth request ID after an interrupted reply")
+	repositories := f.String("repositories", "", "file containing the canonical repositories JSON array")
+	source := f.String("source", "", "file containing the exact recovery source JSON object")
+	coordinator := f.String("checkpoint-repository", "", "logical checkpoint coordinator member")
+	holder := f.String("holder", "", "workspace-wide lease holder")
+	token := f.String("token", os.Getenv("BENCH_LEASE_TOKEN"), "holder token; prefer BENCH_LEASE_TOKEN")
+	member := f.String("repository-name", "", "selected member; omitted run uses root, setup uses all members")
+	quota := f.Uint64("quota-bytes", 0, "one total workspace budget, bounded by host policy")
+	initialize := f.Bool("initialize", true, "warm initialization is mandatory")
+	checkpoint := f.Bool("checkpoint", true, "checkpoint and release a successful payload")
+	offline := f.Bool("offline", false, "offline frozen setup")
+	grace := f.Duration("archive-grace", 168*time.Hour, "local archive grace; zero explicitly waives retention")
+	plan := f.String("plan", "", "concrete reviewed aggregate reap manifest file")
+	approve := f.String("approve", "", "exact reviewed plan Digest")
+	if err := f.Parse(args[1:]); err != nil {
+		return err
+	}
+	if f.NArg() > 1 && op != "run" {
+		return errors.New("expected one key; flags precede it")
+	}
+	key := f.Arg(0)
+	visited := map[string]bool{}
+	f.Visit(func(v *flag.Flag) { visited[v.Name] = true })
+	store := bench.Store{State: *state, Data: *data, CgroupRoot: *cgroup, MirrorTimeout: *timeout}
+	if op == "plan-reap" || op == "reap" {
+		allowed := map[string]bool{"state": true, "data": true, "cgroup-root": true, "mirror-timeout": true}
+		if op == "reap" {
+			allowed["plan"], allowed["approve"] = true, true
+		}
+		for name := range visited {
+			if !allowed[name] {
+				return fmt.Errorf("flag --%s is not valid for local workspace %s", name, op)
+			}
+		}
+		return workspaceReap(ctx, store, op, key, *plan, *approve, stdout)
+	}
+	if visited["plan"] || visited["approve"] || visited["archive-grace"] && (op != "archive" || *socket != "") {
+		return errors.New("reviewed plans and archive grace are local administration only")
+	}
+	fields := map[string]any{"version": protocolv2.Version, "operation": op}
+	if key != "" {
+		fields["key"] = key
+	}
+	if *id != "" {
+		fields["request_id"] = *id
+	}
+	if *repositories != "" {
+		raw, err := workspaceReadFile(*repositories, protocolv2.MaxBody)
+		if err != nil {
+			return err
+		}
+		fields["repositories"] = json.RawMessage(raw)
+	}
+	if *source != "" {
+		raw, err := workspaceReadFile(*source, protocolv2.MaxBody)
+		if err != nil {
+			return err
+		}
+		fields["source"] = json.RawMessage(raw)
+	}
+	if *coordinator != "" {
+		fields["checkpoint_repository"] = *coordinator
+	}
+	if *holder != "" {
+		fields["holder"] = *holder
+	}
+	if *member != "" {
+		fields["repository_name"] = *member
+	}
+	if *token != "" && (op == "run" || op == "setup" || op == "checkpoint" || op == "release" || op == "stop" || visited["token"]) {
+		fields["lease_token"] = *token
+	}
+	if visited["quota-bytes"] {
+		fields["quota_bytes"] = *quota
+	}
+	if op == "create" || op == "recover" || visited["initialize"] {
+		fields["initialize"] = *initialize
+	}
+	if visited["checkpoint"] {
+		fields["checkpoint"] = *checkpoint
+	}
+	if visited["offline"] {
+		fields["offline"] = *offline
+	}
+	if op == "run" {
+		command := f.Args()[1:]
+		if len(command) < 2 || command[0] != "--" {
+			return errors.New("usage: bench workspace run [flags] key -- command [args]")
+		}
+		fields["arguments"] = command[1:]
+	}
+	if protocolv2.Growth(op) && *id == "" {
+		nonce := make([]byte, 16)
+		if _, err := rand.Read(nonce); err != nil {
+			return err
+		}
+		*id = hex.EncodeToString(nonce)
+		fields["request_id"] = *id
+	}
+	raw, err := json.Marshal(fields)
+	if err != nil {
+		return err
+	}
+	r, err := protocolv2.Parse(raw)
+	if err != nil {
+		return err
+	}
+	if r.RequestID != "" {
+		if _, err := fmt.Fprintln(stderr, "request id:", r.RequestID); err != nil {
+			return err
+		}
+	}
+	var response protocolv2.Response
+	if *socket != "" {
+		response, err = client.CallV2(ctx, *socket, r)
+	} else if op == "archive" && visited["archive-grace"] {
+		if err := (workspaceops.Manager{Store: store}).Preflight(r); err != nil {
+			return err
+		}
+		b, archiveErr := store.ArchiveWorkspaceContext(ctx, key, *grace, nil)
+		out, proof, projectionErr := workspaceapi.Operation(r, &workspaceops.Result{Workspace: b}, archiveErr)
+		response, _, err = workspaceapi.Envelope(r, out, proof, errors.Join(archiveErr, projectionErr))
+		if err == nil {
+			err = client.ErrorV2(response)
+		}
+	} else {
+		response, _, err = workspaceapi.Execute(ctx, store, r, uint32(os.Getuid()))
+		if err == nil {
+			err = client.ErrorV2(response)
+		}
+	}
+	if response.Version != "" {
+		if writeErr := writeWorkspaceResponse(stdout, r, response); writeErr != nil {
+			return writeErr
+		}
+	}
+	return err
+}
+
+func writeWorkspaceResponse(stdout io.Writer, request protocolv2.Request, response protocolv2.Response) error {
+	raw, err := json.Marshal(response)
+	if err != nil {
+		return err
+	}
+	limit := protocolv2.MaxResponse
+	if protocolv2.Growth(request.Operation) {
+		limit = protocolv2.MaxBody
+	}
+	if len(raw)+1 > limit {
+		return errors.New("workspace response exceeds output limit; inspect retained state")
+	}
+	_, err = stdout.Write(append(raw, '\n'))
+	return err
+}
