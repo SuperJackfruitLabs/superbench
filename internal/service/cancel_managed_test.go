@@ -22,8 +22,8 @@ func TestManagedCancellationDaemon(t *testing.T) {
 	if trial == "" {
 		t.Skip("opt-in owned Linux managed cancellation fixture")
 	}
-	if runtime.GOOS != "linux" || os.Getuid() != 0 || os.Geteuid() != 0 || os.Getenv("SUDO_UID") != "" {
-		t.Fatal("direct root Linux fixture required")
+	if runtime.GOOS != "linux" || os.Getuid() != 1001 || os.Geteuid() != 1001 || os.Getenv("SUDO_UID") != "" {
+		t.Fatal("unprivileged UID1001 Linux fixture required")
 	}
 	if !strings.HasPrefix(trial, "/var/tmp/superbench-cancel-managed.") || filepath.Clean(trial) != trial {
 		t.Fatal("invalid fixture root")
@@ -38,7 +38,7 @@ func TestManagedCancellationDaemon(t *testing.T) {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	config := Config{Socket: filepath.Join(trial, "api.sock"), Store: bench.Store{State: filepath.Join(trial, "state"), Data: filepath.Join(trial, "data"), CgroupRoot: root}, Operators: map[uint32]bool{0: true}, MaxActive: 64}
+	config := Config{Socket: filepath.Join(trial, "run", "api.sock"), Store: bench.Store{State: filepath.Join(trial, "state"), Data: filepath.Join(trial, "data"), CgroupRoot: root}, Operators: map[uint32]bool{1001: true}, MaxActive: 64}
 	if err = serve(ctx, config, true); err != nil {
 		t.Fatal(err)
 	}
