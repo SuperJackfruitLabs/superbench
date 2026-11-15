@@ -8,6 +8,7 @@ import (
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/gitcontrol"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/mirrorstage"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/operationcontrol"
 )
 
 // The caller holds the host store lock across the complete clone/publication.
@@ -36,7 +37,7 @@ func (m Mirrors) verifyStage(p *mirrorstage.Intent) error {
 }
 
 func (m Mirrors) clone(ctx context.Context, repo, mirror string) error {
-	stage, e := m.newStage(ctx, mirror)
+	stage, e := operationcontrol.Value(ctx, func() (*mirrorstage.Intent, error) { return m.newStage(ctx, mirror) })
 	if e != nil {
 		return e
 	}
@@ -55,7 +56,7 @@ func (m Mirrors) clone(ctx context.Context, repo, mirror string) error {
 	if _, e = os.Lstat(mirror); !os.IsNotExist(e) {
 		return errors.New("mirror publication target appeared; preserve staging data")
 	}
-	if e = os.Rename(candidate, mirror); e != nil {
+	if e = operationcontrol.Effect(ctx, func() error { return os.Rename(candidate, mirror) }); e != nil {
 		return e
 	}
 	dir, e := os.Open(filepath.Dir(mirror))

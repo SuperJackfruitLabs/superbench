@@ -1,0 +1,59 @@
+package service
+
+import (
+	"context"
+
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/operationcontrol"
+)
+
+// operationScope is private until the proposed wire contract and all engine
+// effect boundaries are verified. Its gate shares the durable receipt mutex;
+// neither cancellation admission nor this gate acquires the host lock.
+func (r *receipts) operationScope(parent context.Context, i operationcontrol.Intent) (context.Context, context.CancelFunc, error) {
+	if !i.Valid() {
+		return nil, nil, errConflict
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if err := r.operationAdmission(i); err != nil {
+		return nil, nil, err
+	}
+	key := receiptKey(i.Target.UID, i.Target.RequestID)
+	if r.controllers == nil {
+		r.controllers = map[string]func(){}
+	}
+	if _, ok := r.controllers[key]; ok {
+		return nil, nil, errInDoubt
+	}
+	ctx, cancel := context.WithCancel(parent)
+	scoped, err := operationcontrol.WithScope(ctx, i, func(fn func() error) error {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		if err := r.operationAdmission(i); err != nil {
+			return err
+		}
+		return fn()
+	})
+	if err != nil {
+		cancel()
+		return nil, nil, err
+	}
+	r.controllers[key] = cancel
+	return scoped, cancel, nil
+}
+func (r *receipts) operationAdmission(i operationcontrol.Intent) error {
+	var digest, state, barrier string
+	if err := r.db.QueryRow(`SELECT digest,state,cancel_state FROM receipts WHERE owner=? AND id=?`, i.Target.UID, i.Target.RequestID).Scan(&digest, &state, &barrier); err != nil {
+		return errInDoubt
+	}
+	if digest != i.Target.Digest {
+		return errConflict
+	}
+	if barrier != "" {
+		return errCancelRequested
+	}
+	if state != "running" || !r.active[receiptKey(i.Target.UID, i.Target.RequestID)] {
+		return errInDoubt
+	}
+	return nil
+}

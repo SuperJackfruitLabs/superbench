@@ -1,16 +1,19 @@
 package creation
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/operationcontrol"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/repository"
 	"os"
 	"path/filepath"
 )
 
 type Files struct {
+	Context     context.Context
 	State, Data string
 	Git         func(string, ...string) (string, error)
 	Write       func(string, string, []byte) error
@@ -102,7 +105,7 @@ func (s Files) Finish(c *Intent) (*model.Bench, error) {
 }
 func (s Files) materializeWorktree(c *Intent) (*model.Bench, error) {
 	b := c.Bench
-	if err := os.MkdirAll(filepath.Dir(b.Path), 0700); err != nil {
+	if err := operationcontrol.Effect(s.Context, func() error { return os.MkdirAll(filepath.Dir(b.Path), 0700) }); err != nil {
 		return nil, err
 	}
 	if local, e := s.Git(b.Mirror, "rev-parse", "--verify", "refs/heads/"+b.Branch); e == nil {

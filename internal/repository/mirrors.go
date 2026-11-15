@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/operationcontrol"
 	"os"
 	"path/filepath"
 	"strings"
@@ -45,7 +46,7 @@ func (m Mirrors) Prepare(ctx context.Context, repo string) (string, error) {
 	defer cancel()
 
 	parent := filepath.Join(m.Data, "mirrors")
-	if e := os.MkdirAll(parent, 0700); e != nil {
+	if e := operationcontrol.Effect(ctx, func() error { return os.MkdirAll(parent, 0700) }); e != nil {
 		return "", e
 	}
 	info, e := os.Lstat(parent)

@@ -15,7 +15,7 @@ type Space = hoststorage.Space
 type HostStatus = hoststorage.HostStatus
 
 func (s Store) workerStorage() hoststorage.Worker {
-	return hoststorage.Worker{State: s.State, Data: s.Data, Probe: s.spaceProbe, Apply: s.quotaApply}
+	return hoststorage.Worker{Context: s.controls, State: s.State, Data: s.Data, Probe: s.spaceProbe, Apply: s.quotaApply}
 }
 func (s Store) hostConfig() (*HostConfig, error) { return s.workerStorage().Config() }
 func (s Store) space(path string) (Space, error) { return s.workerStorage().Space(path) }

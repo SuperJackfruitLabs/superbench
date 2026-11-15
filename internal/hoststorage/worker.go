@@ -1,9 +1,12 @@
 package hoststorage
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/operationcontrol"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,6 +14,7 @@ import (
 )
 
 type Worker struct {
+	Context     context.Context
 	State, Data string
 	Probe       func(string) (Space, error)
 	Apply       func(HostConfig, string, string, uint64) (Assignment, error)
@@ -146,7 +150,13 @@ func (s Worker) Quota(c HostConfig, kind, key string, requested uint64) (Assignm
 		command = "/usr/bin/sudo"
 	}
 	cmd := exec.Command(command, args...)
-	raw, e := cmd.CombinedOutput()
+	var output bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &output, &output
+	e := operationcontrol.Effect(s.Context, cmd.Start)
+	if e == nil {
+		e = cmd.Wait()
+	}
+	raw := output.Bytes()
 	if e != nil {
 		return Assignment{}, fmt.Errorf("quota allocation: %w: %s", e, string(raw))
 	}

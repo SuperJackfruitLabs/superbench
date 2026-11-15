@@ -23,9 +23,10 @@ type receipt struct {
 	status int
 }
 type receipts struct {
-	db     *sql.DB
-	mu     sync.Mutex
-	active map[string]bool
+	db          *sql.DB
+	mu          sync.Mutex
+	active      map[string]bool
+	controllers map[string]func()
 }
 
 func openReceipts(state string) (*receipts, error) {

@@ -157,7 +157,7 @@ func (s *Server) serveV2(w http.ResponseWriter, r *http.Request) {
 	}
 	if protocolv2.Growth(request.Operation) {
 		if err := s.receipts.finish(uid, request.RequestID, encoded, status); err != nil {
-			if encodeErr != nil {
+			if encodeErr != nil || errors.Is(err, errCancelRequested) {
 				result = nil
 			}
 			s.replyV2(w, request, result, 503, "operation_in_doubt", "receipt save failed; inspect retained workspace state")

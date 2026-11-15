@@ -22,6 +22,7 @@ func (s Store) withControls(ctx context.Context, required bool) (Store, context.
 		return s, s.controls, nil
 	}
 	if !execution.Supported || s.executor != nil {
+		s.controls = ctx
 		return s, ctx, nil
 	}
 	root := s.CgroupRoot
@@ -29,6 +30,7 @@ func (s Store) withControls(ctx context.Context, required bool) (Store, context.
 		root = "/sys/fs/cgroup/superbench"
 	}
 	if !required && !gitcontrol.Available(root) {
+		s.controls = ctx
 		return s, ctx, nil
 	}
 	if err := s.Migrate(); err != nil {

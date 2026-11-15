@@ -11,6 +11,7 @@ import (
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/benchstate"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/operationcontrol"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/repository"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/statepath"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspacecopy"
@@ -188,6 +189,16 @@ func (m Manager) stage(ctx context.Context, request stagingRequest) (*model.Benc
 				}
 				found = privateRecord(b)
 			}
+			bid := ""
+			if found != nil {
+				bid = found.Workspace.ID
+			}
+			if err := operationcontrol.AdmitContext(ctx, tx, request.key, bid); err != nil {
+				return err
+			}
+			if found != nil && found.Lease != nil && found.Workspace.Phase != "ready" {
+				return operationcontrol.BindContext(ctx, tx, found)
+			}
 			return nil
 		}); err != nil {
 			return err
@@ -247,6 +258,9 @@ func (m Manager) stage(ctx context.Context, request stagingRequest) (*model.Benc
 					return errors.New("workspace identity appeared during source selection")
 				}
 				if err := m.stageTransferCheck(ctx, tx, candidate); err != nil {
+					return err
+				}
+				if err := operationcontrol.BindContext(ctx, tx, candidate); err != nil {
 					return err
 				}
 				rows[request.key] = privateRecord(candidate)

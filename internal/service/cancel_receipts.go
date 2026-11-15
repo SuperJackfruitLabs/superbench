@@ -47,6 +47,9 @@ func (r *receipts) requestCancel(uid uint32, id, digest string) (string, error) 
 		if err = tx.Commit(); err != nil {
 			return "", err
 		}
+		if stop := r.controllers[receiptKey(uid, id)]; stop != nil {
+			stop()
+		}
 		return "cancel_requested", nil
 	}
 	if err != sql.ErrNoRows {

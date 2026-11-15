@@ -7,6 +7,7 @@ import (
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/benchstate"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/execution"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/operationcontrol"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/output"
 )
 
@@ -33,7 +34,7 @@ func (m Manager) openCapture(ctx context.Context, key, token, continuation strin
 			if continuation == "" || b.Lease.Continuation != continuation || !sameExecution(b.Lease.Execution, e) || b.Lease.Execution.Phase != "starting" {
 				return errors.New("workspace capture authority was stopped or replaced")
 			}
-			capture, err = output.Open(e.Log, e.LogLimitBytes)
+			capture, err = operationcontrol.Value(ctx, func() (*output.Capture, error) { return output.Open(e.Log, e.LogLimitBytes) })
 			return err
 		})
 	})

@@ -4,7 +4,6 @@ package bench
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/benchstate"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/gitcontrol"
@@ -61,30 +60,7 @@ func (s Store) update(session *statestore.Session, fn func(database, *sql.Tx) er
 		if err := s.migrate(tx); err != nil {
 			return err
 		}
-		records, err := loadRecords(tx)
-		if err != nil {
-			return err
-		}
-		before := benchstate.Capture(records)
-		if err = fn(records, tx); err != nil {
-			return err
-		}
-		if err = benchstate.ValidateTransition(before, records); err != nil {
-			return err
-		}
-		if err = validRecords(records); err != nil {
-			return err
-		}
-		for key, b := range records {
-			raw, e := json.Marshal(b)
-			if e != nil {
-				return e
-			}
-			if _, e = tx.Exec("INSERT INTO benches(key, record) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET record=excluded.record WHERE record != excluded.record", key, string(raw)); e != nil {
-				return e
-			}
-		}
-		return nil
+		return benchstate.Update(tx, fn)
 	})
 }
 
