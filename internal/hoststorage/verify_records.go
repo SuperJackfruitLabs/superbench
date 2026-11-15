@@ -3,11 +3,16 @@ package hoststorage
 import (
 	"encoding/json"
 	"errors"
+	"path/filepath"
 )
 
 // Validate every row, but pin only this source's authority. Unrelated new bench
 // allocations must not invalidate an already approved missing-checkout plan.
 func (p Policy) verifyStorageRecords(key string, raw, anchor []byte) (Assignment, string, error) {
+	return p.inspectStorageRecords(key, raw, anchor, false)
+}
+
+func (p Policy) inspectStorageRecords(key string, raw, anchor []byte, allowAbsent bool) (Assignment, string, error) {
 	var l ledger
 	if err := strictStorageJSON(raw, &l); err != nil {
 		return Assignment{}, "", err
@@ -19,8 +24,11 @@ func (p Policy) verifyStorageRecords(key string, raw, anchor []byte) (Assignment
 		return Assignment{}, "", err
 	}
 	a, ok := l.Assignments["bench:"+key]
-	if !Key.MatchString(key) || !ok || a.Bytes == 0 || a.Inodes == 0 {
+	if !Key.MatchString(key) || !ok && !allowAbsent || ok && (a.Bytes == 0 || a.Inodes == 0) {
 		return Assignment{}, "", errors.New("bench allocation missing or retired")
+	}
+	if !ok {
+		a = Assignment{Path: filepath.Join(p.Root, "benches", key)}
 	}
 	var owner ownerRecord
 	if err := strictStorageJSON(anchor, &owner); err != nil {

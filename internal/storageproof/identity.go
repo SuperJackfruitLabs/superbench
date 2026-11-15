@@ -34,11 +34,16 @@ type Identity struct {
 }
 
 func (s Identity) Validate() error {
+	return s.validate(false)
+}
+
+func (s Identity) validate(allowAbsent bool) error {
 	if s.Version != Version || !Key.MatchString(s.BenchKey) || !utf8.ValidString(s.Root) || !utf8.ValidString(s.Mount) || !filepath.IsAbs(s.Root) || filepath.Clean(s.Root) != s.Root || s.Root == "/" || s.Device == 0 || s.Inode == 0 || s.Mount == "" || len(s.Mount) > 8192 || s.Assignment.Path != filepath.Join(s.Root, "benches", s.BenchKey) {
 		return errors.New("invalid storage identity")
 	}
 	if s.Managed {
-		if !volumePattern.MatchString(s.FilesystemUUID) || s.Assignment.ProjectID < 10000 || s.Assignment.Bytes == 0 || s.Assignment.Inodes == 0 {
+		unallocated := allowAbsent && s.Assignment.ProjectID == 0 && s.Assignment.Bytes == 0 && s.Assignment.Inodes == 0
+		if !volumePattern.MatchString(s.FilesystemUUID) || !unallocated && (s.Assignment.ProjectID < 10000 || s.Assignment.Bytes == 0 || s.Assignment.Inodes == 0) {
 			return errors.New("invalid managed storage identity")
 		}
 		for _, digest := range []string{s.PolicySHA256, s.LedgerSHA256, s.AnchorSHA256, s.ConfigSHA256} {

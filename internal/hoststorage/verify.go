@@ -53,11 +53,15 @@ func (w Worker) InspectStorage(ctx context.Context, key string, expected Assignm
 }
 
 func (w Worker) inspectStorage(ctx context.Context, key string, expected Assignment, command func(context.Context, string, ...string) ([]byte, error)) (StorageIdentity, error) {
+	return w.inspectStorageRoot(ctx, key, &expected, false, command)
+}
+
+func (w Worker) inspectStorageRoot(ctx context.Context, key string, expected *Assignment, allocation bool, command func(context.Context, string, ...string) ([]byte, error)) (StorageIdentity, error) {
 	var zero StorageIdentity
 	if err := ctx.Err(); err != nil {
 		return zero, err
 	}
-	if !Key.MatchString(key) || expected.Path != filepath.Join(w.Data, "benches", key) {
+	if !Key.MatchString(key) || expected != nil && expected.Path != filepath.Join(w.Data, "benches", key) {
 		return zero, errors.New("storage assignment does not match bench root")
 	}
 	device, inode, err := physicalStorageRoot(w.Data)
@@ -68,7 +72,11 @@ func (w Worker) inspectStorage(ctx context.Context, key string, expected Assignm
 	if err != nil {
 		return zero, err
 	}
-	s := StorageIdentity{Version: storageVersion, Root: w.Data, BenchKey: key, Device: device, Inode: inode, Assignment: expected}
+	assignment := Assignment{Path: filepath.Join(w.Data, "benches", key)}
+	if expected != nil {
+		assignment = *expected
+	}
+	s := StorageIdentity{Version: storageVersion, Root: w.Data, BenchKey: key, Device: device, Inode: inode, Assignment: assignment}
 	if c == nil {
 		s.Mount, err = unmanagedStorageMount(w.Data)
 	} else {
@@ -76,7 +84,11 @@ func (w Worker) inspectStorage(ctx context.Context, key string, expected Assignm
 		if c.PolicyOverride != "" {
 			args = append(args, "--policy", c.PolicyOverride)
 		}
-		args = append(args, "verify", "bench", key)
+		verb := "verify"
+		if allocation {
+			verb = "inspect-allocation"
+		}
+		args = append(args, verb, "bench", key)
 		binary := c.QuotaHelper
 		if os.Geteuid() != 0 {
 			args = append([]string{"-n", binary}, args...)
@@ -97,7 +109,7 @@ func (w Worker) inspectStorage(ctx context.Context, key string, expected Assignm
 		if !bytes.Equal(raw, canonical) {
 			return zero, errors.New("storage helper output is not canonical")
 		}
-		if !s.Managed || s.Root != w.Data || s.BenchKey != key || s.Device != device || s.Inode != inode || s.Assignment != expected || s.ConfigSHA256 != "" {
+		if !s.Managed || s.Root != w.Data || s.BenchKey != key || s.Device != device || s.Inode != inode || expected != nil && s.Assignment != *expected || s.ConfigSHA256 != "" {
 			return zero, errors.New("quota verifier returned different storage authority")
 		}
 		config, _ := json.Marshal(c)
@@ -106,7 +118,16 @@ func (w Worker) inspectStorage(ctx context.Context, key string, expected Assignm
 	if err != nil {
 		return zero, err
 	}
-	if err = s.Validate(); err != nil {
+	if allocation {
+		if c != nil && s.Version != storageproof.AllocationVersion {
+			return zero, errors.New("quota verifier returned wrong allocation version")
+		}
+		s.Version = storageproof.AllocationVersion
+		err = AllocationObservation(s).Validate()
+	} else {
+		err = s.Validate()
+	}
+	if err != nil {
 		return zero, err
 	}
 	endDevice, endInode, err := physicalStorageRoot(w.Data)

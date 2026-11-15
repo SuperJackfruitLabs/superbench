@@ -13,6 +13,10 @@ func (Policy) VerifyStorage(context.Context, string) (StorageIdentity, error) {
 	return StorageIdentity{}, errors.New("managed storage verification requires Linux")
 }
 
+func (Policy) InspectAllocation(context.Context, string) (AllocationObservation, error) {
+	return AllocationObservation{}, errors.New("managed allocation inspection requires Linux")
+}
+
 func unmanagedStorageMount(root string) (string, error) {
 	var fs syscall.Statfs_t
 	if err := syscall.Statfs(root, &fs); err != nil {
