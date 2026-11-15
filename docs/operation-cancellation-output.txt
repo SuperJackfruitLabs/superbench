@@ -1,0 +1,88 @@
+Private managed operation cancellation verification
+
+Status: proposed implementation, production route disabled. This evidence does
+not accept the proposed shared contract or provision any service credentials.
+
+Managed Linux acceptance:
+- Binary source: 4f96fb23546b934f53b44c76f13d4563235aca8c, 714 files.
+- Source archive SHA256:
+  50174173c3312ef38607102d2ba8dc8b6b0118b52d22fa92ae73369ce16e595a
+- Final fixture-only driver revision: 6922cce (two additional lines wait for
+  actual captured output before cancellation). All Go source stayed unchanged.
+- CLI SHA256:
+  63a324cacf98951a42e2df95f8148dc3e22fff353056485e4b26641c770afe80
+- Fixed helper SHA256:
+  b2aaaa726082484a4b03e783f4ff6689647dbe3431395eb43a082c451e31fdf4
+- Opt-in test daemon SHA256:
+  3c017341573a66ca0223675e7d17c80cc25f860ccef353db722ef152848084ab
+- Driver SHA256:
+  882b5f46e02f1b7fad1bfef490fdfd941cae693cc4bc6e770d435224d0670430
+- Wrapper SHA256:
+  ec23424d3d643adb01e55e414ad2d9d441d5792adc63bfe361a0597d9edd2c20
+- Shared API fixture SHA256:
+  f641d75abe0431502355222503c481ecca263c51ef2c3eafc2fbfd7d2d8c2b6c
+- Lifecycle corpus SHA256:
+  0d0dca060902df3706bf3d0c1322c1ea1fbfb22ac5cb50a3243e761906848255
+- Launcher SHA256:
+  012674fa2e1788cf5be198ce794314f9966075c7623caff5b2fa8daf37d4f9d3
+- Terminal exit: 0.
+- Compact evidence archive SHA256:
+  d765f6a4c1302d1f94b61e32174d9076a3a3ba242bd0873604066d051384dcf8
+
+The disposable fixture used its own 512 MiB XFS project-quota filesystem,
+mount/network namespaces, cgroup subtree and namespace-local /etc and /run.
+The daemon, clients, hooks and payloads ran as UID 1001 with zero effective
+capabilities; only the fixed-policy helper ran as root. No host service, PAM,
+installed policy or global sudo rule changed. Restrictive umask 0077 stayed set.
+The production helper source was unchanged between the preceding parent-layout
+fix and this run; these exact rebuilt binaries have separately pinned hashes.
+
+Actual terminal output:
+PASS: durable completed cutoff survives lost delivery and daemon restart; verified cancel ACK permits exact historical replay only
+PASS: controller-loss writer fenced; actual partial capture sealed with unknown exit; SQL finalization failure never confirmed; exact retry launches nothing
+PASS: old epoch cannot stop later owner or same-token future run; disconnect does not cancel; exact current operation fences without admin-stop fallback
+PASS: exact scoped shared helper survives controller death while queued; ACK independent of policy lock; deny/quiescence precedes cancellation without bench admission
+PASS: deterministic durable materializing owner precedes queued bench helper; restart cancellation ACK independent of policy lock; actual deny/quiescence precedes retained stopped-materialization terminal
+UNCOVERED: explicit repair of stopped materialization; public enablement; cross-host cancellation; macOS descendant fencing
+
+The materialization case used a test-binary-only SQLite trigger callback to
+pause the exact bench-helper intent after durable materializing ownership and
+successful shared helpers. Cancellation was sent only after the callback had
+returned, the intent committed and the actual privileged helper was independently
+observed queued behind the owned policy lock. No privileged helper was killed.
+
+Writer survival used an independent bounded owned file after controller death.
+The controller-drained capture contained only actual output received before its
+death. Recovery retained and sealed those bytes with an unknown exit, never a
+fabricated successful setup result. SQL ignored-finalization injection prevented
+terminal confirmation until the exact finalization retry actually committed.
+
+Independent post-run checks: controller absent; trial absent; delegated cgroup
+absent; loop association absent; no host mount reference or process in the owned
+scope; all seven artifact pins and binary-source manifest unchanged. Successful
+fixture assertions checked random operation epochs and history rows before
+cleanup; the compact successful-run bundle does not retain the private database.
+
+Earlier failed fixture evidence was preserved separately. A pipe-growth assertion
+incorrectly expected the drained log to grow after controller death; exact
+UID/request-ID/digest/epoch cancellation in the retained original namespace then
+restarted the frozen daemon, fenced the surviving payload and sealed its actual
+partial history with ExitCode=null. The core operation became stopped and the
+new daemon exited cleanly. Independent checks proved runtime quiescence; retained
+trial files stayed as evidence. Historical namespace inode numbers were later
+reused by an unrelated namespace, so reconciliation used the pinned descriptors,
+process start time and exact cgroup, not an old inode number alone.
+Retained-run evidence SHA256:
+  c81b8e07131d11ff8bc2526e7932b40216108bfcb9c20d4235519d6140389b90
+
+Focused verification before managed acceptance:
+- Actual UID1001 complete Linux service race test binary: PASS.
+- Architecture race check and service vet: PASS.
+- Exact source manifest before/after compilation and runtime: PASS.
+- Native scoped callback wrong-target/wrong-release regression: PASS with race.
+- Python syntax, generated writer syntax, shell syntax and diff checks: PASS.
+
+This is evidence for the stated private Linux producer revision only. Connection
+saturation is separately characterized by the ordinary service tests; the managed
+fixture does not claim adversarial transport fairness. Explicit stopped
+materialization repair and native macOS descendant fencing remain unfinished.

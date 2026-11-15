@@ -38,3 +38,25 @@ non-executing conflict, and cannot admit fresh growth. Unknown, failed or malfor
 acknowledgments establish no such guarantee. This does not cover loss, replacement
 or restoration of the receipt database, and does not authorize new request IDs,
 changed arguments, release, reacquisition or execution.
+
+Typed managed helpers pin their actual binary, fixed policy and state-root
+identity before launch. A durable operation deny marker and the same outer policy
+lock cover queued and in-flight helper mutations. An initial acknowledgment does
+not wait for that lock; terminal cancellation requires the independently verified
+deny and quiescence. Older helpers reject the typed commands, causing this private
+path to remain unavailable rather than falling back to ordinary untracked apply.
+
+Managed restart reconciliation adopts only history that was durably precommitted
+for the exact operation, execution scope and original history digest before
+backend Start. It preserves actual partial or absent output and seals an unknown
+interrupted outcome after independently fencing the original scope. Legacy,
+unbound or changed authority remains in doubt. Neither cancellation nor restart
+creates setup success, checkpoints dirty work, releases ownership or renews a
+revoked continuation. A stopped partial materialization is retained for explicit
+future repair.
+
+The fixed privileged helper creates a new verified `benches` parent with exact
+traversal permissions despite restrictive umask 0077. It does not widen existing
+unknown directories or change the process umask. See
+[verification evidence](operation-cancellation-output.txt) for the exact managed
+Linux scope, artifact hashes and remaining limits.
