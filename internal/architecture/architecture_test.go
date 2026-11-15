@@ -65,6 +65,7 @@ func TestArchitecture(t *testing.T) {
 				"internal/gitcontrol":        {"internal/execution"},
 				"internal/archivepolicy":     {"internal/gitcontrol", "internal/model", "internal/reap", "internal/repository", "internal/setup"},
 				"internal/setup":             {"internal/gitcontrol", "internal/cachepolicy", "internal/quotapolicy"},
+				"internal/mirrorstage":       {"internal/statepath", "internal/reap"},
 				"internal/repository":        {"internal/gitcontrol"},
 				"internal/autoarchive":       {"internal/workspacearchive", "internal/bench", "internal/archivepolicy", "internal/model", "internal/repository", "internal/setup"},
 				"internal/checkpointset":     {"internal/model", "internal/gitcontrol"},
