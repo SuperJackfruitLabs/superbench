@@ -22,6 +22,9 @@ type Assignment struct {
 type Config struct{ State, Data, Command, PolicyOverride string }
 
 func Apply(ctx context.Context, c Config, kind, key string, requested uint64) (Assignment, error) {
+	if _, scoped := operationcontrol.FromContext(ctx); scoped {
+		return applyScoped(ctx, c, kind, key, requested, os.Geteuid(), 0)
+	}
 	return apply(ctx, c, kind, key, requested, os.Geteuid())
 }
 func apply(ctx context.Context, c Config, kind, key string, requested uint64, uid int) (Assignment, error) {
