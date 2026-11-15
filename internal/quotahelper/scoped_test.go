@@ -33,6 +33,7 @@ printf '%s\n' "$1" >> "$QUOTA_SCOPED_RECORD"
 case "$1" in
 operation-info) printf '%s' "$QUOTA_SCOPED_INFO" ;;
 apply-operation) test -f "$QUOTA_SCOPED_INTENT" || exit 19; printf '{"Version":"superbench.quota-operation.v1","Identity":{"OperationID":"%s","Epoch":"%s","StateIdentity":"%s","Authority":"%s","BinarySHA256":"%s"},"Assignment":%s}' "$5" "$6" "$7" "$8" "$9" "$QUOTA_SCOPED_ASSIGNMENT" ;;
+cancel-operation) printf '%s' "$QUOTA_SCOPED_CANCEL" ;;
 *) exit 17 ;;
 esac
 `
