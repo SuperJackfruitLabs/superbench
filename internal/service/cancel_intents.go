@@ -40,7 +40,7 @@ func (r *receipts) saveOperationIntent(i operationcontrol.Intent) error {
 	if n >= 10000 {
 		return errCapacity
 	}
-	result, err := r.db.Exec(`INSERT INTO operation_intents(owner,id,digest,key,operation,epoch) VALUES(?,?,?,?,?,?)`, i.Target.UID, i.Target.RequestID, i.Target.Digest, i.Key, i.Operation, i.Epoch)
+	result, err := r.db.Exec(`INSERT INTO operation_intents(owner,id,digest,key,operation,epoch,helper_tracking) VALUES(?,?,?,?,?,?,1)`, i.Target.UID, i.Target.RequestID, i.Target.Digest, i.Key, i.Operation, i.Epoch)
 	if err != nil {
 		return err
 	}
@@ -51,7 +51,7 @@ func (r *receipts) saveOperationIntent(i operationcontrol.Intent) error {
 	if count != 1 {
 		return errInDoubt
 	}
-	return nil
+	return r.requireHelperTracking(i)
 }
 
 // requestCancelV2 is the future transport boundary, still unwired. A known v1

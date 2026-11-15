@@ -137,7 +137,7 @@ func TestHelperSchemaUpgradePreservesHistoricalReceiptAndRejectsDowngrade(t *tes
 	if err = r.finish(1, "done", body, 200); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = r.db.Exec(`DROP TABLE operation_helpers;PRAGMA user_version=3`); err != nil {
+	if _, err = r.db.Exec(`DROP TABLE operation_helpers;ALTER TABLE operation_intents DROP COLUMN helper_tracking;PRAGMA user_version=3`); err != nil {
 		t.Fatal(err)
 	}
 	r.db.Close()

@@ -38,6 +38,9 @@ func (r *receipts) recordOperationHelper(i operationcontrol.Intent, h operationc
 	if stored != i {
 		return errConflict
 	}
+	if err = r.requireHelperTracking(i); err != nil {
+		return err
+	}
 	raw, err := json.Marshal(h)
 	if err != nil {
 		return err
@@ -100,6 +103,9 @@ func (r *receipts) operationHelpers(i operationcontrol.Intent) ([]operationcontr
 	if stored != i {
 		return nil, errConflict
 	}
+	if err = r.requireHelperTracking(i); err != nil {
+		return nil, err
+	}
 	rows, err := r.db.Query(`SELECT kind,key,invocation FROM operation_helpers WHERE owner=? AND id=? ORDER BY kind,key`, i.Target.UID, i.Target.RequestID)
 	if err != nil {
 		return nil, err
@@ -124,6 +130,21 @@ func (r *receipts) operationHelpers(i operationcontrol.Intent) ([]operationcontr
 		out = append(out, h)
 	}
 	return out, rows.Err()
+}
+
+// An empty helper inventory is meaningful only when this guarantee was pinned
+// at initial operation admission. Migration never upgrades old activity into
+// tracked activity merely because it has no recorded helper rows.
+func (r *receipts) requireHelperTracking(i operationcontrol.Intent) error {
+	var epoch string
+	var tracking int
+	if err := r.db.QueryRow(`SELECT epoch,helper_tracking FROM operation_intents WHERE owner=? AND id=? AND digest=?`, i.Target.UID, i.Target.RequestID, i.Target.Digest).Scan(&epoch, &tracking); err != nil {
+		return errInDoubt
+	}
+	if epoch != i.Epoch || tracking != 1 {
+		return errInDoubt
+	}
+	return nil
 }
 func (r *receipts) retainedHelpers(uid uint32, id string) (bool, error) {
 	var count int
