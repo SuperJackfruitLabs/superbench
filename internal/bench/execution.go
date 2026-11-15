@@ -66,6 +66,12 @@ func (s Store) run(ctx context.Context, key, holder string, args []string, check
 	return s.runStage(ctx, key, holder, args, checkpoint, plan, stageOptions{})
 }
 func (s Store) runStage(ctx context.Context, key, holder string, args []string, checkpoint bool, plan commandPlan, options stageOptions) (*RunResult, error) {
+	if err := s.RequireLegacy(key); err != nil {
+		return nil, err
+	}
+	if s.executor == nil && !execution.Supported {
+		return nil, errors.New("fenced execution requires Linux cgroup v2; use cooperative lease/checkpoint commands on this host")
+	}
 	var finish func(*sql.Tx, string) error
 	if len(args) == 0 && plan == nil {
 		return nil, errors.New("command required")
@@ -85,23 +91,20 @@ func (s Store) runStage(ctx context.Context, key, holder string, args []string, 
 	if root == "" {
 		root = "/sys/fs/cgroup/superbench"
 	}
-	identity, err := s.backend().Create(root, id)
-	if err != nil {
-		return nil, err
-	}
-	execution := &Execution{ID: id, Root: root, BootID: identity.BootID, HostID: identity.HostID, Phase: "starting", Log: filepath.Join(s.State, "run-"+id+".log")}
+	execution := &Execution{ID: id, Root: root, Phase: "starting", Log: filepath.Join(s.State, "run-"+id+".log")}
+	scopeCreated := false
 	var b *Bench
 	var environment []string
 	acquire := func() error {
 		return s.transactionSQL(func(db database, tx *sql.Tx) error {
+			original, e := get(db, key)
+			if e != nil {
+				return e
+			}
 			if e := retention.Directory(s.State); e != nil {
 				return e
 			}
 			if e := s.admit(); e != nil {
-				return e
-			}
-			original, e := get(db, key)
-			if e != nil {
 				return e
 			}
 			if original.ArchivedAt != "" {
@@ -169,6 +172,15 @@ func (s Store) runStage(ctx context.Context, key, holder string, args []string, 
 				lease.Continuation = ""
 			}
 
+			if e := ctx.Err(); e != nil {
+				return e
+			}
+			identity, e := s.backend().Create(root, id)
+			if e != nil {
+				return e
+			}
+			scopeCreated = true
+			execution.BootID, execution.HostID = identity.BootID, identity.HostID
 			original.Lease = lease
 			original.Lease.Execution = execution
 			if e = history.Start(tx, history.Record{ID: id, Key: key, Holder: holder, StartedAt: time.Now().UTC()}); e != nil {
@@ -185,7 +197,9 @@ func (s Store) runStage(ctx context.Context, key, holder string, args []string, 
 		err = acquire()
 	}
 	if err != nil {
-		_ = s.backend().Fence(execution)
+		if scopeCreated {
+			_ = s.backend().Fence(execution)
+		}
 		return nil, err
 	}
 	continuation := ""
@@ -294,6 +308,9 @@ func (s Store) Stop(key, token string, admin bool) (*Bench, error) {
 	return s.stop(key, token, admin, "", false)
 }
 func (s Store) stop(key, token string, admin bool, continuation string, internal bool) (*Bench, error) {
+	if err := s.RequireLegacy(key); err != nil {
+		return nil, err
+	}
 	if err := s.validate(); err != nil {
 		return nil, err
 	}

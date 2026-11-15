@@ -37,7 +37,7 @@ func (m *Manager) Tick(ctx context.Context, limit int) (Report, error) {
 	if limit < 1 || limit > 1000 {
 		return r, errors.New("archive sweep limit must be between 1 and 1000")
 	}
-	benches, err := m.Store.Status("")
+	benches, err := m.Store.Snapshot("")
 	if err != nil {
 		return r, err
 	}
@@ -51,6 +51,8 @@ func (m *Manager) Tick(ctx context.Context, limit int) (Report, error) {
 		r.Next = b.Key
 		result := Result{Key: b.Key, Status: "skipped"}
 		switch {
+		case b.Workspace != nil:
+			// Aggregate archival requires its whole-vector lifecycle.
 		case b.Lease != nil:
 			result.Status = "leased"
 		case b.ArchivedAt != "" && (b.ArchiveMerge == nil || b.ArchiveFrozenAt != "" || b.ReapingDigest != "" || b.ReapedAt != ""):

@@ -15,6 +15,9 @@ func (s Store) Create(key string, o Options, recovering bool) (*Bench, error) {
 // CreateColdContext is explicit local administration and legacy API behavior.
 // It publishes only the pinned checkout; it never runs repository setup.
 func (s Store) CreateColdContext(ctx context.Context, key string, o Options, recovering bool) (*Bench, error) {
+	if err := s.RequireLegacy(key); err != nil {
+		return nil, err
+	}
 	if e := ctx.Err(); e != nil {
 		return nil, e
 	}
@@ -26,6 +29,9 @@ func (s Store) CreateColdContext(ctx context.Context, key string, o Options, rec
 	return b, e
 }
 func (s Store) CreateContext(ctx context.Context, key string, o Options, recovering bool) (*Bench, error) {
+	if err := s.RequireLegacy(key); err != nil {
+		return nil, err
+	}
 	if e := ctx.Err(); e != nil {
 		return nil, e
 	}

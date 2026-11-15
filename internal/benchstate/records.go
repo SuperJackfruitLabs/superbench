@@ -1,4 +1,4 @@
-// Package benchstate validates and migrates authoritative single-bench records.
+// Package benchstate validates and migrates authoritative bench records.
 package benchstate
 
 import (
@@ -13,9 +13,10 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/history"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotapolicy"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspacepolicy"
 )
 
-const SchemaVersion = 13
+const SchemaVersion = 14
 
 type Database map[string]*model.Bench
 
@@ -29,6 +30,15 @@ func Validate(records Database) error {
 		return errors.New("invalid state: null database")
 	}
 	for key, b := range records {
+		if b != nil && b.Workspace != nil {
+			if b.Key != key {
+				return errors.New("invalid bench record")
+			}
+			if err := workspacepolicy.Validate(b); err != nil {
+				return err
+			}
+			continue
+		}
 		if b != nil {
 			if b.CreatedFrom != "" && !model.ValidCommit(b.CreatedFrom) {
 				return errors.New("invalid creation source commit")

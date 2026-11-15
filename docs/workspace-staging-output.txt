@@ -1,0 +1,65 @@
+Durable aggregate staging verification, 2026-11-15
+Base: 45e843dc35b7718614a20d64dc8bb15a8a265fe3 (PR 22 merge).
+Candidate: feat/workspace-records source snapshot.
+Frozen code/test source archive SHA-256:
+6fb874dae675289844327a2328b5212e309b2a2323923b031a045cdcf98a734a
+Fresh Linux bench binary SHA-256:
+0c52c178e7b5b5c95dcad8733d8f4d5e29633e4f3dd3303032e59253be1ec5a1
+This evidence file and its documentation links were added after the snapshot;
+the verified production code, test fixtures and runtime scripts are unchanged.
+
+macOS and approved Linux verification host, Go 1.26.4:
+  sh scripts/check.sh
+  Both exited 0: formatting, four installer tests, vet, complete race suite,
+  architecture limits and all three builds passed.
+
+Real SQLite/Git aggregate tests cover:
+  - Complete durable source vector and initialization lease before allocation;
+    committed allocation before the first checkout.
+  - Failure during the second checkout, retained first checkout, remote tip
+    movement and retry of the original pinned sources with the same owner.
+  - Allocation-save failure returning the last committed record, followed by
+    retry of the same logical allocation; allocator metadata corruption refusal.
+  - Request/key/specification/quota conflicts, unregistered paths and scalar
+    creation journals refusing without admission or checkout side effects.
+  - Private result copies, explicit initializing phase, readonly/redacted
+    maintenance snapshots, stable identical replay and caller cancellation.
+  - Schema-13 scalar migration, old-schema aggregate refusal, immutable record
+    transitions and preservation of legacy inode/archive migration behavior.
+  - Every v1 aggregate operation refusing with zero receipts and byte/mode-
+    identical source/state/data/cgroup trees; refused request IDs remain usable.
+  - Shared-lock protection during receipt admission and transactional record
+    lookup before execution-scope creation; native unsupported execution still
+    creates no state.
+
+Actual managed XFS aggregate drill:
+  go test -c -o PRIVATE_BIN/workspaceflow.test ./internal/workspaceflow
+  bash scripts/test-workspace-staging.sh TEST_BINARY QUOTA_HELPER SCHEMA13_CLI
+  Exit 0 in an owned disposable mount namespace and cgroup subtree.
+  Policy ceiling: 64 MiB. Explicit workspace request: 32 MiB, 4096 inodes.
+  Exactly three ledger assignments: store, mirrors and bench:card.
+  Workspace root, both member directories and test payloads have the same
+  project ID. Exact retry preserves the workspace, lease and byte-identical
+  complete quota ledger. The retained schema-13 CLI refuses schema 14.
+  First member writes 20,971,520 bytes; the second hits the shared quota after
+  12,517,376 bytes. Reversing the members gives the same result. Both individual
+  writes remain below 33,554,432 bytes, proving one combined cap rather than
+  a separate full budget for each repository.
+  Owned temporary mount, trial files and cgroup subtree cleaned on exit.
+
+Fresh Linux CLI Git/cgroup regression drill:
+  python3 scripts/test-git-control-hooks.py --bench FRESH --old-bench SCHEMA12
+  Exit 0; all eight groups passed: old hook/filter escape reproduction,
+  controlled hook/filter containment, user-hook descendant fencing, server
+  rejection with retained ownership, controller SIGKILL/recovery with schema-14
+  downgrade refusal, and warm checkout hook suppression.
+  Owned test workers, temporary paths and cgroups cleaned on exit.
+
+Independent review found no unresolved correctness issues after concurrent
+receipt admission and execution-scope ordering were corrected.
+
+Limit: successful staging remains initializing with its lease held. Aggregate
+preparation, execution, checkpoint/recovery/release/archive, readiness and v2
+service/CLI responses remain pending. No deployment, pilot or phase completion
+is claimed. Context bounds Git work and checks between commits, not existing
+blocking host-lock waits or quota-helper execution.

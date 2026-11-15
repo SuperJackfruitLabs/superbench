@@ -44,6 +44,9 @@ func (s Store) ArchiveWithCheck(key string, grace time.Duration, check func(*Ben
 }
 
 func (s Store) ArchiveContext(ctx context.Context, key string, grace time.Duration, check func(context.Context, *Bench) error) (*Bench, error) {
+	if err := s.RequireLegacy(key); err != nil {
+		return nil, err
+	}
 	s, ctx, err := s.withControls(ctx, false)
 	if err != nil {
 		return nil, err
@@ -110,6 +113,9 @@ func (s Store) reapJournal(key string) string { return filepath.Join(s.State, "r
 // Reap requires the concrete reviewed manifest. It journals approval before any
 // deletion. Retry accepts only unchanged remaining entries, never new files.
 func (s Store) Reap(p ReapPlan) (*Bench, error) {
+	if err := s.RequireLegacy(p.Key); err != nil {
+		return nil, err
+	}
 	digest, e := p.DigestValue()
 	if e != nil {
 		return nil, e

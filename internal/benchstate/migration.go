@@ -30,12 +30,15 @@ func Migrate(tx *sql.Tx, state string, pinMigratedInodes func(*model.Bench) erro
 	if version == SchemaVersion {
 		return nil
 	}
-	if version >= 1 && version <= 12 {
+	if version >= 1 && version <= 13 {
 		records, err := Load(tx)
 		if err != nil {
 			return err
 		}
 		for _, b := range records {
+			if b.Workspace != nil {
+				return errors.New("aggregate workspace cannot be adopted from an older state schema")
+			}
 			if b.Lease != nil && b.Lease.Execution != nil && b.Lease.Execution.Phase != "stopped" {
 				return errors.New("stop supervised executions with the installed binary before upgrading state")
 			}
@@ -66,7 +69,7 @@ func Migrate(tx *sql.Tx, state string, pinMigratedInodes func(*model.Bench) erro
 		if err = setup.Schema(tx); err != nil {
 			return err
 		}
-		_, err = tx.Exec("PRAGMA user_version=13")
+		_, err = tx.Exec("PRAGMA user_version=14")
 		return err
 	}
 	if version != 0 {
@@ -80,6 +83,9 @@ func Migrate(tx *sql.Tx, state string, pinMigratedInodes func(*model.Bench) erro
 		return err
 	}
 	for key, b := range records {
+		if b.Workspace != nil {
+			return errors.New("aggregate workspace cannot be adopted from legacy state")
+		}
 		if b.ArchivedAt != "" && b.ReapAfter == "" {
 			b.ReapAfter, err = archivepolicy.Deadline(b.ArchivedAt, archivepolicy.DefaultGrace)
 			if err != nil {
@@ -100,6 +106,6 @@ func Migrate(tx *sql.Tx, state string, pinMigratedInodes func(*model.Bench) erro
 	if err = setup.Schema(tx); err != nil {
 		return err
 	}
-	_, err = tx.Exec("PRAGMA user_version=13")
+	_, err = tx.Exec("PRAGMA user_version=14")
 	return err
 }

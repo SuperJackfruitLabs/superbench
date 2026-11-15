@@ -13,7 +13,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strings"
 )
 
@@ -150,6 +149,9 @@ func get(db database, key string) (*Bench, error) {
 	if b == nil {
 		return nil, ErrNotFound
 	}
+	if b.Workspace != nil {
+		return nil, ErrWorkspace
+	}
 	return b, nil
 }
 func owned(b *Bench, token string) error {
@@ -159,15 +161,18 @@ func owned(b *Bench, token string) error {
 	return nil
 }
 func (s Store) acquireLease(ctx context.Context, key, holder string, prepare bool) (*Bench, *setup.Config, error) {
+	if err := s.RequireLegacy(key); err != nil {
+		return nil, nil, err
+	}
 	var config *setup.Config
 	var result *Bench
 	err := s.transactionSQL(func(db database, tx *sql.Tx) error {
-		if e := s.admit(); e != nil {
-			return e
-		}
 		b, err := get(db, key)
 		if err != nil {
 			return err
+		}
+		if e := s.admit(); e != nil {
+			return e
 		}
 		if b.ArchivedAt != "" {
 			return ErrArchived
@@ -305,29 +310,6 @@ func (s Store) release(key, token string, automatic bool) error {
 		b.Lease = nil
 		return nil
 	})
-}
-func (s Store) Status(key string) ([]Bench, error) {
-	var result []Bench
-	err := s.read(func(db database) error {
-		if key != "" {
-			b, err := get(db, key)
-			if err != nil {
-				return err
-			}
-			copy := *b
-			copy.Lease = publicLease(b.Lease)
-			result = append(result, copy)
-		} else {
-			for _, b := range db {
-				copy := *b
-				copy.Lease = publicLease(b.Lease)
-				result = append(result, copy)
-			}
-		}
-		return nil
-	})
-	sort.Slice(result, func(i, j int) bool { return result[i].Key < result[j].Key })
-	return result, err
 }
 func publicLease(l *Lease) *Lease {
 	if l == nil {
