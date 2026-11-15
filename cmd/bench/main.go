@@ -29,6 +29,9 @@ func main() {
 	}
 }
 func run(args []string) error {
+	if len(args) > 0 && args[0] == "mirror-clones" {
+		return mirrorClonesCLI(args[1:], os.Stdout, os.Stderr)
+	}
 	if len(args) > 0 && args[0] == "workspace" {
 		return workspaceCLI(args[1:], os.Stdout, os.Stderr)
 	}

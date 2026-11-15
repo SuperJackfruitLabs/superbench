@@ -57,25 +57,7 @@ func (m Mirrors) Prepare(ctx context.Context, repo string) (string, error) {
 	}
 	mirror := Path(m.Data, repo)
 	if _, e := os.Lstat(mirror); os.IsNotExist(e) {
-		stage, e := os.MkdirTemp(parent, ".clone-")
-		if e != nil {
-			return "", e
-		}
-		defer os.RemoveAll(stage)
-		candidate := filepath.Join(stage, "repo.git")
-		if _, e = git(ctx, m.State, "clone", "--bare", "--no-hardlinks", "--", repo, candidate); e != nil {
-			return "", e
-		}
-		if e = os.Rename(candidate, mirror); e != nil {
-			return "", e
-		}
-		dir, e := os.Open(parent)
-		if e != nil {
-			return "", e
-		}
-		e = dir.Sync()
-		dir.Close()
-		if e != nil {
+		if e := m.clone(ctx, repo, mirror); e != nil {
 			return "", e
 		}
 	} else if e != nil {
