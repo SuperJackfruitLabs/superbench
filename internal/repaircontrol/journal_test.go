@@ -27,7 +27,7 @@ func fixture(t *testing.T) (*Journal, Admission) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { j.Close() })
-	a := Admission{Instance: j.Instance(), ID: strings.Repeat("1", 32), BenchID: strings.Repeat("2", 32), RepairID: "reviewed-repair", Approval: strings.Repeat("3", 64), OwnerDigest: strings.Repeat("4", 64), Intent: operationcontrol.Intent{Target: operationcontrol.Target{UID: uint32(os.Geteuid()), RequestID: "repair-internal", Digest: strings.Repeat("5", 64)}, Key: "card", Operation: "setup", Epoch: strings.Repeat("6", 32)}, Control: operationcontrol.Control{State: state, Root: "/fixture/cgroups", HostID: strings.Repeat("7", 64), BootID: "fixture-boot"}}
+	a := Admission{Instance: j.Instance(), ID: strings.Repeat("1", 32), BenchID: strings.Repeat("2", 32), RepairID: "reviewed-repair", Approval: strings.Repeat("3", 64), OwnerDigest: strings.Repeat("4", 64), Intent: operationcontrol.Intent{Target: operationcontrol.Target{UID: uint32(os.Geteuid()), RequestID: "repair-internal", Digest: strings.Repeat("5", 64)}, Key: "card", Operation: "initialization-repair", Epoch: strings.Repeat("6", 32)}, Control: operationcontrol.Control{State: state, Root: "/fixture/cgroups", HostID: strings.Repeat("7", 64), BootID: "fixture-boot"}}
 	return j, a
 }
 

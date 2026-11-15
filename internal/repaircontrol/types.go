@@ -32,7 +32,7 @@ type Admission struct {
 }
 
 func (a Admission) Valid() bool {
-	return id32.MatchString(a.Instance) && id32.MatchString(a.ID) && id32.MatchString(a.BenchID) && requestID.MatchString(a.RepairID) && digest64.MatchString(a.Approval) && digest64.MatchString(a.OwnerDigest) && a.Intent.Valid() && a.Control.Managed()
+	return id32.MatchString(a.Instance) && id32.MatchString(a.ID) && id32.MatchString(a.BenchID) && requestID.MatchString(a.RepairID) && digest64.MatchString(a.Approval) && digest64.MatchString(a.OwnerDigest) && a.Intent.Valid() && a.Intent.Operation == "initialization-repair" && a.Control.Managed()
 }
 
 type Record struct {

@@ -47,6 +47,7 @@ type WorkspaceTransferOrigin struct{ ID, Digest, SourceKey, SourceID string }
 // unreleased history authority across reviewed repair claims.
 type WorkspaceInitializationRepair struct {
 	ID, Digest, PreviousID string
+	OperationDigest        string `json:",omitempty"`
 	RetiredRuns            []string
 	UncertainOnce          []string
 }

@@ -24,7 +24,11 @@ func initializationRepairTransition(old identityRecord, b *model.Bench) bool {
 	if r == nil || l == nil || next == nil || l.Holder != "initialization" || !l.StopRequested || l.Continuation != "" || l.Execution != nil && l.Execution.Phase != "stopped" || next.Holder != "initialization" || next.StopRequested || next.Token == l.Token || next.Continuation == "" || next.Execution != nil || w.Stage != nil || old.archive != nil || w.Archive != nil {
 		return false
 	}
-	if old.phase != "initializing" && old.phase != "prepared" || w.Phase != old.phase && !(old.phase == "prepared" && w.Phase == "initializing" && old.pending == nil) {
+	if old.phase != "materializing" && old.phase != "initializing" && old.phase != "prepared" || w.Phase != old.phase && !(old.phase == "prepared" && w.Phase == "initializing" && old.pending == nil) {
+		return false
+	}
+	typed := old.phase == "materializing" || old.repair != nil && old.repair.OperationDigest != ""
+	if typed != (r.OperationDigest != "") {
 		return false
 	}
 	previous := ""

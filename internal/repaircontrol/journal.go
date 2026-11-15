@@ -2,9 +2,7 @@ package repaircontrol
 
 import (
 	"context"
-	"crypto/rand"
 	"database/sql"
-	"encoding/hex"
 	"errors"
 	"os"
 	"path/filepath"
@@ -21,9 +19,12 @@ const lockName = "repair-operations.lock"
 type Journal struct {
 	db                                *sql.DB
 	lock                              *os.File
+	anchor                            *os.File
 	state, instance                   string
+	authority                         string
 	owner                             uint32
 	directory, database, lockIdentity os.FileInfo
+	anchorIdentity                    os.FileInfo
 	mu                                sync.Mutex
 	closed                            bool
 }
@@ -64,6 +65,9 @@ func open(state, instance string, create bool) (j *Journal, err error) {
 			}
 			if owned.lock != nil {
 				owned.lock.Close()
+			}
+			if owned.anchor != nil {
+				owned.anchor.Close()
 			}
 			j = nil
 		}
@@ -122,30 +126,28 @@ func open(state, instance string, create bool) (j *Journal, err error) {
 	if err != nil {
 		return nil, err
 	}
+	if err = j.openAnchor(fresh, instance); err != nil {
+		return nil, err
+	}
 	j.db, err = statestore.Open(path, false)
 	if err != nil {
 		return nil, err
 	}
 	if fresh {
-		var nonce [16]byte
-		if _, err = rand.Read(nonce[:]); err != nil {
-			return nil, err
-		}
-		j.instance = hex.EncodeToString(nonce[:])
 		var tx *sql.Tx
 		tx, err = j.db.Begin()
 		if err != nil {
 			return nil, err
 		}
 		defer tx.Rollback()
-		_, err = tx.Exec(`CREATE TABLE authority(instance TEXT PRIMARY KEY);
+		_, err = tx.Exec(`CREATE TABLE authority(instance TEXT PRIMARY KEY,anchor TEXT NOT NULL);
  CREATE TABLE admissions(id TEXT PRIMARY KEY,admission TEXT NOT NULL,phase TEXT NOT NULL,controller TEXT NOT NULL);
  CREATE TABLE helpers(admission_id TEXT NOT NULL REFERENCES admissions(id),kind TEXT NOT NULL,key TEXT NOT NULL,invocation TEXT NOT NULL,PRIMARY KEY(admission_id,kind,key));
  PRAGMA user_version=1;`)
 		if err != nil {
 			return nil, err
 		}
-		if _, err = tx.Exec(`INSERT INTO authority(instance) VALUES(?)`, j.instance); err != nil {
+		if _, err = tx.Exec(`INSERT INTO authority(instance,anchor) VALUES(?,?)`, j.instance, j.authority); err != nil {
 			return nil, err
 		}
 		if err = tx.Commit(); err != nil {
@@ -168,10 +170,11 @@ func open(state, instance string, create bool) (j *Journal, err error) {
 		}
 		return nil, err
 	}
-	if err = j.db.QueryRow(`SELECT instance FROM authority`).Scan(&j.instance); err != nil {
+	var storedInstance string
+	if err = j.db.QueryRow(`SELECT instance FROM authority`).Scan(&storedInstance); err != nil {
 		return nil, err
 	}
-	if !id32.MatchString(j.instance) || instance != "" && j.instance != instance {
+	if !id32.MatchString(j.instance) || storedInstance != j.instance || instance != "" && j.instance != instance {
 		return nil, ErrAuthority
 	}
 	if err = j.checkAuthority(); err != nil {
@@ -206,7 +209,7 @@ func (j *Journal) checkNames() error {
 	for _, check := range []struct {
 		path string
 		info os.FileInfo
-	}{{j.state, j.directory}, {filepath.Join(j.state, databaseName), j.database}, {filepath.Join(j.state, lockName), j.lockIdentity}} {
+	}{{j.state, j.directory}, {filepath.Join(j.state, databaseName), j.database}, {filepath.Join(j.state, lockName), j.lockIdentity}, {filepath.Join(j.state, identityName), j.anchorIdentity}} {
 		actual, err := os.Lstat(check.path)
 		if err != nil {
 			return err
@@ -215,7 +218,7 @@ func (j *Journal) checkNames() error {
 			return ErrAuthority
 		}
 	}
-	return nil
+	return j.checkAnchor()
 }
 func (j *Journal) flock(ctx context.Context) error {
 	for {
@@ -255,12 +258,15 @@ func (j *Journal) within(ctx context.Context, fn func() error) error {
 	if err := fn(); err != nil {
 		return err
 	}
-	return j.checkNames()
+	if err := j.checkNames(); err != nil {
+		return err
+	}
+	return j.checkAuthority()
 }
 
 func (j *Journal) checkAuthority() error {
 	var version, count int
-	var instance string
+	var instance, anchor string
 	if err := j.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
 		return err
 	}
@@ -273,16 +279,25 @@ func (j *Journal) checkAuthority() error {
 	if count != 3 {
 		return ErrAuthority
 	}
+	for table, expected := range map[string]string{"authority": "instance,anchor", "admissions": "id,admission,phase,controller", "helpers": "admission_id,kind,key,invocation"} {
+		var actual string
+		if err := j.db.QueryRow(`SELECT group_concat(name,',') FROM (SELECT name FROM pragma_table_info(?) ORDER BY cid)`, table).Scan(&actual); err != nil {
+			return err
+		}
+		if actual != expected {
+			return ErrAuthority
+		}
+	}
 	if err := j.db.QueryRow(`SELECT count(*) FROM authority`).Scan(&count); err != nil {
 		return err
 	}
 	if count != 1 {
 		return ErrAuthority
 	}
-	if err := j.db.QueryRow(`SELECT instance FROM authority`).Scan(&instance); err != nil {
+	if err := j.db.QueryRow(`SELECT instance,anchor FROM authority`).Scan(&instance, &anchor); err != nil {
 		return err
 	}
-	if instance != j.instance {
+	if instance != j.instance || anchor != j.authority {
 		return ErrAuthority
 	}
 	return nil
@@ -294,5 +309,5 @@ func (j *Journal) Close() error {
 		return nil
 	}
 	j.closed = true
-	return errors.Join(j.db.Close(), j.lock.Close())
+	return errors.Join(j.db.Close(), j.lock.Close(), j.anchor.Close())
 }

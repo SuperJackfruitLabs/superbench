@@ -55,7 +55,7 @@ func TestExistingCancellationWorksWhenAdmissionBudgetIsFull(t *testing.T) {
 }
 
 func TestIgnoredPreparedConsumptionAndChangedAuthorityCannotAdmitEffects(t *testing.T) {
-	for _, kind := range []string{"ignore-reserve", "ignore-start", "prepared-helper", "instance", "unknown-table"} {
+	for _, kind := range []string{"ignore-reserve", "ignore-start", "prepared-helper", "instance", "unknown-table", "unknown-column"} {
 		t.Run(kind, func(t *testing.T) {
 			j, a := fixture(t)
 			ctx := context.Background()
@@ -82,6 +82,8 @@ func TestIgnoredPreparedConsumptionAndChangedAuthorityCannotAdmitEffects(t *test
 				_, _ = j.db.Exec(`UPDATE authority SET instance=?`, strings.Repeat("f", 32))
 			case "unknown-table":
 				_, _ = j.db.Exec(`CREATE TABLE future_authority(id TEXT)`)
+			case "unknown-column":
+				_, _ = j.db.Exec(`ALTER TABLE admissions ADD COLUMN future_authority TEXT`)
 			}
 			if err := j.Start(ctx, a, controller); err == nil {
 				t.Fatal("changed/ignored admission started")
