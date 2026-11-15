@@ -118,6 +118,8 @@ The grouped workspace API and CLI are described in
 and the remaining standalone preparation and pilot work. Local reviewed
 [interrupted-history reconciliation](docs/history-reconciliation.md) records an
 unknown outcome without resuming a command or fabricating setup success.
+Local reviewed [initialization repair](docs/initialization-repair.md) adds an
+explicit fresh epoch for stopped grouped setup while preserving its evidence.
 If create/recover stops after creating its worktree but before registration, retry
 with exactly the same arguments. The intent pins the original SHA; adoption
 requires the expected path, shared git directory, branch, HEAD and clean files.

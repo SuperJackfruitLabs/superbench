@@ -50,6 +50,8 @@ func ValidateStage(creationID string, spec Spec) error {
 	return nil
 }
 
+var ErrInitializationRepair = errors.New("workspace initialization has an explicit repair epoch; use its repair commands")
+
 func privateRecord(b *model.Bench) *model.Bench {
 	if b == nil {
 		return nil
@@ -58,6 +60,12 @@ func privateRecord(b *model.Bench) *model.Bench {
 	if b.Workspace != nil {
 		w := *b.Workspace
 		w.Members = append([]model.WorkspaceMember(nil), w.Members...)
+		if w.InitializationRepair != nil {
+			r := *w.InitializationRepair
+			r.RetiredRuns = append([]string(nil), r.RetiredRuns...)
+			r.UncertainOnce = append([]string(nil), r.UncertainOnce...)
+			w.InitializationRepair = &r
+		}
 		w.Unmerged = append([]model.WorkspaceMergeEvidence(nil), w.Unmerged...)
 		if w.Archive != nil {
 			archive := *w.Archive
@@ -201,6 +209,9 @@ func (m Manager) stage(ctx context.Context, request stagingRequest) (*model.Benc
 				return err
 			}
 			if b, ok := rows[request.key]; ok {
+				if b.Workspace != nil && b.Workspace.InitializationRepair != nil {
+					return ErrInitializationRepair
+				}
 				if !request.matches(b) {
 					return errors.New("workspace creation conflicts with an existing bench")
 				}

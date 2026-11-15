@@ -61,7 +61,7 @@ func TestMigrationAdoptsScalar13AndPreservesRecords(t *testing.T) {
 	if err := migrateForTest(db, t.TempDir(), func(*model.Bench) error { t.Fatal("unexpected inode migration"); return nil }); err != nil {
 		t.Fatal(err)
 	}
-	assertVersion(t, db, 19)
+	assertVersion(t, db, 20)
 	if err := CheckVersion(db); err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +96,7 @@ func TestOlderScalarMigrationStillPinsInodesAndArchiveGrace(t *testing.T) {
 	if err != nil || calls != 1 || rows["card"].ReapAfter == "" {
 		t.Fatal(rows, calls, err)
 	}
-	assertVersion(t, db, 19)
+	assertVersion(t, db, 20)
 }
 
 func TestLegacyAggregateIsNotAdopted(t *testing.T) {

@@ -3,6 +3,7 @@ package bench
 import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/history"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspaceprep"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspacerepair"
 )
 
 func (s Store) InspectWorkspaceHistory(key string) (*workspaceprep.HistoryPlan, error) {
@@ -10,6 +11,13 @@ func (s Store) InspectWorkspaceHistory(key string) (*workspaceprep.HistoryPlan, 
 		return nil, err
 	}
 	return s.workspacePreparation().InspectHistory(key)
+}
+
+func (s Store) WorkspaceRepair() (workspacerepair.Manager, error) {
+	if err := s.Migrate(); err != nil {
+		return workspacerepair.Manager{}, err
+	}
+	return workspacerepair.Manager{Prep: s.workspacePreparation(), Lifecycle: s.workspaceLifecycle()}, nil
 }
 
 func (s Store) ReconcileWorkspaceHistory(p workspaceprep.HistoryPlan) (history.Record, error) {

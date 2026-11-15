@@ -165,7 +165,7 @@ func (m Manager) Prepare(ctx context.Context, key, token, selector string, offli
 	if _, err = owned(benchstate.Database{key: b}, key, token); err != nil {
 		return nil, err
 	}
-	if err = preparable(b); err != nil {
+	if err = m.preparable(b); err != nil {
 		return b, err
 	}
 	defer m.reconcileCancellation(ctx, key, token, &result, &operationErr)
@@ -200,7 +200,7 @@ func (m Manager) Prepare(ctx context.Context, key, token, selector string, offli
 		if e != nil {
 			return e
 		}
-		if e = preparable(current); e != nil {
+		if e = m.preparable(current); e != nil {
 			return e
 		}
 		if e = m.stopped(current); e != nil {
@@ -242,7 +242,7 @@ func (m Manager) member(ctx context.Context, key, token string, plan memberPlan,
 		if err != nil {
 			return err
 		}
-		if err = preparable(b); err != nil {
+		if err = m.preparable(b); err != nil {
 			return err
 		}
 		if err = ctx.Err(); err != nil {

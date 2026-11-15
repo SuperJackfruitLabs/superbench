@@ -21,6 +21,7 @@ type identityRecord struct {
 	stage               *model.WorkspaceStage
 	archive             *model.WorkspaceArchive
 	unmerged            []model.WorkspaceMergeEvidence
+	repair              *model.WorkspaceInitializationRepair
 }
 
 // IdentitySnapshot owns copied immutable metadata and lifecycle evidence.
@@ -57,6 +58,8 @@ func Capture(records Database) IdentitySnapshot {
 				w.RecoveredFrom = &source
 			}
 			w.Members = append([]model.WorkspaceMember(nil), w.Members...)
+			entry.repair = copyInitializationRepair(w.InitializationRepair)
+			w.InitializationRepair = nil
 			if w.Stage != nil {
 				stage := *w.Stage
 				entry.stage = &stage
@@ -292,11 +295,18 @@ func ValidateTransition(before IdentitySnapshot, after Database) error {
 		w.Stage = nil
 		w.Archive = nil
 		w.Unmerged = nil
+		w.InitializationRepair = nil
 		if !reflect.DeepEqual(old.workspace, &w) || old.path != b.Path || old.requested != b.RequestedQuotaBytes {
 			return invalid
 		}
 		if old.project != 0 && (old.project != b.ProjectID || old.bytes != b.QuotaBytes || old.inodes != b.QuotaInodes) {
 			return invalid
+		}
+		if !reflect.DeepEqual(old.repair, b.Workspace.InitializationRepair) {
+			if !initializationRepairTransition(old, b) {
+				return invalid
+			}
+			continue
 		}
 		if !archiveTransition(old, b) || !unmergedTransition(old, b) || !stageTransition(old, b) || !preparationTransition(old, b) || !checkpointTransition(old, b.Workspace) || !phaseTransition(old.phase, b) || !leaseTransition(old.lease, b) {
 			return invalid

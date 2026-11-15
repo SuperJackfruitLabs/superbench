@@ -27,7 +27,7 @@ func (m Manager) VerifyPrepared(ctx context.Context, key, token string) (*model.
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-			if err := preparable(b); err != nil {
+			if err := m.preparable(b); err != nil {
 				return err
 			}
 			if err := m.stopped(b); err != nil {

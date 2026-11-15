@@ -29,7 +29,7 @@ func (m Manager) execute(ctx context.Context, key, token string, plan memberPlan
 			if err != nil {
 				return err
 			}
-			if err = preparable(b); err != nil {
+			if err = m.preparable(b); err != nil {
 				return err
 			}
 			if b.Lease.Execution != nil {
@@ -134,7 +134,7 @@ func (m Manager) execute(ctx context.Context, key, token string, plan memberPlan
 		if err != nil {
 			return err
 		}
-		if err = preparable(b); err != nil {
+		if err = m.preparable(b); err != nil {
 			return err
 		}
 		if b.Lease.Continuation != continuation || b.Lease.Execution == nil || b.Lease.Execution.ID != stage.ID {
@@ -161,7 +161,7 @@ func (m Manager) start(ctx context.Context, key, token, continuation string, pla
 			if err != nil {
 				return err
 			}
-			if err = preparable(b); err != nil {
+			if err = m.preparable(b); err != nil {
 				return err
 			}
 			if b.Lease.Continuation != continuation || b.Lease.Execution == nil || b.Lease.Execution.ID != e.ID || b.Lease.Execution.Phase != "starting" {

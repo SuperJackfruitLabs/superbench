@@ -14,12 +14,21 @@ type Workspace struct {
 	Phase                string
 	ExplicitQuotaBytes   uint64 `json:",omitempty"`
 	Members              []WorkspaceMember
-	Preparation          []WorkspacePreparation   `json:",omitempty"`
-	Stage                *WorkspaceStage          `json:",omitempty"`
-	Pending              *WorkspaceCheckpoint     `json:",omitempty"`
-	Checkpoint           *WorkspaceCheckpoint     `json:",omitempty"`
-	Archive              *WorkspaceArchive        `json:",omitempty"`
-	Unmerged             []WorkspaceMergeEvidence `json:",omitempty"`
+	Preparation          []WorkspacePreparation         `json:",omitempty"`
+	Stage                *WorkspaceStage                `json:",omitempty"`
+	Pending              *WorkspaceCheckpoint           `json:",omitempty"`
+	Checkpoint           *WorkspaceCheckpoint           `json:",omitempty"`
+	Archive              *WorkspaceArchive              `json:",omitempty"`
+	Unmerged             []WorkspaceMergeEvidence       `json:",omitempty"`
+	InitializationRepair *WorkspaceInitializationRepair `json:",omitempty"`
+}
+
+// WorkspaceInitializationRepair preserves explicit initialization handoff and
+// unreleased history authority across reviewed repair claims.
+type WorkspaceInitializationRepair struct {
+	ID, Digest, PreviousID string
+	RetiredRuns            []string
+	UncertainOnce          []string
 }
 
 type WorkspaceMember struct {

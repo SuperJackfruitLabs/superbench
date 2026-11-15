@@ -85,6 +85,9 @@ func (m Manager) Preflight(r protocolv2.Request) error {
 		return err
 	}
 	b := &rows[0]
+	if b.Workspace.InitializationRepair != nil && (creating || b.Workspace.Phase != "ready" && r.Operation != "stop" && r.Operation != "stop_admin") {
+		return ErrConflict
+	}
 	if growth && (!utf8.ValidString(b.Path) || len(b.Path) > 4096) {
 		return ErrInvalid
 	}
