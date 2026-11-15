@@ -110,6 +110,54 @@ func (m Manager) Stop(key, token string, admin bool) (*model.Bench, error) {
 	return m.stop(key, token, "", admin, false)
 }
 
+// completeExecution acknowledges only this runner's recorded scope. Stopping
+// revokes launch authority, but must not prevent its live capturer from sealing
+// the actual outcome after an administrative stop.
+func (m Manager) completeExecution(key, token string, expected *execution.Execution) (*execution.Execution, error) {
+	var result *execution.Execution
+	err := m.Gate(key, func() error {
+		if err := m.Read(func(rows benchstate.Database) error {
+			b, err := owned(rows, key, token)
+			if err != nil {
+				return err
+			}
+			if !sameExecution(b.Lease.Execution, expected) {
+				return errors.New("workspace runner execution was replaced")
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
+		if err := m.Backend.Fence(expected); err != nil {
+			return err
+		}
+		if err := m.Backend.Empty(expected); err != nil {
+			return err
+		}
+		return m.Update(func(rows benchstate.Database, _ *sql.Tx) error {
+			b, err := owned(rows, key, token)
+			if err != nil {
+				return err
+			}
+			if !sameExecution(b.Lease.Execution, expected) {
+				return errors.New("workspace runner execution changed during completion")
+			}
+			b.Lease.Execution.Phase = "stopped"
+			copy := *b.Lease.Execution
+			result = &copy
+			return nil
+		})
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, err
+}
+
+func sameExecution(a, b *execution.Execution) bool {
+	return a != nil && b != nil && a.ID == b.ID && a.Root == b.Root && a.HostID == b.HostID && a.BootID == b.BootID && a.Log == b.Log && a.LogLimitBytes == b.LogLimitBytes
+}
+
 func (m Manager) stop(key, token, continuation string, admin, internal bool) (*model.Bench, error) {
 	if err := m.validate(); err != nil {
 		return nil, err

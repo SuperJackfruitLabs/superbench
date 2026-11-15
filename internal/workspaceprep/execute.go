@@ -114,11 +114,7 @@ func (m Manager) execute(ctx context.Context, key, token string, plan memberPlan
 			return m.start(ctx, key, token, continuation, plan, cmd, e)
 		},
 		Stop: func() (*execution.Execution, error) {
-			b, err := m.stop(key, token, continuation, false, true)
-			if err != nil {
-				return nil, err
-			}
-			return b.Lease.Execution, nil
+			return m.completeExecution(key, token, stage)
 		},
 		Cancel: func() { _, _ = m.Stop(key, token, false) },
 		Seal: func(c *output.Capture, exit *int, truncated bool) error {

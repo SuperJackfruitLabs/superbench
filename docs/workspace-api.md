@@ -1,7 +1,7 @@
 # Grouped workspace API
 
-The v2 producer is being integrated and verified. It does not enable suite
-consumers or claim that the Developer Experience board pilot has run. The
+The v2 producer and CLI are implemented and locally verified. They do not enable
+suite consumers or claim that the Developer Experience board pilot has run. The
 accepted host-local boundary remains in Charter; the grouped request and response
 extensions are proposed treaty data. Existing scalar v1 callers remain supported.
 
@@ -131,7 +131,15 @@ including mixed inventory privacy, lifecycle operations, UID/body/version receip
 conflicts, exact historical replay, capacity, failed completion persistence and
 missing creation receipts. These handler tests do not establish real Unix peer
 authentication, managed cgroup execution, CLI behavior or a deployed pilot;
-separate runtime verification is required before publication claims.
+separate runtime verification supplies that evidence.
+
+The managed Linux daemon/CLI drill passed with actual XFS project quotas, cgroups,
+kernel peer credentials, two repositories and an independently confirmed remote
+checkpoint vector. It covers fresh/stale selected setup, partial initialization,
+partial publication and retry, stopped detached descendants, historical request
+replay, distinct-ref recovery, concrete reviewed reap, mixed inventory and receipt
+capacity reconciliation. See [verification evidence](workspace-api-output.txt)
+for source hashes, exact scope and remaining obligations.
 
 Supervisor crash recovery also needs a separate history-repair path. If a daemon
 is killed before it seals an aggregate payload's log, administrative stop can

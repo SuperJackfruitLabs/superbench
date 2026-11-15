@@ -251,16 +251,15 @@ func (m Manager) Run(ctx context.Context, key, token, selector string, args []st
 			})
 		})
 	}, Stop: func() (*execution.Execution, error) {
-		b, err := m.stop(key, token, continuation, false, true)
-		if err != nil {
-			return nil, err
-		}
-		return b.Lease.Execution, nil
+		return m.completeExecution(key, token, stage)
 	}, Cancel: func() { _, _ = m.Stop(key, token, false) }, Seal: func(c *output.Capture, exit *int, truncated bool) error { return m.Seal(stage.ID, c, exit, truncated) }}
 	outcome, runErr := runner.Run(ctx, stageexec.Plan{Execution: stage, Dir: dir, Args: append([]string(nil), args...), Environment: env})
 	if outcome != nil {
 		result.Execution, result.ExitCode, result.LogTruncated = outcome.Execution, outcome.ExitCode, outcome.LogTruncated
 	}
 	result.Bench, err = m.ownedCurrent(key, token)
+	if err == nil && result.Bench != nil && result.Bench.Lease != nil && (result.Bench.Lease.StopRequested || result.Bench.Lease.Continuation != continuation) {
+		err = errors.New("workspace payload continuation was revoked; stopped outcome retained")
+	}
 	return result, errors.Join(runErr, err)
 }

@@ -104,7 +104,9 @@ class Drill:
             r = c.getresponse()
             raw = r.read((1 << 20) + 1)
             allowed = (expected,) if isinstance(expected, int) else expected
-            assert r.status in allowed, (payload["operation"], r.status, "unexpected HTTP status; private body withheld")
+            if r.status not in allowed:
+                diagnostic = json.loads(raw)
+                raise AssertionError((payload["operation"], r.status, diagnostic.get("error", {}).get("code"), "result_present=" + str("result" in diagnostic)))
             assert len(raw) <= 1 << 20
             if payload["operation"] in {"create", "recover", "lease", "run", "setup"}:
                 assert len(raw) <= 64 << 10
@@ -409,7 +411,7 @@ def pending_publication(d):
     verifier.write_text('''import json,sqlite3,sys
 from pathlib import Path
 updates=[line.split() for line in sys.stdin]
-if any(fields[2]=="refs/heads/bench/card" for fields in updates):
+if updates:
  with sqlite3.connect("file:"+sys.argv[1]+"?mode=ro",uri=True) as db:
   record=json.loads(db.execute("SELECT record FROM benches WHERE key='card'").fetchone()[0])
  assert record["Workspace"]["Pending"]["Members"]==json.loads(Path(sys.argv[2]).read_text())
@@ -439,7 +441,7 @@ if any(fields[2]=="refs/heads/bench/card" for fields in updates):
             if hook.exists():
                 hook.unlink()
     d.prove("pending-publication", 0, 1, 2)
-    print("PASS: first remote hook independently observes the durable whole pending vector; second-member failure cannot release and retries the same generation", flush=True)
+    print("PASS: every remote A push hook, including the first immutable pin, observes the durable whole pending vector; second-member failure cannot release and retries the same generation", flush=True)
 
 
 def stopped(pid):
