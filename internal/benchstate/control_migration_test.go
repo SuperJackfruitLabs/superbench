@@ -49,7 +49,7 @@ func TestSchema23CannotAdoptFutureManagedControl(t *testing.T) {
 	if err = operationcontrol.Schema(tx); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = tx.Exec(`DROP TABLE workspace_operation_runs`); err != nil {
+	if _, err = tx.Exec(`DROP TABLE workspace_operation_cancellations; DROP TABLE workspace_operation_runs`); err != nil {
 		t.Fatal(err)
 	}
 	i := operationcontrol.Intent{Target: operationcontrol.Target{UID: 1, RequestID: "future", Digest: strings.Repeat("a", 64)}, Key: "card", Operation: "create", Epoch: strings.Repeat("b", 32)}

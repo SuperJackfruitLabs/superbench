@@ -186,6 +186,18 @@ func (m Manager) Conclude(i operationcontrol.Intent) error {
 			if err != nil {
 				return err
 			}
+			if v.Binding.Phase == "finished" || v.Binding.Phase == "stopped" {
+				ok, err := operationcontrol.CancellationConcluded(tx, i)
+				if err != nil {
+					return err
+				}
+				if ok {
+					if m.CheckBarrier != nil {
+						return m.CheckBarrier()
+					}
+					return nil
+				}
+			}
 			for _, run := range v.Runs {
 				if err = sealed(tx, run.Execution.ID, i.Key, v.Binding.Holder); err != nil {
 					return err

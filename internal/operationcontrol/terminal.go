@@ -39,12 +39,17 @@ func ConcludeCancellation(tx *sql.Tx, i Intent, b *model.Bench) error {
 	}
 	phase := "finished"
 	switch found.Phase {
-	case "finished":
-		return nil
-	case "stopped":
-		// The previous cancellation already retired this epoch. A response-save
-		// crash may be retried after a later owner acquired: do not touch it.
-		return nil
+	case "finished", "stopped":
+		ok, err := CancellationConcluded(tx, i)
+		if err != nil {
+			return err
+		}
+		if ok {
+			return nil
+		}
+		// The caller must establish the same complete proof as a first
+		// conclusion; a normal finish alone never supplies this marker.
+		return saveCancellationConclusion(tx, i)
 	case "admitted": // No owner was bound; never mutate an unrelated existing lease.
 	case "bound":
 		if b != nil && b.Workspace != nil && b.Workspace.ID == found.BenchID && b.Lease == nil {
@@ -78,7 +83,7 @@ func ConcludeCancellation(tx *sql.Tx, i Intent, b *model.Bench) error {
 	if saved.Phase != phase {
 		return ErrAuthority
 	}
-	return nil
+	return saveCancellationConclusion(tx, i)
 }
 
 // Runs returns only this exact operation's bounded immutable launch inventory.

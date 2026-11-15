@@ -60,3 +60,12 @@ traversal permissions despite restrictive umask 0077. It does not widen existing
 unknown directories or change the process umask. See
 [verification evidence](operation-cancellation-output.txt) for the exact managed
 Linux scope, artifact hashes and remaining limits.
+
+State schema 27 records the exact immutable binding and terminal outcome of a
+verified cancellation in the same transaction as core finalization. After a
+receipt-save interruption, that conclusion can be replayed without touching
+writers or requiring logs that ordinary reviewed retention has since collected.
+A normal finished operation has no cancellation conclusion: its first cancellation
+still requires complete original helper, Git, scope and sealed-history proof.
+Missing or changed proof stays in doubt. Migration never invents conclusions for
+older terminal rows, and a later owner cannot inherit an earlier conclusion.

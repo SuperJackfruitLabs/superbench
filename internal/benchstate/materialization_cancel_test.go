@@ -18,7 +18,7 @@ func TestSchema26Migrates25AndCommitsBoundMaterializationRevocation(t *testing.T
 	if err := migrateForTest(db, t.TempDir(), nil); err != nil {
 		t.Fatal(err)
 	}
-	assertVersion(t, db, 26)
+	assertVersion(t, db, SchemaVersion)
 	var after string
 	if err := db.QueryRow(`SELECT record FROM benches`).Scan(&after); err != nil || before != after {
 		t.Fatal("migration changed workspace", err)

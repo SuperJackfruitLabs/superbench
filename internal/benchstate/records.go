@@ -16,7 +16,7 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspacepolicy"
 )
 
-const SchemaVersion = 26
+const SchemaVersion = 27
 
 type Database map[string]*model.Bench
 

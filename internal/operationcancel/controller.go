@@ -37,6 +37,15 @@ func (m Manager) Reconcile(ctx context.Context, i operationcontrol.Intent, helpe
 		return err
 	}
 	m.Expected = &inventory
+	if inventory.Binding.Phase == "finished" || inventory.Binding.Phase == "stopped" {
+		concluded, err := m.replayConclusion(i)
+		if err != nil {
+			return err
+		}
+		if concluded {
+			return nil
+		}
+	}
 	// No host lock, SQL transaction, receipt mutex or ordinary operation slot is
 	// held over these privileged waits. The deny barrier waits out atomic apply
 	// and permanently excludes queued/retried invocations of the same epoch.
@@ -103,4 +112,28 @@ func (m Manager) recoverGit(i operationcontrol.Intent) error {
 			return recover(v.Binding.Control, i)
 		})
 	})
+}
+
+// concluded only replays the immutable prior outcome; it never re-establishes
+// authority by following a current lease or missing/collected history.
+func (m Manager) replayConclusion(i operationcontrol.Intent) (bool, error) {
+	concluded := false
+	err := m.Update(func(_ benchstate.Database, tx *sql.Tx) error {
+		if _, err := m.inventory(tx, i, nil); err != nil {
+			return err
+		}
+		ok, err := operationcontrol.CancellationConcluded(tx, i)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return nil
+		}
+		if err := m.CheckBarrier(); err != nil {
+			return err
+		}
+		concluded = true
+		return nil
+	})
+	return concluded, err
 }

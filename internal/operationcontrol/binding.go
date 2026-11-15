@@ -76,7 +76,11 @@ func Schema(tx *sql.Tx) error {
 	if err != nil {
 		return err
 	}
-	return runSchema(tx)
+	if err = runSchema(tx); err != nil {
+		return err
+	}
+	_, err = tx.Exec(`CREATE TABLE IF NOT EXISTS workspace_operation_cancellations(operation_id TEXT PRIMARY KEY REFERENCES workspace_operations(id),record TEXT NOT NULL CHECK(json_valid(record)))`)
+	return err
 }
 func hash(s string) string { v := sha256.Sum256([]byte(s)); return hex.EncodeToString(v[:]) }
 func validBinding(b Binding) bool {

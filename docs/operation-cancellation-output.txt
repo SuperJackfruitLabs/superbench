@@ -97,3 +97,27 @@ refuse current metadata mislabeled as old state without changing records/schema.
 The old-supervisor test now verifies its intended installed-binary stop guard.
 All six focused affected packages passed with race after these tests-only fixes;
 the retained ordinary reap assertion checks the exact current schema constant.
+
+Complete required checks on historical checkpoint 8bf01b0190fa456a63247049c3fd70486bba6689:
+- Native Go 1.26.4 darwin/arm64: exact sh scripts/check.sh PASS, source715
+  pre/post manifest unchanged; disposable Unix listeners used approved sandbox
+  escalation. Log SHA256:
+  e1cc702318baa226a2f07ca0ce513ffd256ac7815c3d48c4658066015611a54d
+- Linux Go 1.26.4 amd64: exact sh scripts/check.sh PASS in the owned private
+  mount namespace/tmp, source715 pre/post manifest unchanged. Log SHA256:
+  add76cd958ca8153aa83a0a4a799f89d3c4a6b7bdd31b90a491a90c0ab32c2cb
+- Exact historical source archive SHA256:
+  daa7574face899334a4672ec71d83f1afa2ee0eff4956fc60de1f5ea7edd32e8
+
+A subsequent review found a real retry gap: after a core cancellation conclusion
+committed but before its receipt save completed, legitimate released-log/history
+collection could prevent reconciliation from finishing. The schema27 correction
+records an explicit canonical exact-binding cancellation conclusion atomically.
+The real retention regression first reproduced the old retry attempting Git
+recovery after actual log deletion and history pruning, then passed with pure
+exact-conclusion replay. Focused race checks also cover normal-finished epochs
+requiring complete first proof, missing proof, foreign UID/digest/epoch, changed
+control or marker, missing rows, ignored conclusion inserts and later owners.
+The previously pinned managed runtime above remains evidence for its exact 4f
+revision; schema27 changes production code and requires separately pinned checks
+and managed runtime evidence before a final readiness claim.

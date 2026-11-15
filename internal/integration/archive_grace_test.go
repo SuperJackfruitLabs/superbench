@@ -50,7 +50,7 @@ func legacyArchive(t *testing.T, s bench.Store, b *bench.Bench) {
 	if _, e = db.Exec("UPDATE benches SET record=? WHERE key=?", string(raw), b.Key); e != nil {
 		t.Fatal(e)
 	}
-	if _, e = db.Exec("DROP TABLE workspace_operation_runs; DROP TABLE workspace_operations; PRAGMA user_version=8"); e != nil {
+	if _, e = db.Exec("DROP TABLE workspace_operation_cancellations; DROP TABLE workspace_operation_runs; DROP TABLE workspace_operations; PRAGMA user_version=8"); e != nil {
 		t.Fatal(e)
 	}
 }
