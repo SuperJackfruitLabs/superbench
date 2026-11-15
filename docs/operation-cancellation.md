@@ -29,3 +29,12 @@ successful workspace release before the historical response is committed. Each
 collection read or mutation checks the same durable launch inventory under its
 state lock/transaction. The original completed-receipt cutoff permits core
 finalization and then ordinary retention; it does not permanently pin all history.
+
+After a successful validated exact-target cancellation acknowledgment, the private
+producer retains that authenticated UID/request-ID/digest binding across restart.
+Within the same durable service-state lineage, replaying the preserved exact
+original body is receipt-only: it returns historical bytes or an existing
+non-executing conflict, and cannot admit fresh growth. Unknown, failed or malformed
+acknowledgments establish no such guarantee. This does not cover loss, replacement
+or restoration of the receipt database, and does not authorize new request IDs,
+changed arguments, release, reacquisition or execution.
