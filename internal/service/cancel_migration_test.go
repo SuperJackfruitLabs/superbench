@@ -36,7 +36,7 @@ func TestLegacyReceiptMigrationPreservesHistoryAndCannotResumeOldRunningWork(t *
 	}
 	defer r.db.Close()
 	var version int
-	if err = r.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 2 {
+	if err = r.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != receiptSchemaVersion {
 		t.Fatal(version, err)
 	}
 	got, _, err := r.lookup(1, "done", digest)

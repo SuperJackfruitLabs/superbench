@@ -20,6 +20,9 @@ func (r *receipts) requestCancel(uid uint32, id, digest string) (string, error) 
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	return r.requestCancelLocked(uid, id, digest)
+}
+func (r *receipts) requestCancelLocked(uid uint32, id, digest string) (string, error) {
 	tx, err := r.db.Begin()
 	if err != nil {
 		return "", err

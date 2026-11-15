@@ -10,6 +10,9 @@ import (
 // effect boundaries are verified. Its gate shares the durable receipt mutex;
 // neither cancellation admission nor this gate acquires the host lock.
 func (r *receipts) operationScope(parent context.Context, i operationcontrol.Intent) (context.Context, context.CancelFunc, error) {
+	if _, exists := operationcontrol.FromContext(parent); exists {
+		return nil, nil, errConflict
+	}
 	if !i.Valid() {
 		return nil, nil, errConflict
 	}
@@ -24,6 +27,9 @@ func (r *receipts) operationScope(parent context.Context, i operationcontrol.Int
 	}
 	if _, ok := r.controllers[key]; ok {
 		return nil, nil, errInDoubt
+	}
+	if err := r.saveOperationIntent(i); err != nil {
+		return nil, nil, err
 	}
 	ctx, cancel := context.WithCancel(parent)
 	scoped, err := operationcontrol.WithScope(ctx, i, func(fn func() error) error {

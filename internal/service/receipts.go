@@ -3,6 +3,7 @@ package service
 import (
 	"database/sql"
 	"errors"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/operationcontrol"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -11,6 +12,8 @@ import (
 
 	_ "modernc.org/sqlite"
 )
+
+const receiptSchemaVersion = 3
 
 var errConflict = errors.New("request id reused with a different operation body")
 var errInDoubt = errors.New("request outcome requires reconciliation")
@@ -62,7 +65,7 @@ func openReceipts(state string) (*receipts, error) {
 		db.Close()
 		return nil, e
 	}
-	if version != 0 && version != 1 && version != 2 {
+	if version != 0 && version != 1 && version != 2 && version != receiptSchemaVersion {
 		db.Close()
 		return nil, errors.New("unsupported receipt schema")
 	}
@@ -97,6 +100,22 @@ func openReceipts(state string) (*receipts, error) {
 		}
 	}
 
+	if version < receiptSchemaVersion {
+		tx, e := db.Begin()
+		if e != nil {
+			db.Close()
+			return nil, e
+		}
+		if _, e = tx.Exec(`CREATE TABLE operation_intents(owner INTEGER NOT NULL,id TEXT NOT NULL,digest TEXT NOT NULL,key TEXT NOT NULL,operation TEXT NOT NULL,epoch TEXT NOT NULL,PRIMARY KEY(owner,id));PRAGMA user_version=3`); e != nil {
+			tx.Rollback()
+			db.Close()
+			return nil, e
+		}
+		if e = tx.Commit(); e != nil {
+			db.Close()
+			return nil, e
+		}
+	}
 	if _, e = db.Exec("UPDATE receipts SET state='interrupted' WHERE state='running'"); e != nil {
 		db.Close()
 		return nil, e
@@ -138,6 +157,11 @@ func (r *receipts) lookupLocked(uid uint32, id, digest string) (*receipt, bool, 
 	// Missing durable authority must never permit a second in-process dispatch.
 	if _, retained := r.active[key]; retained {
 		return nil, true, errInDoubt
+	}
+	if _, err := r.operationIntent(operationcontrol.Target{UID: uid, RequestID: id, Digest: digest}); err == nil {
+		return nil, true, errInDoubt
+	} else if err != sql.ErrNoRows {
+		return nil, true, err
 	}
 	if err := cancelBarrier(r.db, uid, id, digest); err != nil {
 		return nil, true, err
