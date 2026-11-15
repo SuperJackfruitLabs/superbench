@@ -50,6 +50,26 @@ def main():
              MirrorInodes=8192, ReserveInodes=8192)
     policy.write_text(json.dumps(p)); policy.chmod(0o600)
 
+    def children_of(pid):
+        children = set()
+        for task in Path(f'/proc/{pid}/task').iterdir():
+            try:
+                children.update(int(value) for value in (task / 'children').read_text().split())
+            except FileNotFoundError:
+                pass
+        return sorted(children)
+
+    def lock_wait(pid):
+        # Go may block flock on any runtime OS thread, not its process leader.
+        for task in Path(f'/proc/{pid}/task').iterdir():
+            try:
+                channel = (task / 'wchan').read_text().strip()
+                if 'lock' in channel:
+                    return task.name+':'+channel
+            except FileNotFoundError:
+                pass
+        return None
+
     def sha(path):
         return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -136,11 +156,12 @@ def main():
         waiting = False
         while time.monotonic() < deadline:
             assert cancel_process.poll() is None
-            children = Path(f'/proc/{cancel_process.pid}/task/{cancel_process.pid}/children').read_text().split()
+            children = children_of(cancel_process.pid)
             for value in children:
                 try:
                     if b'cancel-operation' in Path(f'/proc/{value}/cmdline').read_bytes().split(b'\0'):
-                        waiting = 'lock' in Path(f'/proc/{value}/wchan').read_text()
+                        assert sha(Path(f'/proc/{value}/exe')) == info['BinarySHA256']
+                        waiting = lock_wait(value) is not None
                 except FileNotFoundError:
                     pass
             if waiting:
@@ -196,15 +217,15 @@ def main():
         deadline = time.monotonic()+30
         while time.monotonic() < deadline:
             assert controller.poll() is None, 'controller exited before queued helper'
-            children = Path(f'/proc/{controller.pid}/task/{controller.pid}/children').read_text().split()
+            children = children_of(controller.pid)
             for value in children:
                 candidate = int(value)
                 try:
                     cmd = Path(f'/proc/{candidate}/cmdline').read_bytes().split(b'\0')
                     if b'apply-operation' not in cmd:
                         continue
-                    wchan = Path(f'/proc/{candidate}/wchan').read_text().strip()
-                    if 'lock' not in wchan:
+                    wchan = lock_wait(candidate)
+                    if wchan is None:
                         continue
                     fd = os.pidfd_open(candidate)
                     assert sha(Path(f'/proc/{candidate}/exe')) == info['BinarySHA256']
