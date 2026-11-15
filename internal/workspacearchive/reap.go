@@ -34,6 +34,12 @@ func (m Manager) Reap(ctx context.Context, approval Plan) (*model.Bench, error) 
 	if err != nil {
 		return nil, err
 	}
+	if approved.Version == MissingPlanVersion {
+		return m.reapMissing(ctx, *approved, raw)
+	}
+	if approved.Missing != nil {
+		return nil, errors.New("ordinary approval cannot carry missing-source evidence")
+	}
 	var committed *model.Bench
 	err = m.Within(func(update workspace.Update) error {
 		var observed *model.Bench

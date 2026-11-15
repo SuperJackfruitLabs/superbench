@@ -1,0 +1,130 @@
+Missing-source archive/reap verification — 2026-11-15
+
+Scope
+  Same-host retirement of the permanently excluded source after completed
+  reviewed missing-checkout transfer. This is not cross-host recovery,
+  installed-service rollout, consumer acceptance or completion of Phase 1.
+
+Source identity
+  Integration base: d77696442926b58b9b208257c222c0a30bd8ad71
+  Frozen source: 549 files
+  Source archive SHA-256:
+    e8046ec83b3eec3864143d0f5f886efc2433ab1df54464f928a14eb65c4e2361
+  Curated archive-only patch SHA-256:
+    b0434166a9b3ece7249a636a3b581c42d9747aac4b2ea51ad4e34e404fba7765
+  Every one of the 482 publishable non-documentation files in the integrated
+  checkout matches the frozen source manifest. No extra publishable code files
+  were present. Existing merged recovery reports and current documentation were
+  preserved; new documentation records this checkpoint separately.
+
+Required checks
+  Native macOS: sh scripts/check.sh — PASS.
+  Repeated after including the accepted-v1 argument parser fix — PASS.
+  Linux: sh scripts/check.sh — PASS, exit 0.
+  Each required run includes gofmt, four Linux installer Python tests, go vet,
+  the full Go race suite and builds of bench, benchd and bench-quota.
+  Linux checks used a private mount namespace and an owned /tmp bind so fixed
+  check-script output names could not replace another verification's binaries.
+  Runtime scenarios used the exact binaries built by that required check.
+
+Exact Linux executable SHA-256
+  bench:
+    6f676361d9d1c72c4fa268384d15bcac1bd695b3385ef4812183a33c416a36d8
+  benchd:
+    5d3dc1e2bdd2ca8f2ca5c95e50bc7b129b24ee42d26f4a84dafaa9f1d7a0ca05
+  bench-quota:
+    8b3879a6c2de41ea4d7d12bb207d825db6e89f00f7c9c8d06852e24985f2c1a1
+  All source and executable hashes were independently rechecked after runtime.
+
+Managed XFS/cgroup scenarios
+  mixed    — PASS, exit 0, 28 seconds
+  whole    — PASS, exit 0, 23 seconds
+  returned — PASS, exit 0, 24 seconds
+  These use real disposable XFS project quotas, cgroups, Git repositories,
+  daemon/CLI operations and the fixed quota helper.
+
+  Mixed dirty/present and missing members:
+    Complete reviewed transfer before source retirement; retain destination
+    branch progress independently of the source's original sealed vector.
+    Snapshot actual dirty/ignored surviving bytes, protect private index and
+    reflog object roots, and retain missing-checkout administration outside the
+    deletion authority. Exercise source freeze and concrete reviewed reap.
+    Preserve run history, unknown outcomes, request receipts and quarantine.
+    Refuse quota retirement while an open unlinked file still consumes usage.
+    After closing it, verify zero usage and exact retirement tombstone.
+    Exercise failure after helper retirement but before the final SQL state
+    update, then retry against the same durable approval.
+    Refuse an empty root returned after root-removal intent. Separately inspect
+    and approve its current empty-directory disposition through the local CLI,
+    then resume the original reap. Acknowledgement alone is not reap success.
+
+  Whole-root absence:
+    Preserve explicit absent-root evidence rather than inventing an empty tree.
+    Freeze/reap without reconstructing missing checkouts; retain protected
+    administrative and historical evidence and retire only actual zero usage.
+
+  Pre-freeze returned root:
+    Review a root-only returned sentinel under fresh archive authority and mark
+    its bytes unrecoverable. This does not authorize returned registered missing
+    checkouts. Freeze/reap still binds the observed root and approved entries.
+
+Native failure coverage
+  Initial root-removal intent survives a failure before unlink. Ordinary retry
+  refuses a present root even when device/inode/mode happen to match.
+  Current-empty-directory disposition binds original transfer, freeze, reap,
+  removal intent, allocation, fixed parent and current directory observation.
+  It refuses symlinks, nonempty roots, changed identity, changed authority,
+  changed parent, malformed or noncanonical approval, and mismatched digest.
+  Once a disposition attempt starts, a present path needs fresh approval;
+  exact replay may confirm absence only. It grants no lease, quota release or
+  completed-reap result. CLI tests reject socket/token flags even when empty.
+  Fixed-helper validation and retirement tests preserve ordinary allocation,
+  verification and release behavior and reject changed managed caps/evidence.
+
+Cleanup verification
+  Independent post-run inspection found each scenario's exact owned trial,
+  image, mount and cgroup paths absent, and the private /tmp bind removed.
+  Remaining host space: 10,627,170,304 bytes at that observation.
+  No installed policy, service, production tag or unrelated host cleanup changed.
+
+Limits and retained failures
+  Initial pre-unlink process-crash injection is native test coverage, not a
+  separate managed Linux kill drill. Optional legacy CLI coverage was absent.
+  External Git GC can rewrite an original quarantined HEAD reflog. Strict
+  verification then refuses replay even when private retained copies, object
+  pins, history and receipts survive. No GC-transparent replay claim is made.
+  Same-host storage/state and independently stopped source writers remain
+  required. Cross-host fencing/return quarantine, standalone laptop preparation,
+  broader collection and live suite pilot integration remain open.
+
+Recorded managed runtime output
+mixed exit=0 elapsed_seconds=28
+whole exit=0 elapsed_seconds=23
+returned exit=0 elapsed_seconds=24
+
+mixed
+PASS: daemon SIGKILL leaves setsid writer alive; explicit admin fence empties scope and reviewed history remains unknown, held and uncheckpointed
+PASS: relinquishing source remains in complete status inventory, ready lifecycle phase and no writer availability/grant
+UNCOVERED schema21-cli-refusal: no previous binary supplied
+PASS: transferred source remains in complete status inventory, ready lifecycle phase and no writer availability/grant
+PASS: complete missing-source recovery retained exact quarantine; external GC deliberately deferred until archive/reap acceptance
+PASS: fresh target advances original task refs; source retains immutable old complete seal
+PASS: actual open-unlinked source bytes retain original quota after approved root removal
+PASS: mixed dirty/index-only evidence: frozen explicit deletion, target-advanced refs, quota tombstone crash retry, returned-root fresh CLI review, terminal refusal, history/receipts and quarantined objects survive GC
+UNCOVERED: deterministic process crash precisely after initial removal intent and before first unlink remains native fault-injection coverage; runtime uses actual post-unlink return and final SQL failure
+UNCOVERED: cross-host fencing, consumer pilot, whole Phase 1 and production rollout
+
+whole
+PASS: daemon SIGKILL leaves setsid writer alive; explicit admin fence empties scope and reviewed history remains unknown, held and uncheckpointed
+PASS: fresh target advances original task refs; source retains immutable old complete seal
+PASS: whole-root absence: frozen explicit deletion, target-advanced refs, quota tombstone crash retry, returned-root fresh CLI review, terminal refusal, history/receipts and quarantined objects survive GC
+UNCOVERED: deterministic process crash precisely after initial removal intent and before first unlink remains native fault-injection coverage; runtime uses actual post-unlink return and final SQL failure
+UNCOVERED: cross-host fencing, consumer pilot, whole Phase 1 and production rollout
+
+returned
+PASS: daemon SIGKILL leaves setsid writer alive; explicit admin fence empties scope and reviewed history remains unknown, held and uncheckpointed
+PASS: fresh target advances original task refs; source retains immutable old complete seal
+PASS: root-only pre-freeze return is captured as actual unrecoverable bytes under separate archive authority; no missing-member return adopted
+PASS: pre-freeze returned retained root: frozen explicit deletion, target-advanced refs, quota tombstone crash retry, returned-root fresh CLI review, terminal refusal, history/receipts and quarantined objects survive GC
+UNCOVERED: deterministic process crash precisely after initial removal intent and before first unlink remains native fault-injection coverage; runtime uses actual post-unlink return and final SQL failure
+UNCOVERED: cross-host fencing, consumer pilot, whole Phase 1 and production rollout

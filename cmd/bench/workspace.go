@@ -30,7 +30,7 @@ func workspaceCLI(args []string, stdout, stderr io.Writer) error {
 
 func workspaceCLIContext(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	if len(args) == 0 {
-		return errors.New("usage: bench workspace <create|recover|lease|setup|run|checkpoint|release|stop|stop_admin|archive|status|host_status|plan-reap|reap|inspect-history|reconcile-history|inspect-initialization|claim-initialization|continue-initialization|inspect-transfer|begin-transfer|continue-transfer|inspect-missing-transfer|begin-missing-transfer|continue-missing-transfer> [flags] [key]; flags precede key")
+		return errors.New("usage: bench workspace <create|recover|lease|setup|run|checkpoint|release|stop|stop_admin|archive|status|host_status|plan-reap|reap|inspect-history|reconcile-history|inspect-initialization|claim-initialization|continue-initialization|inspect-transfer|begin-transfer|continue-transfer|inspect-missing-transfer|begin-missing-transfer|continue-missing-transfer|inspect-root-removal|reconcile-root-removal> [flags] [key]; flags precede key")
 	}
 	op := args[0]
 	if op == "host-status" {
@@ -42,7 +42,8 @@ func workspaceCLIContext(ctx context.Context, args []string, stdout, stderr io.W
 	repair := op == "inspect-initialization" || op == "claim-initialization" || op == "continue-initialization"
 	missingTransfer := op == "inspect-missing-transfer" || op == "begin-missing-transfer" || op == "continue-missing-transfer"
 	transfer := missingTransfer || op == "inspect-transfer" || op == "begin-transfer" || op == "continue-transfer"
-	localAdmin := repair || transfer || op == "plan-reap" || op == "reap" || op == "inspect-history" || op == "reconcile-history"
+	rootRemoval := op == "inspect-root-removal" || op == "reconcile-root-removal"
+	localAdmin := rootRemoval || repair || transfer || op == "plan-reap" || op == "reap" || op == "inspect-history" || op == "reconcile-history"
 	if !protocolv2.Known(op) && !localAdmin {
 		return fmt.Errorf("unknown workspace operation %q", op)
 	}
@@ -79,6 +80,7 @@ func workspaceCLIContext(ctx context.Context, args []string, stdout, stderr io.W
 	rerunOnce := f.String("rerun-once", "", "review uncertain once hooks for these comma-separated members")
 	target := f.String("target", "", "fresh destination key for reviewed local transfer")
 	transferID := f.String("transfer-id", "", "explicit reviewed local transfer identity")
+	dispositionID := f.String("disposition-id", "", "fresh identity for explicit current empty-directory removal")
 	if err := f.Parse(args[1:]); err != nil {
 		return err
 	}
@@ -92,6 +94,12 @@ func workspaceCLIContext(ctx context.Context, args []string, stdout, stderr io.W
 	if localAdmin {
 		allowed := map[string]bool{"state": true, "data": true, "cgroup-root": true, "mirror-timeout": true}
 		if op == "reap" || op == "reconcile-history" {
+			allowed["plan"], allowed["approve"] = true, true
+		}
+		if op == "inspect-root-removal" {
+			allowed["disposition-id"] = true
+		}
+		if op == "reconcile-root-removal" {
 			allowed["plan"], allowed["approve"] = true, true
 		}
 		if op == "inspect-initialization" {
@@ -116,6 +124,14 @@ func workspaceCLIContext(ctx context.Context, args []string, stdout, stderr io.W
 			if !allowed[name] {
 				return fmt.Errorf("flag --%s is not valid for local workspace %s", name, op)
 			}
+		}
+		if rootRemoval {
+			for _, name := range []string{"state", "data", "cgroup-root", "plan", "approve", "disposition-id"} {
+				if visited[name] && f.Lookup(name).Value.String() == "" {
+					return fmt.Errorf("flag --%s must not be empty", name)
+				}
+			}
+			return workspaceRootRemoval(ctx, store, op, key, *dispositionID, *plan, *approve, stdout)
 		}
 		if transfer {
 			for _, name := range []string{"state", "data", "cgroup-root", "plan", "approve", "target", "transfer-id"} {
@@ -143,6 +159,9 @@ func workspaceCLIContext(ctx context.Context, args []string, stdout, stderr io.W
 			return workspaceHistory(ctx, store, op, key, *plan, *approve, stdout)
 		}
 		return workspaceReap(ctx, store, op, key, *plan, *approve, stdout)
+	}
+	if visited["disposition-id"] {
+		return errors.New("root disposition flags are local administration only")
 	}
 	if visited["target"] || visited["transfer-id"] {
 		return errors.New("workspace transfer flags are local administration only")

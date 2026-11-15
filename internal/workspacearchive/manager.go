@@ -13,8 +13,8 @@ import (
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/archivepolicy"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/benchstate"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
-	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/reap"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/repository"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/statepath"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspace"
@@ -22,14 +22,16 @@ import (
 )
 
 type Manager struct {
-	State, Data  string
-	Timeout      time.Duration
-	Within       func(func(workspace.Update) error) error
-	Git          func(context.Context, string, ...string) (string, error)
-	SaveIntent   func(string, []byte) error
-	ReleaseQuota func(*model.Bench) error
-	AfterDelete  func() error
-	Busy         error
+	State, Data        string
+	Timeout            time.Duration
+	Within             func(func(workspace.Update) error) error
+	Git                func(context.Context, string, ...string) (string, error)
+	SaveIntent         func(string, []byte) error
+	ReleaseQuota       func(*model.Bench) error
+	AfterDelete        func() error
+	RetireMissingQuota func(context.Context, hoststorage.RetirementApproval) error
+	VerifyMissingQuota func(context.Context, hoststorage.RetirementApproval) error
+	Busy               error
 }
 
 var keyPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$`)
@@ -98,6 +100,9 @@ func (m Manager) checkout(ctx context.Context, tx *sql.Tx, b *model.Bench) error
 	if err := m.available(b); err != nil {
 		return err
 	}
+	if missingSource(b) {
+		return m.missingCheckout(ctx, tx, b)
+	}
 	if err := m.transferOrigin(tx, b); err != nil {
 		return err
 	}
@@ -153,7 +158,7 @@ func (m Manager) Archive(ctx context.Context, key string, grace time.Duration, c
 				if err := m.checkout(ctx, tx, b); err != nil {
 					return err
 				}
-				freeze, err := reap.NewFreeze(key, b.Path, b.Workspace.Checkpoint.Seal)
+				freeze, err := m.newArchiveFreeze(ctx, tx, b)
 				if err != nil {
 					return err
 				}
@@ -193,7 +198,7 @@ func (m Manager) Archive(ctx context.Context, key string, grace time.Duration, c
 				if err := m.checkout(ctx, tx, b); err != nil {
 					return err
 				}
-				if err := reap.FreezePreflight(b.Path, freeze.Tree); err != nil {
+				if err := freeze.preflight(b.Path); err != nil {
 					return err
 				}
 				raw, err := freeze.Bytes()
@@ -208,6 +213,11 @@ func (m Manager) Archive(ctx context.Context, key string, grace time.Duration, c
 				}
 				rows[key] = candidate
 			case "archived", "reaping", "reaped":
+				if missingSource(b) {
+					if err := m.verifyMissingArchive(ctx, tx, b); err != nil {
+						return err
+					}
+				}
 			default:
 				return errors.New("aggregate initialization is not complete")
 			}
@@ -234,14 +244,17 @@ func (m Manager) Archive(ctx context.Context, key string, grace time.Duration, c
 			if err := m.checkout(ctx, tx, b); err != nil {
 				return err
 			}
-			freeze, err := reap.ReadFreeze(m.freezeJournal(key), key, b.Path, b.Workspace.Checkpoint.Seal, b.Workspace.Archive.FreezeDigest)
+			freeze, err := m.readArchiveFreeze(b)
 			if err != nil {
 				return err
 			}
-			if err := reap.Freeze(b.Path, freeze.Tree); err != nil {
+			if err := m.applyArchiveFreeze(ctx, b, freeze); err != nil {
 				return err
 			}
 			if err := m.checkout(ctx, tx, b); err != nil {
+				return err
+			}
+			if err := m.completeArchiveRetention(ctx, freeze); err != nil {
 				return err
 			}
 			if b.Workspace.Archive.FrozenAt == "" {

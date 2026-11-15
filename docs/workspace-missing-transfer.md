@@ -98,7 +98,9 @@ The verified scope and retained coverage limits are recorded in the
 [verification evidence](workspace-missing-transfer-output.txt). Retained
 missing-source registrations, history and shared evidence must not be removed
 through ordinary cleanup.
-Source archive/reap needs its own absent-member-aware approval and quota
-retirement path. Cross-host takeover additionally needs independently verified
+Separate reviewed [source archive/reap](workspace-missing-archive.md) now records
+absent-member-aware approval and verifies actual quota retirement. It does not
+collect the protected registrations, history or shared evidence. Cross-host
+takeover additionally needs independently verified
 infrastructure fencing and return quarantine outside a restorable workspace
 database. No suite consumer acceptance or completion of Phase 1 is claimed.

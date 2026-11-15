@@ -27,13 +27,17 @@ func run(args []string) error {
 		return fmt.Errorf("policy override requires a direct root caller")
 	}
 	migrating := f.NArg() == 1 && f.Arg(0) == "migrate-inodes"
+	retirement := f.NArg() == 3 && (f.Arg(0) == "retire-approved" || f.Arg(0) == "verify-retired" || f.Arg(0) == "verify-retirement-authority") && f.Arg(1) == "bench"
 	verifying := f.NArg() == 3 && f.Arg(0) == "verify" && f.Arg(1) == "bench"
-	if !migrating && !verifying && ((f.NArg() != 3 && f.NArg() != 4) || f.Arg(0) != "apply") && (f.NArg() != 4 || f.Arg(0) != "release" || f.Arg(1) != "bench") {
-		return fmt.Errorf("usage: bench-quota [--policy ROOT_POLICY] apply <bench|shared> KEY [BENCH_BYTES] | verify bench KEY | release bench KEY PROJECT_ID | migrate-inodes")
+	if !migrating && !verifying && !retirement && ((f.NArg() != 3 && f.NArg() != 4) || f.Arg(0) != "apply") && (f.NArg() != 4 || f.Arg(0) != "release" || f.Arg(1) != "bench") {
+		return fmt.Errorf("usage: bench-quota [--policy ROOT_POLICY] apply <bench|shared> KEY [BENCH_BYTES] | verify bench KEY | release bench KEY PROJECT_ID | retire-approved bench KEY | verify-retired bench KEY | verify-retirement-authority bench KEY | migrate-inodes")
 	}
 	p, e := hoststorage.Load(*policy)
 	if e != nil {
 		return e
+	}
+	if retirement {
+		return runRetirement(p, f.Arg(0), f.Arg(2), os.Stdin, os.Stdout)
 	}
 	if verifying {
 		identity, err := p.VerifyStorage(context.Background(), f.Arg(2))

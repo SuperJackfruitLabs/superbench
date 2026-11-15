@@ -15,6 +15,16 @@ func (s Store) workspaceArchiver() workspacearchive.Manager {
 		ReleaseQuota: s.releaseQuota, AfterDelete: s.reapAfterDelete, Busy: ErrBusy}
 }
 
+// WorkspaceArchiveAdministration returns local administration with its managed
+// Git context. Callers must use that context for the returned manager.
+func (s Store) WorkspaceArchiveAdministration(ctx context.Context) (workspacearchive.Manager, context.Context, error) {
+	s, ctx, err := s.workspaceControls(ctx)
+	if err != nil {
+		return workspacearchive.Manager{}, ctx, err
+	}
+	return s.workspaceArchiver(), ctx, nil
+}
+
 // ArchiveWorkspaceContext retains a whole-vector read-only intent before
 // changing checkout permissions. The optional check gates only a new intent.
 func (s Store) ArchiveWorkspaceContext(ctx context.Context, key string, grace time.Duration, check func(context.Context, *Bench) error) (*Bench, error) {

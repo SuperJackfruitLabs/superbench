@@ -20,6 +20,11 @@ import (
 // VerifyStorage inspects only an already allocated logical bench. In particular
 // it never calls Apply, creates a lock/ledger/anchor, or touches the bench path.
 func (p Policy) VerifyStorage(ctx context.Context, key string) (StorageIdentity, error) {
+	return p.verifyStorage(ctx, key, false, nil)
+}
+
+// locked is private: callers must already hold the existing ledger lock.
+func (p Policy) verifyStorage(ctx context.Context, key string, locked bool, original *Assignment) (StorageIdentity, error) {
 	var zero StorageIdentity
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
@@ -62,15 +67,17 @@ func (p Policy) VerifyStorage(ctx context.Context, key string) (StorageIdentity,
 	if uint64(parent.Sys().(*syscall.Stat_t).Dev) == device {
 		return zero, errors.New("managed storage is not a dedicated mount")
 	}
-	lock, err := openStorageFile(filepath.Join(p.Ledger, "lock"))
-	if err != nil {
-		return zero, err
+	if !locked {
+		lock, e := openStorageFile(filepath.Join(p.Ledger, "lock"))
+		if e != nil {
+			return zero, e
+		}
+		defer lock.Close()
+		if e = syscall.Flock(int(lock.Fd()), syscall.LOCK_SH|syscall.LOCK_NB); e != nil {
+			return zero, errors.New("quota ledger is busy")
+		}
+		defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
 	}
-	defer lock.Close()
-	if err = syscall.Flock(int(lock.Fd()), syscall.LOCK_SH|syscall.LOCK_NB); err != nil {
-		return zero, errors.New("quota ledger is busy")
-	}
-	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
 	raw, err := readStorageFile(filepath.Join(p.Ledger, "assignments.json"), 16<<20)
 	if err != nil {
 		return zero, err
@@ -79,7 +86,13 @@ func (p Policy) VerifyStorage(ctx context.Context, key string) (StorageIdentity,
 	if err != nil {
 		return zero, err
 	}
-	a, ledgerDigest, err := p.verifyStorageRecords(key, raw, anchor)
+	var a Assignment
+	var ledgerDigest string
+	if original == nil {
+		a, ledgerDigest, err = p.verifyStorageRecords(key, raw, anchor)
+	} else {
+		a, ledgerDigest, _, err = p.retirementRecords(key, raw, anchor, *original)
+	}
 	if err != nil {
 		return zero, err
 	}
