@@ -58,6 +58,19 @@ func TestManagedWorkspaceAggregateQuota(t *testing.T) {
 	if err = store.ConfigureHost(bench.HostConfig{DataRoot: data, QuotaHelper: helper, PolicyOverride: policyPath, MinDataFreeBytes: 8 << 20, MinStateFreeBytes: 1 << 20}); err != nil {
 		t.Fatal(err)
 	}
+	type allocationLedger struct {
+		Next        uint32
+		Assignments map[string]hoststorage.Assignment
+	}
+	ledgerPath := filepath.Join(ledger, "assignments.json")
+	var prior allocationLedger
+	if raw, readErr := os.ReadFile(ledgerPath); readErr == nil {
+		if err := json.Unmarshal(raw, &prior); err != nil {
+			t.Fatal(err)
+		}
+	} else if !os.IsNotExist(readErr) {
+		t.Fatal(readErr)
+	}
 	spec := workspace.Spec{Key: "card", CheckpointRepository: "a", QuotaBytes: total}
 	for _, name := range []string{"a", "b"} {
 		remote := filepath.Join(trial, "remote-"+name)
@@ -84,11 +97,6 @@ func TestManagedWorkspaceAggregateQuota(t *testing.T) {
 	if staged.ProjectID == 0 || staged.QuotaBytes != total || staged.RequestedQuotaBytes != total || staged.QuotaInodes != policy.BenchInodes {
 		t.Fatal("aggregate allocation differs from one requested total")
 	}
-	type allocationLedger struct {
-		Next        uint32
-		Assignments map[string]hoststorage.Assignment
-	}
-	ledgerPath := filepath.Join(ledger, "assignments.json")
 	before, err := os.ReadFile(ledgerPath)
 	if err != nil {
 		t.Fatal(err)
@@ -97,8 +105,19 @@ func TestManagedWorkspaceAggregateQuota(t *testing.T) {
 	if err = json.Unmarshal(before, &assignments); err != nil {
 		t.Fatal(err)
 	}
-	if len(assignments.Assignments) != 3 {
-		t.Fatal("expected exactly one aggregate and two shared allocations")
+	expected := len(prior.Assignments)
+	for name, assignment := range prior.Assignments {
+		if !reflect.DeepEqual(assignments.Assignments[name], assignment) {
+			t.Fatal("staging changed a pre-existing allocation", name)
+		}
+	}
+	for _, name := range []string{"store", "mirrors", "bench:card"} {
+		if _, exists := prior.Assignments[name]; !exists {
+			expected++
+		}
+	}
+	if len(assignments.Assignments) != expected {
+		t.Fatal("expected only one aggregate and any missing shared allocations")
 	}
 	for _, name := range []string{"store", "mirrors", "bench:card"} {
 		if _, ok := assignments.Assignments[name]; !ok {
@@ -132,10 +151,10 @@ func TestManagedWorkspaceAggregateQuota(t *testing.T) {
 		cmd := exec.CommandContext(checkCtx, old, "status", "--state", state, "--data", data)
 		out, oldErr := cmd.CombinedOutput()
 		done()
-		if oldErr == nil || !strings.Contains(string(out), "unsupported state schema 15 (expected 13)") {
-			t.Fatal("schema13 CLI did not refuse aggregate schema15", oldErr, string(out))
+		if oldErr == nil || !strings.Contains(string(out), "unsupported state schema 16 (expected 13)") {
+			t.Fatal("schema13 CLI did not refuse aggregate schema16", oldErr, string(out))
 		}
-		t.Log("PASS: schema13 CLI refuses schema15 before interpreting aggregate metadata")
+		t.Log("PASS: schema13 CLI refuses schema16 before interpreting aggregate metadata")
 	}
 	for round := 0; round < 2; round++ {
 		first := staged.Workspace.Members[round].Path

@@ -75,7 +75,7 @@ func validatePreparation(b *model.Bench) error {
 	if w.Phase == "materializing" && len(w.Preparation) != 0 {
 		return invalid
 	}
-	if (w.Phase == "prepared" || w.Phase == "ready") && len(w.Preparation) != len(w.Members) {
+	if w.Phase == "prepared" && len(w.Preparation) != len(w.Members) {
 		return invalid
 	}
 	known := map[string]bool{}
@@ -202,6 +202,18 @@ func ValidateSchema14(b *model.Bench) error {
 	l := b.Lease
 	if w.Phase != "materializing" && w.Phase != "initializing" || w.Pending != nil || w.Checkpoint != nil || w.Stage != nil || len(w.Preparation) != 0 || l == nil || l.Execution != nil || len(l.RetainedRuns) != 0 || l.StopRequested || !identity.MatchString(l.Continuation) {
 		return errors.New("aggregate does not match historical staging schema")
+	}
+	return nil
+}
+
+// ValidateSchema15 preserves the former full-proof ready representation during
+// migration, without allowing schema16 acquisition states in an older schema.
+func ValidateSchema15(b *model.Bench) error {
+	if err := Validate(b); err != nil {
+		return err
+	}
+	if b.Workspace.Phase == "ready" && len(b.Workspace.Preparation) != len(b.Workspace.Members) {
+		return errors.New("aggregate does not match historical lifecycle schema")
 	}
 	return nil
 }

@@ -57,7 +57,10 @@ func TestGenesisTransitionsRequirePendingWholeVectorAndReleaseOnReady(t *testing
 		b.Workspace.Phase = "ready"
 		b.Lease = nil
 	})
-	changeValid(t, rows, func(b *model.Bench) { b.Lease = &model.Lease{Holder: "writer", Token: strings.Repeat("9", 32)} })
+	changeValid(t, rows, func(b *model.Bench) {
+		b.Lease = &model.Lease{Holder: "writer", Token: strings.Repeat("9", 32), Continuation: strings.Repeat("8", 32)}
+		b.Workspace.Preparation = nil
+	})
 }
 func TestPendingCannotBeReplacedOrForgottenAndSnapshotsAreDeep(t *testing.T) {
 	for _, kind := range []string{"replace", "clear", "mismatched-complete", "direct-complete", "preparation"} {
@@ -146,7 +149,7 @@ func TestMigration14PreservesStagedGroupAndRejectsNewLifecycleData(t *testing.T)
 		if err := migrateForTest(db, t.TempDir(), nil); err != nil {
 			t.Fatal(err)
 		}
-		assertVersion(t, db, 15)
+		assertVersion(t, db, 16)
 	}
 	b := preparedAggregate()
 	db := oldDatabase(t, 14, b)

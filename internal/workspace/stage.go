@@ -305,5 +305,12 @@ func (m Manager) Stage(ctx context.Context, creationID string, spec Spec) (*mode
 		committed = privateRecord(finished)
 		return nil
 	})
-	return privateRecord(committed), err
+	result := privateRecord(committed)
+	// Creation identity authorizes its initialization retry, not a later writer
+	// grant. Completed-creation replay exposes inventory without capabilities.
+	if result != nil && result.Workspace.Phase == "ready" && result.Lease != nil {
+		result.Lease.Token = ""
+		result.Lease.Continuation = ""
+	}
+	return result, err
 }

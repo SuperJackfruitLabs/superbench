@@ -45,7 +45,7 @@ A core checkpoint does not constitute completion of a phase or the product.
 | Phase | Required outcome | Current evidence |
 |---|---|---|
 | 0 | Host disk alert, reviewed cleanup dry-run, code-stage branch/checkpoint rules | Not implemented by this repository; inspect estate and board settings before changes |
-| 1 | Standalone CLI and host service; durable state/leases; checkpoints/recovery; quotas, shared mirrors/stores; verified archive/reap | CLI, journals, SQLite, fenced Linux execution and host storage tested; local service API added; installer and reviewed archive/reap verified; reviewed log/history collection and approved automatic log retention implemented; explicit/automatic acquisition setup hooks implemented; creation/recovery warm-up verified on Linux; laptop preparation, multi-repository layout, cache/journal collection, configuration and integration pending |
+| 1 | Standalone CLI and host service; durable state/leases; checkpoints/recovery; quotas, shared mirrors/stores; verified archive/reap | CLI, journals, SQLite, fenced Linux execution and host storage tested; local service API added; installer and reviewed archive/reap verified; reviewed log/history collection and approved automatic log retention implemented; explicit/automatic acquisition setup hooks implemented; creation/recovery warm-up verified on Linux; aggregate creation/acquisition/execution/checkpoint/release implemented internally; laptop preparation, aggregate recovery/archive and public API, broader collection and integration pending |
 | 2 | Suite adapters, card panel, locality scoring, witness events; read-only web, file/diff/log/timeline views, terminal attach and MCP | Pending; charter/treaty contracts precede consumers; visual mockups before UI |
 | 3 | Remote editor launch/browser IDE; second-host recovery drill; per-bench isolation; Salaam layout and execution-host integration | Pending |
 
@@ -212,6 +212,14 @@ execution/stop/retry ordering and remaining lifecycle scope.
 Required native/Linux checks and live XFS/cgroup warm initialization passed;
 see [verification evidence](aggregate-preparation-output.txt).
 
+Ordinary aggregate acquisition and execution now refresh registered mirrors,
+revoke previous acquisition proofs, prepare all members and run a selected member
+or root payload under one fenced owner. Complete-vector checkpoint and release
+retain failed stage evidence and atomically release history with ownership.
+Schema 16 permits stopped repair release without treating historical preparation
+as current. See [aggregate execution](aggregate-execution.md) for the internal
+API, ordering and remaining public integration work.
+
 ## Remaining retention work
 
 Reviewed log collection and history are implemented in [retention.md](retention.md),
@@ -233,7 +241,7 @@ Do not implement collection by simply deleting completed receipt rows.
 The original proposal remains the acceptance source; the checkpoints above do
 not replace its scope. Before calling Phase 1 complete, explicitly verify the
 standalone laptop preparation path (supervised hooks currently require Linux),
-multiple repositories within a bench, automatic completion/archive
+the complete multi-repository CLI/service lifecycle, automatic completion/archive
 lifecycle and broader collection, and the
 AgentPod acquisition/prompt/checkpoint pilot on an opt-in board. The review of
 charter/treaty boundaries must precede suite consumers. Source-level progress or

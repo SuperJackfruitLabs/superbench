@@ -161,7 +161,7 @@ func executionTransition(old, next *model.Execution, retained []string) bool {
 func leaseTransition(old *model.Lease, b *model.Bench) bool {
 	next := b.Lease
 	if old == nil {
-		return next == nil || b.Workspace.Phase == "ready" && (next.Execution == nil || next.Execution.Phase == "starting") && len(next.RetainedRuns) == 0
+		return next == nil || b.Workspace.Phase == "ready" && next.Execution == nil && len(next.RetainedRuns) == 0 && !next.StopRequested && next.Continuation != "" && b.Workspace.Stage == nil && b.Workspace.Pending == nil && len(b.Workspace.Preparation) == 0
 	}
 	if next == nil {
 		return b.Workspace.Phase == "ready" && b.Workspace.Checkpoint != nil && b.Workspace.Pending == nil && (old.Execution == nil || old.Execution.Phase == "stopped")
@@ -182,8 +182,14 @@ func preparationTransition(old identityRecord, b *model.Bench) bool {
 	if slices.Equal(old.preparation, b.Workspace.Preparation) {
 		return true
 	}
-	if old.lease == nil || b.Lease == nil || old.pending != nil || b.Workspace.Pending != nil {
+	if old.pending != nil || b.Workspace.Pending != nil {
 		return false
+	}
+	if old.lease == nil {
+		return old.phase == "ready" && b.Workspace.Phase == "ready" && b.Lease != nil && len(b.Workspace.Preparation) == 0
+	}
+	if b.Lease == nil {
+		return b.Workspace.Phase == "ready" && len(b.Workspace.Preparation) == 0 && (old.lease.Execution == nil || old.lease.Execution.Phase == "stopped")
 	}
 	if old.lease.Execution != nil && old.lease.Execution.Phase != "stopped" || b.Lease.Execution != nil && b.Lease.Execution.Phase != "stopped" {
 		return false

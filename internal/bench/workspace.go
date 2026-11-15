@@ -69,7 +69,8 @@ func (s Store) workspacePreparation() workspaceprep.Manager {
 func (s Store) workspaceLifecycle() workspace.Lifecycle {
 	return workspace.Lifecycle{State: s.State, Data: s.Data, Timeout: s.MirrorTimeout,
 		Within: s.workspaceWithin, Git: s.workspaceGit, Stopped: s.ensureStopped,
-		Prepared: workspaceprep.CheckPrepared, Released: workspaceprep.ReleaseHistory}
+		Prepared: workspaceprep.CheckPrepared, Released: workspaceprep.ReleaseHistory,
+		Admit: s.admit, Allocate: s.allocateWorkspace}
 }
 func (s Store) workspaceControls(ctx context.Context) (Store, context.Context, error) {
 	if err := ctx.Err(); err != nil {
@@ -103,12 +104,16 @@ func (s Store) InitializeWorkspaceContext(ctx context.Context, creationID string
 		return b, err
 	}
 	if b.Workspace.Pending == nil {
-		b, err = s.workspacePreparation().Prepare(ctx, b.Key, b.Lease.Token, "", false)
+		b, err = s.workspacePreparation().PrepareAcquired(ctx, b, "", false)
 		if err != nil {
 			return b, err
 		}
 	}
-	return s.workspaceLifecycle().FinishInitialization(ctx, b.Key, b.Lease.Token)
+	finished, err := s.workspaceLifecycle().FinishInitialization(ctx, b.Key, b.Lease.Token)
+	if finished == nil {
+		return b, err
+	}
+	return finished, err
 }
 func (s Store) CheckpointWorkspaceContext(ctx context.Context, key, token string) (*Bench, error) {
 	s, ctx, err := s.workspaceControls(ctx)
@@ -122,4 +127,36 @@ func (s Store) StopWorkspace(key, token string, admin bool) (*Bench, error) {
 		return nil, err
 	}
 	return s.workspacePreparation().Stop(key, token, admin)
+}
+
+// AcquireWorkspaceContext refreshes registered mirrors and prepares every member
+// under one new owner. Preparation failure retains that owner for explicit retry.
+func (s Store) AcquireWorkspaceContext(ctx context.Context, key, holder string) (*Bench, error) {
+	s, ctx, err := s.workspaceControls(ctx)
+	if err != nil {
+		return nil, err
+	}
+	b, err := s.workspaceLifecycle().Acquire(ctx, key, holder)
+	if err != nil {
+		return b, err
+	}
+	return s.workspacePreparation().PrepareAcquired(ctx, b, "", false)
+}
+
+// RunWorkspaceContext executes in a registered member, or the aggregate root
+// for an empty selector. The stopped owner remains held for checkpoint/release.
+func (s Store) RunWorkspaceContext(ctx context.Context, key, token, selector string, args []string, offline bool) (*workspaceprep.RunResult, error) {
+	s, ctx, err := s.workspaceControls(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return s.workspacePreparation().Run(ctx, key, token, selector, args, offline)
+}
+
+func (s Store) ReleaseWorkspaceContext(ctx context.Context, key, token string) (*Bench, error) {
+	s, ctx, err := s.workspaceControls(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return s.workspaceLifecycle().Release(ctx, key, token)
 }

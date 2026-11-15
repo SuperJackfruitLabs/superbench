@@ -1,0 +1,87 @@
+Aggregate operational lifecycle verification — 2026-11-15
+
+Baseline: merged aggregate initialization checkpoint 20f917e13cfb6fe231a37277f5aecc8192425f39.
+Reviewed source archive: superbench-aggregate-execution-reviewed-source.tar.gz
+SHA256: 4ecfd685ed29bbf686189aade3cde0e4e7c5b72e1189965d73bb4afb16bcb47a
+The destination archive hash was checked before extraction. Source and tests
+were frozen; every archived file matched the working tree after verification.
+This evidence file was added afterward without changing tested source.
+
+Native: Go 1.26.4 darwin/arm64
+  sh scripts/check.sh — exit 0
+  Four installer tests, formatting, vet, all race tests and three builds passed.
+  workspaceprep race suite: 117.065s.
+  Log: /private/tmp/superbench-aggregate-execution-reviewed-native-check.log
+
+Approved disposable Linux verification:
+  Source: /var/tmp/superbench-verification/aggregate-execution-reviewed-source-20261115
+  sh scripts/check.sh — exit 0
+  Four installer tests, formatting, vet, all race tests and three builds passed.
+  workspaceprep race suite: 49.883s.
+  Log: /var/tmp/superbench-verification/aggregate-execution-reviewed-linux-check.log
+  Built CLI SHA256:
+    a6f6c37ec94148310e46c4776c7ad87153ac5ecf37f5ce0735a7c1e4e0194b4a
+
+Disposable 512MiB loop-XFS and owned cgroup drill — exit 0:
+  TestManagedWorkspaceExecutionLifecycle (7.40s):
+    Two operational acquisitions preserve one allocation and fresh ownership.
+    Once receipts persist; each hooks rerun on each acquisition. A changed
+    member configuration invalidates only its once receipt on the next stage.
+    Member and aggregate-root payload directories are exercised.
+    A detached setsid descendant is fenced before handoff and cannot write later.
+    A payload may change and commit its configuration, then checkpoint/release.
+    Release refuses the changed vector before a new complete checkpoint.
+    A failed root payload retains its sealed outcome and owner. Explicit stop
+    revokes continuation; a subsequent payload refuses. Checkpoint/release then
+    releases all eight owned stage histories, including the failed payload.
+  TestManagedWorkspaceAggregateQuota (0.90s):
+    One 32MiB/4096-inode project covers both members. In both write orders,
+    the first member writes 20,971,520 bytes and the second hits the shared cap
+    after 12,517,376 bytes. Retry preserves the exact ledger. Pre-existing
+    assignments remain unchanged and staging adds only its required allocation.
+    A retained schema-13 CLI refuses schema 16.
+  TestManagedWorkspacePreparationLifecycle (3.04s):
+    Second-member failure retains initialization ownership and first-member
+    proof; its detached descendant is already fenced. Retry skips the completed
+    member, reruns the failed member, confirms the complete remote vector and
+    releases all three stage histories before readiness. Replay is stable.
+  The wrapper cleaned its owned mount, cgroups and temporary trial directory.
+  Log: /var/tmp/superbench-verification/aggregate-execution-reviewed-managed-check.log
+
+Git control regression drill — exit 0; all eight groups passed:
+  Old CLI reproduces detached client-hook writers after release.
+  Fixed control checkpoint/release suppresses client hooks and unrelated tags.
+  Explicit payload Git still runs hooks, with descendants fenced in its cgroup.
+  Server-side rejection preserves the same held owner until explicit retry.
+  Old CLI reproduces the external clean-filter writer escape.
+  Managed Git fences that filter while preserving tracked bytes/configuration.
+  SIGKILL leaves a durable schema-16 control intent; read-only status does not
+  fence, old schema-12 CLI refuses, and the next mutation recovers before handoff.
+  Warm creation suppresses post-checkout hooks without changing configuration.
+  Log: /var/tmp/superbench-verification/aggregate-execution-reviewed-git-control-check.log
+
+Additional native/Linux race coverage:
+  Existing-mirror refresh preserves dirty/unpushed local work; transport,
+  identity, quota and final-SQL failures grant no new owner.
+  Clean whole-vector and independent remote confirmation gate ordinary release.
+  History release rolls back with a failed ownership transaction.
+  Valid schema-15 state migrates unchanged; active old supervisors block upgrade.
+  Preparation verifies current owned sealed setup evidence before payload launch.
+  Payload history cannot become setup proof; unsealed prior outcomes block reuse.
+  Cancellation revokes continuation before API return, including cached/final-save
+  paths and cancellation between committed grant and preparation entry.
+  Empty/wrong tokens disclose no private preparation record. Final refreshes
+  cannot disclose a later holder, and completed creation replay redacts later
+  ownership capabilities without changing the actual lease.
+
+Review findings fixed before the reviewed archive:
+  Combined quota fixture initially assumed an empty ledger despite another test
+  legitimately allocating a bench first; it now verifies the exact delta and
+  preserves every prior assignment.
+  Cancellation reconciliation moved to owned public boundaries, including the
+  committed-grant handoff; private result refresh and creation replay were guarded.
+
+Scope: internal aggregate create/acquire/setup/run/checkpoint/stop/release only.
+No installed service or production data was changed. Public v2 responses/CLI,
+fresh-workspace recovery, aggregate archive/reap, native supervised laptop setup,
+broader collection and the opt-in board pilot remain to be implemented/verified.
