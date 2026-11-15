@@ -228,7 +228,9 @@ func validResponseResult(response Response, request Request) bool {
 	if request.Key != "" && w.Key != request.Key {
 		return false
 	}
-	if request.LeaseToken != "" && request.Holder != "" && w.Lease != nil && w.Lease.Holder != request.Holder {
+	// A known holder binds newly returned grants as well as token reuse.
+	// This observable identity check does not infer private acquisition authority.
+	if request.Holder != "" && w.Lease != nil && w.Lease.Holder != request.Holder {
 		return false
 	}
 	if g := mutation.Grant; g != nil {
