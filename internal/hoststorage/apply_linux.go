@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hostlayout"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -103,7 +104,7 @@ func (p Policy) ApplyRequested(kind, key string, requested uint64) (Assignment, 
 	volumeID := strings.ToLower(fields[0])
 	// These parent directories cannot be renamed by the worker. Existing children
 	// are never reassigned to another project or traversed recursively on retry.
-	if e := os.MkdirAll(filepath.Join(p.Root, "benches"), 0755); e != nil {
+	if e := hostlayout.PrepareBenches(p.Root); e != nil {
 		return zero, e
 	}
 	if e := rootOwnedDirectory(filepath.Join(p.Root, "benches"), false); e != nil {
