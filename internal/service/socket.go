@@ -17,6 +17,7 @@ type peerConn struct {
 	uid    uint32
 	slot   chan struct{}
 	normal chan struct{}
+	reads  chan struct{}
 	mu     sync.Mutex
 	closed bool
 }
@@ -25,7 +26,7 @@ func (c *peerConn) Close() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	// Keep the reservation until the underlying socket has actually closed.
-	// Otherwise a suspended Close could admit a 73rd live private connection.
+	// Otherwise a suspended Close could admit a connection beyond the configured ceiling.
 	err := c.Conn.Close()
 	if !c.closed {
 		c.closed = true
@@ -38,6 +39,7 @@ type peerListener struct {
 	net.Listener
 	slots  chan struct{}
 	normal chan struct{}
+	reads  chan struct{}
 }
 
 func (l peerListener) Accept() (net.Conn, error) {
@@ -77,7 +79,7 @@ func (l peerListener) Accept() (net.Conn, error) {
 			release()
 			return nil, peerErr
 		}
-		return &peerConn{Conn: c, uid: uid, slot: l.slots, normal: l.normal}, nil
+		return &peerConn{Conn: c, uid: uid, slot: l.slots, normal: l.normal, reads: l.reads}, nil
 	}
 }
 func connContext(ctx context.Context, c net.Conn) context.Context {
@@ -144,26 +146,33 @@ func listenMode(path, state string, private bool) (net.Listener, *os.File, error
 		return fail(e)
 	}
 	if private {
-		return peerListener{Listener: base, slots: make(chan struct{}, 8), normal: make(chan struct{}, 64)}, lock, nil
+		return peerListener{Listener: base, slots: make(chan struct{}, 8), normal: make(chan struct{}, 64), reads: make(chan struct{}, 2)}, lock, nil
 	}
 	return peerListener{Listener: base, slots: make(chan struct{}, 64)}, lock, nil
 }
 
-func (c *peerConn) promote() error {
+func (c *peerConn) promote() error { return c.promoteTo(c.normal) }
+func (c *peerConn) promoteRead() error {
+	if c.reads == nil {
+		return errors.New("receipt read admission unavailable")
+	}
+	return c.promoteTo(c.reads)
+}
+func (c *peerConn) promoteTo(destination chan struct{}) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.closed {
 		return net.ErrClosed
 	}
-	if c.normal == nil || c.slot == c.normal {
+	if destination == nil || c.slot == destination {
 		return nil
 	}
 	select {
-	case c.normal <- struct{}{}:
+	case destination <- struct{}{}:
 		<-c.slot
-		c.slot = c.normal
+		c.slot = destination
 		return nil
 	default:
-		return errors.New("normal connection limit reached")
+		return errors.New("connection class limit reached")
 	}
 }

@@ -27,15 +27,17 @@ type Config struct {
 	ArchiveInterval    time.Duration
 }
 type Server struct {
-	proposedCancellation bool
-	cancelWake           chan struct{}
-	config               Config
-	ctx                  context.Context
-	receipts             *receipts
-	slots                chan struct{}
-	handlers             sync.WaitGroup
-	admission            sync.Mutex
-	closing              bool
+	proposedCancellation  bool
+	proposedReceiptLookup bool
+	receiptSlots          chan struct{}
+	cancelWake            chan struct{}
+	config                Config
+	ctx                   context.Context
+	receipts              *receipts
+	slots                 chan struct{}
+	handlers              sync.WaitGroup
+	admission             sync.Mutex
+	closing               bool
 }
 
 func Serve(ctx context.Context, c Config) error { return serve(ctx, c, false) }
@@ -82,7 +84,7 @@ func serve(ctx context.Context, c Config, proposed bool) error {
 	defer r.Close()
 	lifetime, cancel := context.WithCancel(ctx)
 	defer cancel()
-	s := &Server{config: c, ctx: lifetime, receipts: r, slots: make(chan struct{}, c.MaxActive), proposedCancellation: proposed, cancelWake: make(chan struct{}, 1)}
+	s := &Server{config: c, ctx: lifetime, receipts: r, slots: make(chan struct{}, c.MaxActive), proposedCancellation: proposed, proposedReceiptLookup: proposed, receiptSlots: make(chan struct{}, 2), cancelWake: make(chan struct{}, 1)}
 	operationDone := make(chan struct{})
 	if proposed {
 		go func() {
@@ -142,7 +144,7 @@ func serve(ctx context.Context, c Config, proposed bool) error {
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if s.proposedCancellation {
+	if s.proposedCancellation || s.proposedReceiptLookup {
 		r.Close = true
 		w.Header().Set("Connection", "close")
 	}
