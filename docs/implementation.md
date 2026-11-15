@@ -168,6 +168,22 @@ PRs describe their publication history.
   tests and all three builds. Two-repository Git tests cover source selection,
   a failing second source, total-budget conflicts and no checkout effects.
 
+- Aggregate creation storage: the engine can keep its host lock across several
+  sequential durable transactions. Each successful commit survives a later
+  callback or persistence failure; managed Git recovery still runs under the
+  lock before opening state. Record validation and schema-13 migration move to
+  a dedicated adapter with the existing downgrade and active-writer guards.
+  A gated materializer creates only the pinned member vector and preserves
+  completed members when a later checkout fails. Retrying uses the original
+  commits even if remote tips have moved. It refuses dirty, conflicting,
+  symlinked or unfamiliar paths and bounds the operation's control context.
+  The gate still needs the durable aggregate lifecycle adapter: these internal
+  components do not yet expose a multi-repository CLI or service operation.
+  macOS and Linux required checks and all eight live Git control/cgroup
+  regression groups passed. Independent review confirmed branch namespace and
+  occupied-worktree conflicts refuse before the first checkout; see
+  [verification evidence](workspace-state-output.txt).
+
 ## Remaining retention work
 
 Reviewed log collection and history are implemented in [retention.md](retention.md),
