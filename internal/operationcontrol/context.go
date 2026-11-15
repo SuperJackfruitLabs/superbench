@@ -30,12 +30,12 @@ func AdmitContext(ctx context.Context, tx *sql.Tx, key, benchID string) error {
 	}
 	old, err := Get(tx, i.Target)
 	if err == nil && old.Phase == "bound" {
-		if old.Intent != i || old.BenchID != benchID {
+		if old.Intent != i || old.BenchID != benchID || old.Control != ControlFromContext(ctx) {
 			return ErrAuthority
 		}
 		return nil
 	}
-	return Begin(tx, i, benchID)
+	return BeginWithControl(tx, i, benchID, ControlFromContext(ctx))
 }
 
 // BindContext must share the transaction that saves or independently validates
@@ -52,6 +52,9 @@ func BindContext(ctx context.Context, tx *sql.Tx, b *model.Bench) error {
 	if err != nil {
 		return err
 	}
+	if old.Control != ControlFromContext(ctx) {
+		return ErrAuthority
+	}
 	if old.Phase == "bound" {
 		return Require(tx, i, b)
 	}
@@ -64,6 +67,13 @@ func GuardContext(ctx context.Context, r Reader, b *model.Bench) error {
 	}
 	if err := Check(ctx); err != nil {
 		return err
+	}
+	old, err := Get(r, i.Target)
+	if err != nil {
+		return err
+	}
+	if old.Control != ControlFromContext(ctx) {
+		return ErrAuthority
 	}
 	return Require(r, i, b)
 }

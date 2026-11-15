@@ -58,6 +58,7 @@ func (i Intent) Valid() bool {
 }
 
 type Binding struct {
+	Control                                             Control
 	Intent                                              Intent
 	BenchID, Holder, TokenHash, ContinuationHash, Phase string
 }
@@ -69,13 +70,14 @@ func Schema(tx *sql.Tx) error {
  key TEXT NOT NULL,operation TEXT NOT NULL,epoch TEXT NOT NULL,bench_id TEXT NOT NULL,
  holder TEXT NOT NULL,token_hash TEXT NOT NULL,continuation_hash TEXT NOT NULL,
  phase TEXT NOT NULL CHECK(phase IN ('admitted','bound','stopped','finished')),
+ control_state TEXT NOT NULL DEFAULT '',control_root TEXT NOT NULL DEFAULT '',control_host TEXT NOT NULL DEFAULT '',control_boot TEXT NOT NULL DEFAULT '',
  UNIQUE(owner,request_id));
  CREATE UNIQUE INDEX IF NOT EXISTS workspace_operation_active ON workspace_operations(key) WHERE phase IN ('admitted','bound')`)
 	return err
 }
 func hash(s string) string { v := sha256.Sum256([]byte(s)); return hex.EncodeToString(v[:]) }
 func validBinding(b Binding) bool {
-	if !b.Intent.Valid() {
+	if !b.Intent.Valid() || !b.Control.Valid() {
 		return false
 	}
 	if b.BenchID != "" && !hex32.MatchString(b.BenchID) {
@@ -91,11 +93,19 @@ func validBinding(b Binding) bool {
 	}
 	return false
 }
-func scan(row *sql.Row) (Binding, error) {
+
+type scanner interface{ Scan(...any) error }
+
+func scan(row scanner) (Binding, error) { return scanBinding(row, true) }
+func scanBinding(row scanner, withControl bool) (Binding, error) {
 	var b Binding
 	var uid int64
 	var storedID string
-	err := row.Scan(&storedID, &uid, &b.Intent.Target.RequestID, &b.Intent.Target.Digest, &b.Intent.Key, &b.Intent.Operation, &b.Intent.Epoch, &b.BenchID, &b.Holder, &b.TokenHash, &b.ContinuationHash, &b.Phase)
+	fields := []any{&storedID, &uid, &b.Intent.Target.RequestID, &b.Intent.Target.Digest, &b.Intent.Key, &b.Intent.Operation, &b.Intent.Epoch, &b.BenchID, &b.Holder, &b.TokenHash, &b.ContinuationHash, &b.Phase}
+	if withControl {
+		fields = append(fields, &b.Control.State, &b.Control.Root, &b.Control.HostID, &b.Control.BootID)
+	}
+	err := row.Scan(fields...)
 	if err != nil {
 		return b, err
 	}
@@ -109,7 +119,8 @@ func scan(row *sql.Row) (Binding, error) {
 	return b, nil
 }
 
-const columns = `owner,request_id,digest,key,operation,epoch,bench_id,holder,token_hash,continuation_hash,phase`
+const legacyColumns = `owner,request_id,digest,key,operation,epoch,bench_id,holder,token_hash,continuation_hash,phase`
+const columns = legacyColumns + `,control_state,control_root,control_host,control_boot`
 
 func Get(r Reader, t Target) (Binding, error) {
 	if !t.Valid() {
@@ -128,12 +139,15 @@ func Get(r Reader, t Target) (Binding, error) {
 // Begin must commit before any planning Git, allocation or filesystem effects.
 // It deliberately permits a fresh creation to have no selected BID/lease yet.
 func Begin(tx *sql.Tx, i Intent, benchID string) error {
-	if !i.Valid() || benchID != "" && !hex32.MatchString(benchID) {
+	return BeginWithControl(tx, i, benchID, Control{})
+}
+func BeginWithControl(tx *sql.Tx, i Intent, benchID string, c Control) error {
+	if !c.Valid() || !i.Valid() || benchID != "" && !hex32.MatchString(benchID) {
 		return ErrConflict
 	}
 	old, err := Get(tx, i.Target)
 	if err == nil {
-		if old.Intent != i || old.BenchID != benchID || old.Phase != "admitted" {
+		if old.Intent != i || old.BenchID != benchID || old.Phase != "admitted" || old.Control != c {
 			return ErrConflict
 		}
 		return nil
@@ -154,7 +168,7 @@ func Begin(tx *sql.Tx, i Intent, benchID string) error {
 	if count >= MaxOperations {
 		return errors.New("operation binding capacity exhausted")
 	}
-	result, err := tx.Exec(`INSERT INTO workspace_operations (`+`id,`+columns+`) VALUES (?,?,?,?,?,?,?,?,'','','','admitted')`, i.Target.ID(), i.Target.UID, i.Target.RequestID, i.Target.Digest, i.Key, i.Operation, i.Epoch, benchID)
+	result, err := tx.Exec(`INSERT INTO workspace_operations (`+`id,`+columns+`) VALUES (?,?,?,?,?,?,?,?,'','','','admitted',?,?,?,?)`, i.Target.ID(), i.Target.UID, i.Target.RequestID, i.Target.Digest, i.Key, i.Operation, i.Epoch, benchID, c.State, c.Root, c.HostID, c.BootID)
 	if err != nil {
 		return err
 	}

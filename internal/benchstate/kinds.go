@@ -3,6 +3,7 @@ package benchstate
 import (
 	"errors"
 	"fmt"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/operationcontrol"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspacepolicy"
 )
 
@@ -33,7 +34,11 @@ func LoadKinds(r Reader, state string) (Database, error) {
 		return nil, err
 	}
 	if version < SchemaVersion {
-		if err := historicalOperations(r); err != nil {
+		if version == 23 {
+			if err := operationcontrol.ValidateSchema23(r); err != nil {
+				return nil, err
+			}
+		} else if err := historicalOperations(r); err != nil {
 			return nil, err
 		}
 		if version < 19 {

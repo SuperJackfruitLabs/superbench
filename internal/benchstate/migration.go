@@ -34,8 +34,12 @@ func Migrate(tx *sql.Tx, state string, pinMigratedInodes func(*model.Bench) erro
 	if version == SchemaVersion {
 		return nil
 	}
-	if version >= 1 && version <= 22 {
-		if err := historicalOperations(tx); err != nil {
+	if version >= 1 && version <= 23 {
+		if version == 23 {
+			if err := operationcontrol.ValidateSchema23(tx); err != nil {
+				return err
+			}
+		} else if err := historicalOperations(tx); err != nil {
 			return err
 		}
 		records, err := Load(tx)
@@ -102,10 +106,15 @@ func Migrate(tx *sql.Tx, state string, pinMigratedInodes func(*model.Bench) erro
 		if err = reftransfer.Schema(tx); err != nil {
 			return err
 		}
-		if err = operationcontrol.Schema(tx); err != nil {
+		if version == 23 {
+			err = operationcontrol.UpgradeSchema23(tx)
+		} else {
+			err = operationcontrol.Schema(tx)
+		}
+		if err != nil {
 			return err
 		}
-		_, err = tx.Exec("PRAGMA user_version=23")
+		_, err = tx.Exec("PRAGMA user_version=24")
 		return err
 	}
 	if version != 0 {
@@ -151,7 +160,7 @@ func Migrate(tx *sql.Tx, state string, pinMigratedInodes func(*model.Bench) erro
 	if err = operationcontrol.Schema(tx); err != nil {
 		return err
 	}
-	_, err = tx.Exec("PRAGMA user_version=23")
+	_, err = tx.Exec("PRAGMA user_version=24")
 	return err
 }
 

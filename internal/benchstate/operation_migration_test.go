@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestSchema23PreservesLegitimate22AndCreatesEmptyOperationAuthority(t *testing.T) {
+func TestLatestPreservesLegitimate22AndCreatesEmptyOperationAuthority(t *testing.T) {
 	db := oldDatabase(t, 22, aggregate())
 	var before string
 	if err := db.QueryRow(`SELECT record FROM benches`).Scan(&before); err != nil {
@@ -16,7 +16,7 @@ func TestSchema23PreservesLegitimate22AndCreatesEmptyOperationAuthority(t *testi
 	if err := migrateForTest(db, t.TempDir(), nil); err != nil {
 		t.Fatal(err)
 	}
-	assertVersion(t, db, 23)
+	assertVersion(t, db, SchemaVersion)
 	var after string
 	if err := db.QueryRow(`SELECT record FROM benches`).Scan(&after); err != nil || before != after {
 		t.Fatal("record changed", err)

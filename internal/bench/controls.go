@@ -6,6 +6,7 @@ import (
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/execution"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/gitcontrol"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/operationcontrol"
 )
 
 func (s Store) controlContext() context.Context {
@@ -41,6 +42,19 @@ func (s Store) withControls(ctx context.Context, required bool) (Store, context.
 		return s, ctx, err
 	}
 	s.controls = gitcontrol.WithRunner(ctx, &gitcontrol.Runner{State: state, Root: root, Timeout: s.MirrorTimeout})
+	if _, ok := operationcontrol.FromContext(ctx); ok {
+		if !gitcontrol.Available(root) {
+			return s, ctx, operationcontrol.ErrAuthority
+		}
+		identity, e := execution.CurrentIdentity()
+		if e != nil {
+			return s, ctx, e
+		}
+		s.controls, e = operationcontrol.WithControl(s.controls, operationcontrol.Control{State: state, Root: root, HostID: identity.HostID, BootID: identity.BootID})
+		if e != nil {
+			return s, ctx, e
+		}
+	}
 	return s, s.controls, nil
 }
 
