@@ -6,11 +6,19 @@ accepted host-local boundary remains in Charter; the grouped request and respons
 extensions are proposed treaty data. Existing scalar v1 callers remain supported.
 
 The response schema, client/producer corpus and runtime obligation list are pinned
-to treaty `4a49c96ff7fe8ccfb3a832e163e086c06fb394c7`, merged through
-[treaty #34](https://forge.superjackfruit.com/SuperJackfruitLabs/treaty/pulls/34).
+to treaty `63af0f8675ef2a35188465884c4416a190f6f41f`, extending the original
+response proposal merged through [treaty #34](https://forge.superjackfruit.com/SuperJackfruitLabs/treaty/pulls/34).
 `scripts/sync-workspace-responses.py` reads committed Git objects; tests verify
 the exact revision and three file hashes. Request and scalar-v1 pins remain
 independent. Merging a proposed contract does not establish consumer acceptance.
+
+An outgoing original-ref transfer reports optional `transfer_state` as
+`relinquishing` or `transferred`. Its initialization `phase` can remain `ready`,
+but `ready_for_acquisition` is false and no source grant is allowed. Transferred
+archive/reap inventory retains the same availability marker. Ordinary responses
+omit it, preserving their existing bytes. Updated v2 clients accept both shapes;
+older strict clients reject the added field safely. This proposed extension adds
+no operation or network authority and does not enable a suite consumer.
 
 ## CLI
 
