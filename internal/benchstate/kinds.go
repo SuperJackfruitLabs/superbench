@@ -34,7 +34,7 @@ func LoadKinds(r Reader, state string) (Database, error) {
 	}
 	if version < SchemaVersion {
 		for _, b := range records {
-			if b.Workspace != nil && (version < 14 || version == 14 && workspacepolicy.ValidateSchema14(b) != nil || version == 15 && workspacepolicy.ValidateSchema15(b) != nil || version == 16 && workspacepolicy.ValidateSchema16(b) != nil) {
+			if b.Workspace != nil && (version < 14 || version == 14 && workspacepolicy.ValidateSchema14(b) != nil || version == 15 && workspacepolicy.ValidateSchema15(b) != nil || version == 16 && workspacepolicy.ValidateSchema16(b) != nil || version == 17 && workspacepolicy.ValidateSchema17(b) != nil) {
 				return nil, errors.New("workspace record requires current state schema")
 			}
 		}

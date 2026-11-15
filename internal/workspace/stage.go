@@ -58,6 +58,12 @@ func privateRecord(b *model.Bench) *model.Bench {
 	if b.Workspace != nil {
 		w := *b.Workspace
 		w.Members = append([]model.WorkspaceMember(nil), w.Members...)
+		w.Unmerged = append([]model.WorkspaceMergeEvidence(nil), w.Unmerged...)
+		if w.Archive != nil {
+			archive := *w.Archive
+			archive.Merge = append([]model.WorkspaceMergeEvidence(nil), archive.Merge...)
+			w.Archive = &archive
+		}
 		if w.RecoveredFrom != nil {
 			origin := *w.RecoveredFrom
 			w.RecoveredFrom = &origin

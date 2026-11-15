@@ -86,7 +86,7 @@ func validatePreparation(b *model.Bench) error {
 		if !known[p.Name] || i > 0 && w.Preparation[i-1].Name >= p.Name || !digestPattern.MatchString(p.Digest) || p.RunID != "" && !identity.MatchString(p.RunID) {
 			return invalid
 		}
-		if p.RunID != "" && w.Phase != "ready" {
+		if p.RunID != "" && (w.Phase == "initializing" || w.Phase == "prepared") {
 			found := false
 			if b.Lease != nil {
 				for _, id := range b.Lease.RetainedRuns {
@@ -158,7 +158,7 @@ func validateLease(b *model.Bench) error {
 		return invalid
 	}
 	if l == nil {
-		if w.Phase == "ready" && w.Pending == nil {
+		if (w.Phase == "ready" || w.Archive != nil) && w.Pending == nil {
 			return nil
 		}
 		return invalid
@@ -195,7 +195,7 @@ func validateLease(b *model.Bench) error {
 
 // ValidateSchema14 permits only the staged aggregate shape that schema14 owned.
 func ValidateSchema14(b *model.Bench) error {
-	if err := Validate(b); err != nil {
+	if err := ValidateSchema17(b); err != nil {
 		return err
 	}
 	w := b.Workspace
@@ -209,7 +209,7 @@ func ValidateSchema14(b *model.Bench) error {
 // ValidateSchema15 preserves the former full-proof ready representation during
 // migration, without allowing schema16 acquisition states in an older schema.
 func ValidateSchema15(b *model.Bench) error {
-	if err := Validate(b); err != nil {
+	if err := ValidateSchema17(b); err != nil {
 		return err
 	}
 	if b.Workspace.RecoveredFrom != nil || b.Workspace.Phase == "ready" && len(b.Workspace.Preparation) != len(b.Workspace.Members) {
@@ -220,11 +220,23 @@ func ValidateSchema15(b *model.Bench) error {
 
 // ValidateSchema16 excludes recovery provenance that only schema17 can own.
 func ValidateSchema16(b *model.Bench) error {
-	if err := Validate(b); err != nil {
+	if err := ValidateSchema17(b); err != nil {
 		return err
 	}
 	if b.Workspace.RecoveredFrom != nil {
 		return errors.New("aggregate does not match historical ownership schema")
+	}
+	return nil
+}
+
+// ValidateSchema17 excludes aggregate archive observations and lifecycle intent.
+func ValidateSchema17(b *model.Bench) error {
+	if err := Validate(b); err != nil {
+		return err
+	}
+	w := b.Workspace
+	if w.Archive != nil || w.Unmerged != nil || w.Phase == "archived" || w.Phase == "reaping" || w.Phase == "reaped" {
+		return errors.New("aggregate does not match historical recovery schema")
 	}
 	return nil
 }

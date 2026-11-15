@@ -12,6 +12,7 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/repository"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/setup"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspacearchive"
 )
 
 var errIneligible = errors.New("repository has no confirmed branch-merged archive trigger")
@@ -52,7 +53,7 @@ func (m *Manager) Tick(ctx context.Context, limit int) (Report, error) {
 		result := Result{Key: b.Key, Status: "skipped"}
 		switch {
 		case b.Workspace != nil:
-			// Aggregate archival requires its whole-vector lifecycle.
+			result = m.workspace(ctx, b)
 		case b.Lease != nil:
 			result.Status = "leased"
 		case b.ArchivedAt != "" && (b.ArchiveMerge == nil || b.ArchiveFrozenAt != "" || b.ReapingDigest != "" || b.ReapedAt != ""):
@@ -78,6 +79,36 @@ func (m *Manager) Tick(ctx context.Context, limit int) (Report, error) {
 	}
 	m.After, r.Next = "", ""
 	return r, nil
+}
+
+func (m *Manager) workspace(ctx context.Context, b bench.Bench) Result {
+	r := Result{Key: b.Key, Status: "skipped"}
+	w := b.Workspace
+	if b.Lease != nil {
+		r.Status = "leased"
+		return r
+	}
+	if w.Archive != nil && (len(w.Archive.Merge) == 0 || w.Archive.FrozenAt != "" || w.Phase == "reaping" || w.Phase == "reaped") {
+		r.Status = "archived"
+		return r
+	}
+	if w.Phase != "ready" && w.Phase != "archived" {
+		return r
+	}
+	_, err := m.Store.ArchiveWorkspaceContext(ctx, b.Key, archivepolicy.DefaultGrace, func(ctx context.Context, current *bench.Bench) error {
+		return workspacearchive.CheckMerged(ctx, repository.Mirrors{State: m.Store.State, Data: m.Store.Data, Timeout: m.Store.MirrorTimeout}, current)
+	})
+	switch {
+	case err == nil:
+		r.Status = "archived"
+	case errors.Is(err, workspacearchive.ErrIneligible):
+		r.Status = "not eligible"
+	case errors.Is(err, bench.ErrBusy):
+		r.Status = "leased"
+	default:
+		r.Status, r.Error = "blocked", err.Error()
+	}
+	return r
 }
 
 func (m *Manager) archive(ctx context.Context, key string) (*bench.Bench, error) {

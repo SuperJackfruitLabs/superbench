@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/repository"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/statestore"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspace"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspacearchive"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspaceprep"
 )
 
@@ -50,7 +52,10 @@ func (s Store) workspaceLifecycle() workspace.Lifecycle {
 	return workspace.Lifecycle{State: s.State, Data: s.Data, Timeout: s.MirrorTimeout,
 		Within: s.workspaceWithin, Git: s.workspaceGit, Stopped: s.ensureStopped,
 		Prepared: workspaceprep.CheckPrepared, Released: workspaceprep.ReleaseHistory,
-		Admit: s.admit, Allocate: s.allocateWorkspace}
+		Admit: s.admit, Allocate: s.allocateWorkspace,
+		NoteCheckpoint: func(ctx context.Context, b *Bench) {
+			workspacearchive.NoteCheckpoint(ctx, repository.Mirrors{State: s.State, Data: s.Data, Timeout: s.MirrorTimeout}, b)
+		}}
 }
 func (s Store) workspaceControls(ctx context.Context) (Store, context.Context, error) {
 	if err := ctx.Err(); err != nil {
@@ -83,7 +88,7 @@ func (s Store) InitializeWorkspaceContext(ctx context.Context, creationID string
 }
 
 func (s Store) finishWorkspaceInitialization(ctx context.Context, b *Bench) (result *Bench, operationErr error) {
-	if b.Workspace.Phase == "ready" {
+	if b.Workspace.Phase == "ready" || b.Workspace.Archive != nil {
 		return b, nil
 	}
 	key, token := b.Key, b.Lease.Token

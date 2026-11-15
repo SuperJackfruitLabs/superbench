@@ -14,10 +14,12 @@ type Workspace struct {
 	Phase                string
 	ExplicitQuotaBytes   uint64 `json:",omitempty"`
 	Members              []WorkspaceMember
-	Preparation          []WorkspacePreparation `json:",omitempty"`
-	Stage                *WorkspaceStage        `json:",omitempty"`
-	Pending              *WorkspaceCheckpoint   `json:",omitempty"`
-	Checkpoint           *WorkspaceCheckpoint   `json:",omitempty"`
+	Preparation          []WorkspacePreparation   `json:",omitempty"`
+	Stage                *WorkspaceStage          `json:",omitempty"`
+	Pending              *WorkspaceCheckpoint     `json:",omitempty"`
+	Checkpoint           *WorkspaceCheckpoint     `json:",omitempty"`
+	Archive              *WorkspaceArchive        `json:",omitempty"`
+	Unmerged             []WorkspaceMergeEvidence `json:",omitempty"`
 }
 
 type WorkspaceMember struct {
@@ -47,3 +49,14 @@ type WorkspaceStage struct{ Name, Digest string }
 // WorkspaceRecovery records the exact remote seal used to select this new
 // workspace. It transfers source commits, never leases or host allocations.
 type WorkspaceRecovery struct{ Repository, BenchID, Commit, ManifestSHA256 string }
+
+// WorkspaceArchive pins aggregate retention and deletion intent independently
+// from the mutable filesystem. Merge is a whole-vector automatic observation.
+type WorkspaceArchive struct {
+	ArchivedAt, ReapAfter, FreezeDigest, FrozenAt, ReapingDigest, ReapedAt string
+	Merge                                                                  []WorkspaceMergeEvidence `json:",omitempty"`
+}
+type WorkspaceMergeEvidence struct {
+	Name     string
+	Evidence ArchiveMergeEvidence
+}
