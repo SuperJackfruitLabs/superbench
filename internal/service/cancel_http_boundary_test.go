@@ -15,7 +15,7 @@ func TestDurableCancellationWinnerNeverExportsUncommittedGrant(t *testing.T) {
 	v2OK(t, s, v2Operator, create)
 	// Simulate a cancellation commit in the finalization window. This deliberately
 	// leaves the newly acquired core owner intact: a withheld result is not a fence.
-	_, err := s.receipts.db.Exec(`CREATE TRIGGER cancellation_wins BEFORE UPDATE OF state ON receipts WHEN NEW.state='done' BEGIN UPDATE receipts SET cancel_state='cancel_requested' WHERE owner=OLD.owner AND id=OLD.id; SELECT RAISE(IGNORE); END`)
+	_, err := receiptTestDB(t, s).Exec(`CREATE TRIGGER cancellation_wins BEFORE UPDATE OF state ON receipts WHEN NEW.state='done' BEGIN UPDATE receipts SET cancel_state='cancel_requested' WHERE owner=OLD.owner AND id=OLD.id; SELECT RAISE(IGNORE); END`)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -77,7 +77,7 @@ func (s *Server) serveV2(w http.ResponseWriter, r *http.Request) {
 			s.replyV2(w, request, nil, 400, "invalid_request", "invalid workspace operation request")
 			return
 		}
-		prior, found, lookupErr := s.receipts.lookup(uid, request.RequestID, digest)
+		prior, found, lookupErr := s.receipts.Lookup(uid, request.RequestID, digest)
 		if found || lookupErr != nil {
 			s.replayV2(w, request, prior, lookupErr)
 			return
@@ -96,7 +96,7 @@ func (s *Server) serveV2(w http.ResponseWriter, r *http.Request) {
 			}
 			if len(rows) == 1 && rows[0].Workspace != nil && rows[0].Workspace.CreationID == identity {
 				// Another dispatch may have claimed the receipt after our initial lookup.
-				prior, found, lookupErr = s.receipts.lookup(uid, request.RequestID, digest)
+				prior, found, lookupErr = s.receipts.Lookup(uid, request.RequestID, digest)
 				if found || lookupErr != nil {
 					s.replayV2(w, request, prior, lookupErr)
 					return
@@ -108,7 +108,7 @@ func (s *Server) serveV2(w http.ResponseWriter, r *http.Request) {
 		if err := manager.Preflight(request); err != nil {
 			// A concurrent same-ID request may have completed while preflight observed
 			// its changed owner. Recheck before reporting the mutable state conflict.
-			prior, found, lookupErr = s.receipts.lookup(uid, request.RequestID, digest)
+			prior, found, lookupErr = s.receipts.Lookup(uid, request.RequestID, digest)
 			if found || lookupErr != nil {
 				s.replayV2(w, request, prior, lookupErr)
 				return
@@ -120,7 +120,7 @@ func (s *Server) serveV2(w http.ResponseWriter, r *http.Request) {
 		var cached *receipt
 		err = s.config.Store.WithWorkspace(request.Key, request.Operation == "create" || request.Operation == "recover", func() error {
 			var claimErr error
-			cached, claimErr = s.receipts.claim(uid, request.RequestID, digest)
+			cached, claimErr = s.receipts.Claim(uid, request.RequestID, digest)
 			return claimErr
 		})
 		if err != nil {
@@ -156,7 +156,7 @@ func (s *Server) serveV2(w http.ResponseWriter, r *http.Request) {
 		encoded, _ = json.Marshal(responseV2(request, nil, code, message))
 	}
 	if protocolv2.Growth(request.Operation) {
-		if err := s.receipts.finish(uid, request.RequestID, encoded, status); err != nil {
+		if err := s.receipts.Finish(uid, request.RequestID, encoded, status); err != nil {
 			if encodeErr != nil || errors.Is(err, errCancelRequested) {
 				result = nil
 			}
@@ -247,9 +247,9 @@ func (s *Server) replayV2(w http.ResponseWriter, request protocolv2.Request, cac
 		s.replyV2(w, request, nil, 503, "operation_in_doubt", "stored response unavailable")
 		return
 	}
-	if _, err := protocolv2.ParseResponse(cached.body, cached.status, request); err != nil {
+	if _, err := protocolv2.ParseResponse(cached.Bytes(), cached.HTTPStatus(), request); err != nil {
 		s.replyV2(w, request, nil, 503, "operation_in_doubt", "stored response requires local reconciliation")
 		return
 	}
-	s.raw(w, cached.status, cached.body)
+	s.raw(w, cached.HTTPStatus(), cached.Bytes())
 }

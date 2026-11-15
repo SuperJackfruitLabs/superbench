@@ -8,7 +8,6 @@ import (
 	"log"
 	"mime"
 	"net/http"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -69,7 +68,7 @@ func Serve(ctx context.Context, c Config) error {
 	if e != nil {
 		return e
 	}
-	defer r.db.Close()
+	defer r.Close()
 	lifetime, cancel := context.WithCancel(ctx)
 	defer cancel()
 	s := &Server{config: c, ctx: lifetime, receipts: r, slots: make(chan struct{}, c.MaxActive)}
@@ -195,7 +194,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		var cached *receipt
 		e = s.config.Store.WithLegacy(request.Key, func() error {
 			var claimErr error
-			cached, claimErr = s.receipts.claim(uid, request.RequestID, digest)
+			cached, claimErr = s.receipts.Claim(uid, request.RequestID, digest)
 			return claimErr
 		})
 		if e != nil {
@@ -225,7 +224,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if cached != nil {
-			s.raw(w, cached.status, cached.body)
+			s.raw(w, cached.HTTPStatus(), cached.Bytes())
 			return
 		}
 	}
@@ -241,7 +240,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if protocol.Growth(request.Operation) {
-		if e = s.receipts.finish(uid, request.RequestID, encoded, status); e != nil {
+		if e = s.receipts.Finish(uid, request.RequestID, encoded, status); e != nil {
 			s.reply(w, request, result, 503, "operation_in_doubt", "receipt save failed; inspect retained bench state")
 			return
 		}
@@ -346,4 +345,3 @@ func (s *Server) raw(w http.ResponseWriter, status int, body []byte) {
 	w.WriteHeader(status)
 	_, _ = w.Write(body)
 }
-func receiptKey(uid uint32, id string) string { return strconv.FormatUint(uint64(uid), 10) + ":" + id }
