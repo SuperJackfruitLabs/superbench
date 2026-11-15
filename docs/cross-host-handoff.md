@@ -14,6 +14,13 @@ duplicate fields, changed vectors and another destination are refused. It has
 no lease token, local checkout path, command, environment or claimed fencing bit.
 Repository addresses remain private administrative data.
 
+The coordinator's host observation uses the stable Linux machine identity (in
+the same hash domain as existing managed execution) or the macOS platform UUID.
+Only a domain-separated digest leaves that observation; missing, ambiguous or
+uninitialized identities fail closed. This identifies a machine for destination
+binding. In particular, observing a macOS identity does not add managed process
+fencing, and a label or hostname cannot substitute for the observation.
+
 The remaining coordinator must establish these conditions before import:
 
 1. The destination creates and persists an offer using its actual local host and
