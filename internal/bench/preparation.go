@@ -92,6 +92,9 @@ func (s Store) RepairLease(key, holder string) (*Bench, error) {
 	return b, e
 }
 func (s Store) LeaseContext(ctx context.Context, key, holder string) (*Bench, error) {
+	if err := s.RequireLegacy(key); err != nil {
+		return nil, err
+	}
 	if e := ctx.Err(); e != nil {
 		return nil, e
 	}

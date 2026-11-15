@@ -184,6 +184,26 @@ PRs describe their publication history.
   occupied-worktree conflicts refuse before the first checkout; see
   [verification evidence](workspace-state-output.txt).
 
+- Durable aggregate staging: schema 14 records the complete repository vector,
+  one initialization owner and one total allocation. `StageWorkspaceContext`
+  commits the pinned sources and lease before requesting the workspace quota,
+  and commits the allocation before materializing any member. Partial checkout
+  and persistence failures preserve the committed owner and sources for retry;
+  a repeated creation identity cannot select newer remote tips or take over
+  another request. Immutable-transition checks prevent identity, source-vector,
+  lease-token and assigned-allocation changes through ordinary store callbacks.
+  Scalar operations refuse aggregate records, scalar status refuses incomplete
+  projections, and automatic scalar archive skips them. Historical scalar state
+  can still pass read-only compatibility preflight and migrate normally.
+  Successful staging remains `initializing` with its lease held. Preparation,
+  aggregate execution/checkpoint/recovery/release/archive, readiness and the v2
+  service/CLI producer remain pending; staging is not a completed create API.
+  Its context bounds source selection and checkout Git commands, with cancellation
+  checks between commits. Existing host-lock waits and privileged quota-helper
+  execution are not interruptible by that context.
+  Required native/Linux checks, the real shared XFS quota drill and live Git
+  fencing regressions passed; see [staging evidence](workspace-staging-output.txt).
+
 ## Remaining retention work
 
 Reviewed log collection and history are implemented in [retention.md](retention.md),

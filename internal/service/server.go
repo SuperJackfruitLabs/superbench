@@ -167,6 +167,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.reply(w, request, nil, 403, "forbidden", "operator authority required")
 		return
 	}
+	if request.Operation != "host_status" {
+		if e := s.config.Store.RequireLegacy(request.Key); e != nil {
+			status, code, message := operationError(e)
+			s.reply(w, request, nil, status, code, message)
+			return
+		}
+	}
 	select {
 	case s.slots <- struct{}{}:
 		defer func() { <-s.slots }()
@@ -180,8 +187,18 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			s.reply(w, request, nil, 400, "invalid_request", "invalid operation request")
 			return
 		}
-		cached, e := s.receipts.claim(uid, request.RequestID, digest)
+		var cached *receipt
+		e = s.config.Store.WithLegacy(request.Key, func() error {
+			var claimErr error
+			cached, claimErr = s.receipts.claim(uid, request.RequestID, digest)
+			return claimErr
+		})
 		if e != nil {
+			if errors.Is(e, bench.ErrWorkspace) {
+				status, code, message := operationError(e)
+				s.reply(w, request, nil, status, code, message)
+				return
+			}
 			status, code := 503, "unavailable"
 			message := "receipt storage unavailable; retry the same request id"
 			switch {
@@ -290,6 +307,8 @@ func operationError(e error) (int, string, string) {
 		return 404, "not_found", "unknown bench"
 	case errors.Is(e, bench.ErrLease):
 		return 403, "forbidden", "valid holder capability required"
+	case errors.Is(e, bench.ErrWorkspace):
+		return 409, "conflict", "aggregate workspace requires the workspace API"
 	case errors.Is(e, bench.ErrArchived) || errors.Is(e, bench.ErrBusy) || errors.Is(e, bench.ErrExists) || errors.Is(e, bench.ErrNotFenced) || errors.Is(e, bench.ErrCheckpoint) || errors.Is(e, bench.ErrDirty):
 		return 409, "conflict", "bench state conflicts with this operation"
 	}

@@ -35,7 +35,8 @@ type Bench struct {
 	QuotaBytes          uint64
 	RequestedQuotaBytes uint64 `json:",omitempty"`
 	QuotaInodes         uint64
-	Lease               *Lease `json:",omitempty"`
+	Lease               *Lease     `json:",omitempty"`
+	Workspace           *Workspace `json:",omitempty"`
 }
 
 // ArchiveMergeEvidence is an observation, not a permanent claim about remote refs.

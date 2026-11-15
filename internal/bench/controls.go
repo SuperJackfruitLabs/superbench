@@ -43,6 +43,9 @@ func (s Store) withControls(ctx context.Context, required bool) (Store, context.
 }
 
 func (s Store) reconciliationControls(key string) (Store, error) {
+	if err := s.RequireLegacy(key); err != nil {
+		return s, err
+	}
 	if s.controls != nil || !execution.Supported || s.executor != nil {
 		return s, nil
 	}

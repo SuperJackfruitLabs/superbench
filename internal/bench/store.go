@@ -13,8 +13,6 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/statepath"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/statestore"
 	"os"
-	"path/filepath"
-	"syscall"
 	"time"
 )
 
@@ -67,7 +65,11 @@ func (s Store) update(session *statestore.Session, fn func(database, *sql.Tx) er
 		if err != nil {
 			return err
 		}
+		before := benchstate.Capture(records)
 		if err = fn(records, tx); err != nil {
+			return err
+		}
+		if err = benchstate.ValidateTransition(before, records); err != nil {
 			return err
 		}
 		if err = validRecords(records); err != nil {
@@ -91,41 +93,38 @@ func (s Store) read(fn func(database) error) error {
 	return s.readSQL(func(records database, _ reader) error { return fn(records) })
 }
 func (s Store) readSQL(fn func(database, reader) error) error {
+	return s.readSQLMode(fn, false)
+}
+
+// readKinds permits historical scalar records for pre-migration compatibility checks.
+func (s Store) readKinds(fn func(database) error) error {
+	return s.readSQLMode(func(records database, _ reader) error { return fn(records) }, true)
+}
+
+func (s Store) readSQLMode(fn func(database, reader) error, kinds bool) error {
 	if err := s.validate(); err != nil {
 		return err
 	}
-	lock, err := os.Open(filepath.Join(s.State, "lock"))
-	if err == nil {
-		defer lock.Close()
-		if err = syscall.Flock(int(lock.Fd()), syscall.LOCK_SH); err != nil {
+	return statestore.Read(s.State, func(db *sql.DB) error {
+		if db == nil {
+			records, err := s.legacy()
+			if err != nil {
+				return err
+			}
+			return fn(records, nil)
+		}
+		var records database
+		var err error
+		if kinds {
+			records, err = benchstate.LoadKinds(db, s.State)
+		} else if err = checkVersion(db); err == nil {
+			records, err = loadRecords(db)
+		}
+		if err != nil {
 			return err
 		}
-		defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
-	} else if !os.IsNotExist(err) {
-		return err
-	}
-	if _, err = os.Stat(filepath.Join(s.State, "bench.db")); os.IsNotExist(err) {
-		records, e := s.legacy()
-		if e != nil {
-			return e
-		}
-		return fn(records, nil)
-	} else if err != nil {
-		return err
-	}
-	db, err := s.openSQL(true)
-	if err != nil {
-		return err
-	}
-	defer db.Close()
-	if err = checkVersion(db); err != nil {
-		return err
-	}
-	records, err := loadRecords(db)
-	if err != nil {
-		return err
-	}
-	return fn(records, db)
+		return fn(records, db)
+	})
 }
 
 func atomicWrite(dirPath, target string, raw []byte) error {
