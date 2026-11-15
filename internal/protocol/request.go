@@ -159,7 +159,18 @@ func Parse(raw []byte) (Request, error) {
 	if r.Repository != "" && r.Repository[0] == '-' {
 		return r, invalid
 	}
-	if _, present := fields["arguments"]; present {
+	if rawArguments, present := fields["arguments"]; present {
+		// Unmarshalling into []string accepts null as an empty string. Check the
+		// wire item types before admitting the decoded command arguments.
+		var items []json.RawMessage
+		if json.Unmarshal(rawArguments, &items) != nil || len(items) != len(r.Arguments) {
+			return r, invalid
+		}
+		for _, item := range items {
+			if item = bytes.TrimSpace(item); len(item) == 0 || item[0] != '"' {
+				return r, invalid
+			}
+		}
 		if len(r.Arguments) < 1 || len(r.Arguments) > 128 || r.Arguments[0] == "" {
 			return r, invalid
 		}
