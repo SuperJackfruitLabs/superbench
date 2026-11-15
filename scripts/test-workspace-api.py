@@ -54,7 +54,7 @@ class Drill:
         self.remotes = {}
         self.fail = self.root / "fail-second-hook"
         corpus_bytes = Path(args.corpus).read_bytes()
-        assert hashlib.sha256(corpus_bytes).hexdigest() == "74524b71743780bd4e8f1d4f646c4193ade8508e32709c32017144212880dfeb", "lifecycle corpus pin changed; review runtime obligations"
+        assert hashlib.sha256(corpus_bytes).hexdigest() == "0d0dca060902df3706bf3d0c1322c1ea1fbfb22ac5cb50a3243e761906848255", "lifecycle corpus pin changed; review runtime obligations"
         self.corpus = json.loads(corpus_bytes)
         assert self.corpus["version"] == "superbench.workspace-lifecycle-fixtures.v1"
         self.covered = {s["name"]: set() for s in self.corpus["scenarios"]}
@@ -64,6 +64,22 @@ class Drill:
         for index in indices:
             assert 0 <= index < len(self.obligations[scenario])
             self.covered[scenario].add(index)
+
+    def transfer_unavailable(self, key, phase, workspace_phase="ready"):
+        specific, raw = self.request(self.payload("status", key=key))
+        rows = specific["result"]["benches"]
+        assert len(rows) == 1 and rows[0]["key"] == key
+        source = rows[0]
+        assert source["phase"] == workspace_phase and source["transfer_state"] == phase
+        assert source["ready_for_acquisition"] is False and "lease" not in source
+        assert "grant" not in specific["result"] and b"lease_token" not in raw
+        complete, raw = self.request(self.payload("status"))
+        matches = [row for row in complete["result"]["benches"] if row["key"] == key]
+        assert matches == [source] and b"lease_token" not in raw
+        before = self.record(key)
+        assert before.get("Lease") is None and before["Workspace"]["Phase"] == workspace_phase
+        self.prove("original-ref-transfer-availability", 0, 1)
+        print("PASS: " + phase + " source remains in complete status inventory, " + workspace_phase + " lifecycle phase and no writer availability/grant", flush=True)
 
     def run(self, words, expected=0):
         result = subprocess.run(list(map(str, words)), capture_output=True, text=True, timeout=45)

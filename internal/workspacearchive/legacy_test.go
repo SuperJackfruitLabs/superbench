@@ -92,7 +92,7 @@ func TestSchema20RetainedOrdinaryReapMigratesAndRetriesExactJournal(t *testing.T
 	}
 	defer db.Close()
 	var version int
-	if err = db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 21 {
+	if err = db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 22 {
 		t.Fatal("legacy state not migrated", version, err)
 	}
 	for _, m := range b.Workspace.Members {

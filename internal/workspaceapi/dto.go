@@ -42,7 +42,10 @@ func workspaceV2(b *bench.Bench) protocolv2.Workspace {
 	v := protocolv2.Workspace{Key: b.Key, BenchID: w.ID, Phase: w.Phase,
 		MemberCount: len(w.Members), CheckpointRepository: w.CheckpointRepository,
 		QuotaBytes: b.QuotaBytes, QuotaInodes: b.QuotaInodes, Lease: leaseV2(b.Lease),
-		ReadyForAcquisition: w.Phase == "ready" && b.Lease == nil && w.Pending == nil && w.Archive == nil}
+		ReadyForAcquisition: w.Phase == "ready" && b.Lease == nil && w.Pending == nil && w.Archive == nil && w.Transfer == nil}
+	if w.Transfer != nil {
+		v.TransferState = w.Transfer.Phase
+	}
 	if c := w.Checkpoint; c != nil {
 		v.Checkpoint = &protocolv2.Checkpoint{GenerationID: c.GenerationID, ManifestSHA256: c.Digest,
 			Members: vectorV2(c.Members), Seal: c.Seal, PreviousSeal: c.Previous}

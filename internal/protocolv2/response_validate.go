@@ -75,7 +75,10 @@ func validWorkspace(w Workspace) bool {
 	if !keyPattern.MatchString(w.Key) || !idPattern.MatchString(w.BenchID) || !oneOf(w.Phase, "materializing", "initializing", "prepared", "ready", "archived", "reaping", "reaped") || w.MemberCount < 1 || w.MemberCount > 32 || !namePattern.MatchString(w.CheckpointRepository) || !validCaps(w.QuotaBytes, w.QuotaInodes) || !validLease(w.Lease) {
 		return false
 	}
-	ready := w.Phase == "ready" && w.Lease == nil && w.Pending == nil && w.Archive == nil
+	if w.TransferState != "" && (!oneOf(w.TransferState, "relinquishing", "transferred") || !oneOf(w.Phase, "ready", "archived", "reaping", "reaped") || w.Lease != nil || w.Pending != nil || w.Checkpoint == nil || w.TransferState == "relinquishing" && w.Phase != "ready") {
+		return false
+	}
+	ready := w.Phase == "ready" && w.Lease == nil && w.Pending == nil && w.Archive == nil && w.TransferState == ""
 	if w.ReadyForAcquisition != ready {
 		return false
 	}
@@ -229,7 +232,7 @@ func validResponseResult(response Response, request Request) bool {
 		return false
 	}
 	if g := mutation.Grant; g != nil {
-		if !tokenPattern.MatchString(g.LeaseToken) || request.LeaseToken != "" || w.Lease == nil || w.Archive != nil {
+		if !tokenPattern.MatchString(g.LeaseToken) || request.LeaseToken != "" || w.Lease == nil || w.Archive != nil || w.TransferState != "" {
 			return false
 		}
 		switch op {

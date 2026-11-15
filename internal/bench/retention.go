@@ -7,24 +7,12 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/history"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/output"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/retention"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/runprotection"
 	"syscall"
 	"time"
 )
 
-func protectedRuns(db database) map[string]bool {
-	ids := map[string]bool{}
-	for _, b := range db {
-		if b.Lease != nil {
-			for _, id := range b.Lease.RetainedRuns {
-				ids[id] = true
-			}
-		}
-		if b.Lease != nil && b.Lease.Execution != nil {
-			ids[b.Lease.Execution.ID] = true
-		}
-	}
-	return ids
-}
+func protectedRuns(db database) map[string]bool { return runprotection.Runs(db) }
 func (s Store) sealRunLog(id string, c *output.Capture, exit *int, truncated bool) error {
 	entry, e := retention.Snapshot(s.State, id)
 	if e != nil {

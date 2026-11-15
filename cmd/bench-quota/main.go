@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -26,12 +27,28 @@ func run(args []string) error {
 		return fmt.Errorf("policy override requires a direct root caller")
 	}
 	migrating := f.NArg() == 1 && f.Arg(0) == "migrate-inodes"
-	if !migrating && ((f.NArg() != 3 && f.NArg() != 4) || f.Arg(0) != "apply") && (f.NArg() != 4 || f.Arg(0) != "release" || f.Arg(1) != "bench") {
-		return fmt.Errorf("usage: bench-quota [--policy ROOT_POLICY] apply <bench|shared> KEY [BENCH_BYTES] | release bench KEY PROJECT_ID | migrate-inodes")
+	verifying := f.NArg() == 3 && f.Arg(0) == "verify" && f.Arg(1) == "bench"
+	if !migrating && !verifying && ((f.NArg() != 3 && f.NArg() != 4) || f.Arg(0) != "apply") && (f.NArg() != 4 || f.Arg(0) != "release" || f.Arg(1) != "bench") {
+		return fmt.Errorf("usage: bench-quota [--policy ROOT_POLICY] apply <bench|shared> KEY [BENCH_BYTES] | verify bench KEY | release bench KEY PROJECT_ID | migrate-inodes")
 	}
 	p, e := hoststorage.Load(*policy)
 	if e != nil {
 		return e
+	}
+	if verifying {
+		identity, err := p.VerifyStorage(context.Background(), f.Arg(2))
+		if err != nil {
+			return err
+		}
+		raw, err := json.Marshal(identity)
+		if err != nil {
+			return err
+		}
+		if len(raw) > hoststorage.MaxStorageIdentity {
+			return fmt.Errorf("storage identity exceeds limit")
+		}
+		_, err = os.Stdout.Write(raw)
+		return err
 	}
 	if migrating {
 		assignments, e := p.MigrateInodes()

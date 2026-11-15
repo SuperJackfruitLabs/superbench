@@ -7,6 +7,7 @@ import (
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/benchstate"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/transferguard"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspace"
 )
 
@@ -30,6 +31,9 @@ func (m Manager) VerifyPrepared(ctx context.Context, key, token string) (*model.
 			if err := m.preparable(b); err != nil {
 				return err
 			}
+			if err := m.transferAdmission(ctx, tx, b); err != nil {
+				return err
+			}
 			if err := m.stopped(b); err != nil {
 				return err
 			}
@@ -39,6 +43,10 @@ func (m Manager) VerifyPrepared(ctx context.Context, key, token string) (*model.
 			return prepared(tx, b)
 		})
 	})
+	if errors.Is(err, transferguard.ErrGuard) {
+		_, stopErr := m.Stop(key, token, false)
+		err = errors.Join(err, stopErr)
+	}
 	b, readErr := m.ownedCurrent(key, token)
 	if err != nil {
 		err = errors.Join(ErrPreparation, err)

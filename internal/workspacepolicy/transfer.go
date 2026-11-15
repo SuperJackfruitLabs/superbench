@@ -14,6 +14,11 @@ func validateTransfer(b *model.Bench) error {
 			return invalid
 		}
 	}
+	if t := w.Transfer; t != nil && t.Recovery != nil {
+		if err := validateTransferRecovery(b); err != nil {
+			return err
+		}
+	}
 	if t := w.TransferredFrom; t != nil {
 		if !key.MatchString(t.ID) || !digestPattern.MatchString(t.Digest) || !key.MatchString(t.SourceKey) || t.SourceKey == b.Key || !identity.MatchString(t.SourceID) || t.SourceID == w.ID {
 			return invalid
@@ -24,7 +29,7 @@ func validateTransfer(b *model.Bench) error {
 
 // ValidateSchema20 rejects transfer authority unknown to prior state versions.
 func ValidateSchema20(b *model.Bench) error {
-	if err := Validate(b); err != nil {
+	if err := ValidateSchema21(b); err != nil {
 		return err
 	}
 	if b.Workspace.Transfer != nil || b.Workspace.TransferredFrom != nil {

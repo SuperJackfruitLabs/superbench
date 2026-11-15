@@ -9,6 +9,7 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/benchstate"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/initrepair"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/transferguard"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspace"
 )
 
@@ -31,7 +32,7 @@ func (m Manager) Continue(ctx context.Context, key, id, token string) (out *Resu
 		out = current
 		operationErr = errors.Join(operationErr, readErr)
 		// The final read is inside the cancellation boundary as well.
-		if ctxErr := ctx.Err(); ctxErr != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil || errors.Is(operationErr, transferguard.ErrGuard) {
 			_, stopErr := m.Prep.Stop(key, token, false)
 			current, readErr = m.view(key, id, token, false)
 			out = current

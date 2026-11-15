@@ -47,9 +47,9 @@ class Drill(api.Drill):
             return
         before = self.record("source")
         result = subprocess.run([self.args.previous_cli, "status", "--state", str(self.state), "--data", str(self.data)], capture_output=True, text=True, timeout=20)
-        assert result.returncode != 0 and "unsupported state schema 21 (expected 20)" in result.stderr
+        assert result.returncode != 0 and "unsupported state schema 22 (expected 20)" in result.stderr
         assert self.record("source") == before
-        print("PASS: schema20 binary refuses schema21 without altering source authority", flush=True)
+        print("PASS: schema20 binary refuses schema22 without altering source authority", flush=True)
 
 
 def file_snapshot(root):
@@ -105,6 +105,7 @@ def stopped_writer_before_review(d):
 def blocked_source(d, original_create, original_raw, source_before):
     before = d.record("source")
     assert before.get("Lease") is None and before["Workspace"]["Transfer"]["Phase"] in ("relinquishing", "transferred")
+    d.transfer_unavailable("source", before["Workspace"]["Transfer"]["Phase"], before["Workspace"]["Phase"])
     for operation, fields in (("lease", {"holder": "forbidden"}),
                               ("run", {"holder": "forbidden", "arguments": ["/usr/bin/touch", str(d.root / "forbidden-source-launch")]}),
                               ("setup", {"holder": "forbidden"}),
@@ -120,6 +121,7 @@ def blocked_source(d, original_create, original_raw, source_before):
     assert all(before[field] == source_before[field] for field in ("Path", "ProjectID", "QuotaBytes", "QuotaInodes"))
     assert before["Workspace"]["Checkpoint"] == source_before["Workspace"]["Checkpoint"]
     assert before["Workspace"]["Preparation"] == source_before["Workspace"]["Preparation"]
+    d.prove("original-ref-transfer-availability", 2)
 
 
 def transfer(d, members, original_create, original_raw):

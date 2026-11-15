@@ -11,7 +11,12 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/benchstate"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/reftransfer"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/transferguard"
 )
+
+func (m Manager) stageTransferCheck(ctx context.Context, tx *sql.Tx, b *model.Bench) error {
+	return transferguard.Check(ctx, transferguard.Config{State: m.State, Data: m.Data, Git: m.Git, Timeout: m.Timeout}, tx, b)
+}
 
 // stageTransferred consumes an immutable local approval after the source has
 // permanently relinquished its branches. Merely knowing a creation ID does not

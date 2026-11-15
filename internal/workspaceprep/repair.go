@@ -2,19 +2,16 @@ package workspaceprep
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"path/filepath"
 	"reflect"
 	"sort"
 	"strings"
-	"time"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/history"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/prepproof"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/setup"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspace"
 )
@@ -22,52 +19,6 @@ import (
 // RepairMember records decisions only; no command, capability or raw receipt is
 // exposed. ReceiptDigest binds even a stale receipt's exact stored fields.
 type RepairMember struct{ Name, Digest, Action, RunID, ReceiptDigest string }
-
-type repairReceipt struct {
-	Key, Digest, RunID, Completed string
-	Present                       bool
-}
-
-func repairOwnedRun(b *model.Bench, id string) bool {
-	if b.Lease.Execution != nil && b.Lease.Execution.ID == id {
-		return true
-	}
-	ids := append([]string(nil), b.Lease.RetainedRuns...)
-	if marker := b.Workspace.InitializationRepair; marker != nil {
-		ids = append(ids, marker.RetiredRuns...)
-	}
-	for _, retained := range ids {
-		if retained == id {
-			return true
-		}
-	}
-	return false
-}
-
-func repairSuccess(tx *sql.Tx, b *model.Bench, id string) bool {
-	if id == "" || !repairOwnedRun(b, id) {
-		return false
-	}
-	r, err := history.Get(tx, id)
-	return err == nil && r.Key == b.Key && r.Holder == b.Lease.Holder && r.Origin == "supervised" && r.Interruption == nil && r.File != nil && !r.SealedAt.IsZero() && r.ExitCode != nil && *r.ExitCode == 0 && r.ReleasedAt.IsZero()
-}
-
-func repairReceiptState(tx *sql.Tx, b *model.Bench, member, digest string) (string, bool, error) {
-	r := repairReceipt{Key: receipt(b, member)}
-	err := tx.QueryRow("SELECT digest,run_id,completed FROM setup_receipts WHERE bench=?", r.Key).Scan(&r.Digest, &r.RunID, &r.Completed)
-	if err != nil && err != sql.ErrNoRows {
-		return "", false, err
-	}
-	r.Present = err == nil
-	raw, err := json.Marshal(r)
-	if err != nil {
-		return "", false, err
-	}
-	sum := sha256.Sum256(raw)
-	completed, parseErr := time.Parse(time.RFC3339Nano, r.Completed)
-	valid := r.Present && r.Digest == digest && parseErr == nil && !completed.IsZero() && !completed.After(time.Now()) && repairSuccess(tx, b, r.RunID)
-	return hex.EncodeToString(sum[:]), valid, nil
-}
 
 // InspectInitializationRepair performs no mutation. Its caller holds the keyed
 // launch gate, state transaction and independently fenced revoked init owner.
@@ -80,6 +31,9 @@ func (m Manager) InspectInitializationRepair(ctx context.Context, b *model.Bench
 	}
 	if tx == nil || b == nil || b.Workspace == nil || b.Lease == nil || b.Lease.Holder != "initialization" || !b.Lease.StopRequested || b.Lease.Continuation != "" || b.Workspace.Archive != nil || (b.Workspace.Phase != "initializing" && b.Workspace.Phase != "prepared") || b.Path != filepath.Join(m.Data, "benches", b.Key) {
 		return nil, errors.New("initialization repair requires a revoked held initialization owner")
+	}
+	if err := m.transferAdmission(ctx, tx, b); err != nil {
+		return nil, err
 	}
 	if err := m.stopped(b); err != nil {
 		return nil, err
@@ -112,7 +66,7 @@ func (m Manager) InspectInitializationRepair(ctx context.Context, b *model.Bench
 		}
 		r := RepairMember{Name: member.Name, Digest: digest, Action: "prepare"}
 		var validReceipt bool
-		r.ReceiptDigest, validReceipt, err = repairReceiptState(tx, b, member.Name, digest)
+		r.ReceiptDigest, validReceipt, err = prepproof.ReceiptState(tx, b, member.Name, digest)
 		if err != nil {
 			return nil, err
 		}
@@ -120,7 +74,7 @@ func (m Manager) InspectInitializationRepair(ctx context.Context, b *model.Bench
 		if p != nil && p.Digest == digest {
 			one := workspace.Clone(b)
 			one.Workspace.Members, one.Workspace.Preparation = []model.WorkspaceMember{member}, []model.WorkspacePreparation{*p}
-			if CheckPrepared(one) == nil && verifyProof(tx, b, p) == nil && (p.RunID == "" || repairSuccess(tx, b, p.RunID)) {
+			if CheckPrepared(one) == nil && verifyProof(tx, b, p) == nil && (p.RunID == "" || prepproof.Success(tx, b, p.RunID)) {
 				r.Action, r.RunID = "preserve", p.RunID
 			}
 		}
@@ -133,9 +87,9 @@ func (m Manager) InspectInitializationRepair(ctx context.Context, b *model.Bench
 			if h.Key != b.Key || h.Holder != b.Lease.Holder || h.Origin != "supervised" || !h.ReleasedAt.IsZero() || h.SealedAt.IsZero() || h.Interruption == nil && (h.File == nil || h.ExitCode == nil) {
 				return nil, errors.New("initialization stage history requires reconciliation first")
 			}
-			if stage.Digest == digest && repairSuccess(tx, b, id) {
+			if stage.Digest == digest && prepproof.Success(tx, b, id) {
 				r.Action, r.RunID = "salvage", id
-			} else if !repairSuccess(tx, b, id) && r.Action == "prepare" && c != nil && strings.TrimSpace(c.Setup.Once) != "" && !validReceipt {
+			} else if !prepproof.Success(tx, b, id) && r.Action == "prepare" && c != nil && strings.TrimSpace(c.Setup.Once) != "" && !validReceipt {
 				if !choices[member.Name] {
 					return nil, errors.New("uncertain once hook requires explicit member rerun approval")
 				}
@@ -190,7 +144,7 @@ func (m Manager) ApplyInitializationRepair(ctx context.Context, b *model.Bench, 
 		return nil
 	}
 	for i, member := range approved {
-		_, validReceipt, err := repairReceiptState(tx, b, member.Name, member.Digest)
+		_, validReceipt, err := prepproof.ReceiptState(tx, b, member.Name, member.Digest)
 		if err != nil {
 			return err
 		}

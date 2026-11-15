@@ -47,8 +47,8 @@ A core checkpoint does not constitute completion of a phase or the product.
 
 | Phase | Required outcome | Current evidence |
 |---|---|---|
-| 0 | Host disk alert, reviewed cleanup dry-run, code-stage branch/checkpoint rules | Not implemented by this repository; inspect estate and board settings before changes |
-| 1 | Standalone CLI and host service; durable state/leases; checkpoints/recovery; quotas, shared mirrors/stores; verified archive/reap | CLI, journals, SQLite, fenced Linux execution and host storage tested; installer, archive/reap, reviewed log/history collection and approved automatic log retention verified; explicit/automatic setup and creation/recovery warm-up verified on Linux; aggregate lifecycle exposed through v2 API and CLI and reviewed stopped-initialization repair verified on Linux; same-host original task-ref transfer implemented with verification below; laptop preparation, missing-checkout/lost-host transfer, broader collection and integration pending |
+| 0 | Host disk alert, reviewed cleanup dry-run, code-stage branch/checkpoint rules | Pilot host collector and capacity warning verified live; estate checkpoint-rule change merged in PR #162. Notification delivery/recovery, all-board coverage and operator-reviewed cleanup remain unverified |
+| 1 | Standalone CLI and host service; durable state/leases; checkpoints/recovery; quotas, shared mirrors/stores; verified archive/reap | CLI, journals, SQLite, fenced Linux execution and host storage tested; installer, archive/reap, reviewed log/history collection and approved automatic log retention verified; explicit/automatic setup and creation/recovery warm-up verified on Linux; aggregate lifecycle exposed through v2 API and CLI and reviewed stopped-initialization repair verified on Linux; same-host original task-ref transfer with present or missing checkouts verified; missing-source archive/reap, laptop preparation, cross-host transfer, broader collection and integration pending |
 | 2 | Suite adapters, card panel, locality scoring, witness events; read-only web, file/diff/log/timeline views, terminal attach and MCP | Pending; charter/treaty contracts precede consumers; visual mockups before UI |
 | 3 | Remote editor launch/browser IDE; second-host recovery drill; per-bench isolation; Salaam layout and execution-host integration | Pending |
 
@@ -264,7 +264,11 @@ Native/Linux required checks and live transfer, repair, API, aggregate and Git-c
 regressions passed; see [transfer verification evidence](workspace-transfer-output.txt).
 See [original task-ref transfer](workspace-transfer.md). This checkpoint requires
 present source checkouts within one host state/data pair. Missing-checkout
-reconciliation and cross-host recovery, including independently verified fencing
+reconciliation now passes native/Linux required checks and managed recovery,
+existing handoff, repair, API, aggregate lifecycle and Git-control regressions; see
+[missing-checkout recovery](workspace-missing-transfer.md) and its
+[verification evidence](workspace-missing-transfer-output.txt). Its source archive/reap
+path and cross-host recovery, including independently verified fencing
 and rollback-resistant return quarantine, remain required work.
 
 ## Remaining retention work

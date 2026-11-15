@@ -74,6 +74,7 @@ type Workspace struct {
 	MemberCount          int           `json:"member_count"`
 	CheckpointRepository string        `json:"checkpoint_repository"`
 	ReadyForAcquisition  bool          `json:"ready_for_acquisition"`
+	TransferState        string        `json:"transfer_state,omitempty"`
 	QuotaBytes           uint64        `json:"quota_bytes"`
 	QuotaInodes          uint64        `json:"quota_inodes"`
 	Lease                *LeaseSummary `json:"lease,omitempty"`

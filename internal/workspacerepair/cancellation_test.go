@@ -91,7 +91,7 @@ func TestContinueCancellationCoversInitialAuthorizationAndFinalView(t *testing.T
 func TestContinueCancellationDuringHookStopsBeforeLaterMember(t *testing.T) {
 	f := newFixture(t, func(i int) string {
 		if i == 0 {
-			return "[setup]\nonce = 'exec sleep 30'\n"
+			return "[setup]\nonce = 'printf once-hook-started > .once-output; exec sleep 30'\n"
 		}
 		return hooks(i)
 	})
@@ -99,8 +99,6 @@ func TestContinueCancellationDuringHookStopsBeforeLaterMember(t *testing.T) {
 	owner := f.claim(f.inspect(), "repair1")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	started := make(chan struct{})
-	f.backend.onStart = func() { close(started) }
 	type completion struct {
 		stopped bool
 		err     error
@@ -110,10 +108,20 @@ func TestContinueCancellationDuringHookStopsBeforeLaterMember(t *testing.T) {
 		out, err := f.m.Continue(ctx, "card", "repair1", owner.GrantToken)
 		done <- completion{out != nil && out.StopRequested && out.GrantToken == "", err}
 	}()
-	select {
-	case <-started:
-	case <-time.After(10 * time.Second):
-		t.Fatal("repair setup did not start")
+	// Start acknowledges the outer setup shell before it forks the hook's
+	// subshell. This simple-child fixture does not provide cgroup fencing;
+	// synchronize cancellation with the actual hook, which execs without a
+	// further fork, rather than racing its process-group construction.
+	deadline := time.NewTimer(10 * time.Second)
+	defer deadline.Stop()
+	tick := time.NewTicker(time.Millisecond)
+	defer tick.Stop()
+	for f.count(0, "once") == 0 {
+		select {
+		case <-tick.C:
+		case <-deadline.C:
+			t.Fatal("repair hook did not start")
+		}
 	}
 	cancel()
 	select {

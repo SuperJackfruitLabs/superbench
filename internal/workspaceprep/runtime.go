@@ -15,6 +15,7 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/output"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/statepath"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/transferguard"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspace"
 )
 
@@ -27,7 +28,7 @@ type Backend interface {
 
 type Manager struct {
 	State, Data, CgroupRoot string
-	RepairID                string
+	RepairID, TransferID    string
 	Update                  workspace.Update
 	Read                    func(func(benchstate.Database) error) error
 	Gate                    func(string, func() error) error
@@ -64,8 +65,8 @@ func (m Manager) preparable(b *model.Bench) error {
 	if b.Workspace.Transfer != nil {
 		return workspace.ErrTransfer
 	}
-	if marker := b.Workspace.InitializationRepair; b.Workspace.Phase != "ready" && marker != nil && (m.RepairID == "" || m.RepairID != marker.ID) {
-		return errors.New("initialization requires its explicit repair continuation")
+	if err := transferguard.Authority(b, m.TransferID, m.RepairID); err != nil {
+		return err
 	}
 	if b.Lease.StopRequested || b.Lease.Continuation == "" || b.Workspace.Pending != nil {
 		return errors.New("workspace preparation is stopped or pending checkpoint")
@@ -232,7 +233,7 @@ func (m Manager) stop(key, token, continuation string, admin, internal bool) (*m
 // skipped-proof and final-save paths which never enter the payload watcher.
 func (m Manager) reconcileCancellation(ctx context.Context, key, token string, result **model.Bench, operationErr *error) {
 	ctxErr := ctx.Err()
-	if ctxErr == nil {
+	if ctxErr == nil && !errors.Is(*operationErr, transferguard.ErrGuard) {
 		return
 	}
 	_, stopErr := m.Stop(key, token, false)
