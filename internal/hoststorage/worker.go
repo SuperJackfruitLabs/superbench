@@ -1,14 +1,11 @@
 package hoststorage
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/operationcontrol"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotahelper"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"syscall"
 )
@@ -136,40 +133,5 @@ func (s Worker) Quota(c HostConfig, kind, key string, requested uint64) (Assignm
 	if s.Apply != nil {
 		return s.Apply(c, kind, key, requested)
 	}
-	args := []string{}
-	if c.PolicyOverride != "" {
-		args = append(args, "--policy", c.PolicyOverride)
-	}
-	args = append(args, "apply", kind, key)
-	if requested != 0 {
-		args = append(args, fmt.Sprint(requested))
-	}
-	command := c.QuotaHelper
-	if os.Geteuid() != 0 {
-		args = append([]string{"-n", command}, args...)
-		command = "/usr/bin/sudo"
-	}
-	cmd := exec.Command(command, args...)
-	var output bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &output, &output
-	e := operationcontrol.Effect(s.Context, cmd.Start)
-	if e == nil {
-		e = cmd.Wait()
-	}
-	raw := output.Bytes()
-	if e != nil {
-		return Assignment{}, fmt.Errorf("quota allocation: %w: %s", e, string(raw))
-	}
-	var a Assignment
-	if e = json.Unmarshal(raw, &a); e != nil {
-		return a, e
-	}
-	expected := filepath.Join(s.Data, key)
-	if kind == "bench" {
-		expected = filepath.Join(s.Data, "benches", key)
-	}
-	if a.Path != expected || a.ProjectID == 0 || a.Bytes == 0 || a.Inodes == 0 || requested != 0 && a.Bytes != requested {
-		return a, errors.New("quota helper returned a conflicting assignment")
-	}
-	return a, nil
+	return quotahelper.Apply(s.Context, quotahelper.Config{State: s.State, Data: s.Data, Command: c.QuotaHelper, PolicyOverride: c.PolicyOverride}, kind, key, requested)
 }
