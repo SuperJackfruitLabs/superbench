@@ -330,6 +330,8 @@ def main():
             binding = self.binding(request)
             assert binding and binding[2] == 'bound' and binding[3] == str(self.state) and binding[4] == str(cg)
             assert binding[5] == execution['HostID'] and binding[6] == execution['BootID']
+            capture = d.state / ('run-' + execution['ID'] + '.log')
+            wait_for(lambda: capture.is_file() and capture.stat().st_size > 0, 'actual payload capture before cancellation')
             return request, connection, fd, execution
 
         def stopped(self, original, execution, fd, unknown):
