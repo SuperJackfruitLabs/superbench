@@ -1,0 +1,48 @@
+Workspace creation storage verification, 2026-11-15
+Base: e918a63721cd262b5221d7e9cfabef2e0620c029 (PR 21 merge).
+Candidate: uncommitted feat/workspace-state source snapshot.
+Initial source archive SHA-256 (live CLI drill):
+67212c26b84494e0b5c0fbcc07a8569d1ed43ed629edae8432c4a9ea224d3135
+Final code/test snapshot SHA-256 (required checks after preflight correction):
+7e751d5d0e35ca071f2ec2fb45847675ab039d6b95a0ddd45a7f7fdc94862eb0
+Verification prose was updated after these snapshots. Both snapshots produced
+the same Linux CLI binary, so the live drill applies to the final CLI artifact.
+Fresh Linux bench binary SHA-256:
+9a5587e0c184482dca4b0ef8401ff927246e6ae746003d0114248842dc64b1dd
+
+This is an internal creation foundation, not an exposed multi-repository
+operation. The storage session and pinned materializer are tested separately;
+the durable aggregate lifecycle adapter still has to connect them. No aggregate
+readiness, service/CLI capability, deployment or phase completion is claimed.
+
+Linux, Go 1.26.4:
+  sh scripts/check.sh
+  Exit 0: formatting, four installer tests, vet, complete race suite and all
+  three builds passed. The suite includes real subprocess lock/crash tests,
+  an engine persistence-failure ownership test and two-repository Git tests.
+
+  python3 scripts/test-git-control-hooks.py --bench FRESH_BENCH --old-bench SCHEMA12_BENCH
+  Exit 0. All eight live cgroup groups passed:
+  1. Retained schema-12 hook writers reproduce the old post-release escape.
+  2. Managed control Git suppresses client hooks and preserves configuration.
+  3. User-command Git hooks run inside the payload; descendants are fenced.
+  4. Server hook rejection retains ownership and permits explicit recovery.
+  5. Retained schema-12 clean-filter writers reproduce the old escape.
+  6. Managed control Git contains and fences clean-filter descendants.
+  7. Controller-only SIGKILL preserves a live known scope and schema-13 intent;
+     status remains read-only, old binaries refuse, and the next mutation
+     fences/reconciles before handoff or a later lease grant.
+  8. Warm worktree creation suppresses post-checkout hooks without config edits.
+  The drill's finally block cleaned only its owned controllers, workers,
+  temporary directories and cgroup subtree.
+
+macOS, Go 1.26.4:
+  sh scripts/check.sh
+  Exit 0 after the final preflight correction: formatting, four installer
+  tests, vet, complete race suite and all three builds passed.
+
+Independent review found no unresolved correctness issues after tests were
+added for branch namespace conflicts and a same-SHA branch already owned by
+another checkout, including a registered path containing a newline. These
+conflicts now refuse before creating the first checkout and preserve unrelated
+refs, registrations and work. Both final required suites cover these tests.

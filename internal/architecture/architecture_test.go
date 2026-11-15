@@ -50,7 +50,8 @@ func TestArchitecture(t *testing.T) {
 			rel, _ := filepath.Rel(root, filepath.Dir(path))
 			rel = filepath.ToSlash(rel)
 			edges := map[string][]string{
-				"internal/bench":         {"internal/statestore", "internal/statepath", "internal/gitcontrol", "internal/quotapolicy", "internal/cachepolicy", "internal/archivepolicy", "internal/model", "internal/creation", "internal/repository", "internal/output", "internal/execution", "internal/setup", "internal/hoststorage", "internal/reap", "internal/history", "internal/retention"},
+				"internal/bench":         {"internal/benchstate", "internal/statestore", "internal/statepath", "internal/gitcontrol", "internal/quotapolicy", "internal/cachepolicy", "internal/archivepolicy", "internal/model", "internal/creation", "internal/repository", "internal/output", "internal/execution", "internal/setup", "internal/hoststorage", "internal/reap", "internal/history", "internal/retention"},
+				"internal/benchstate":    {"internal/model", "internal/archivepolicy", "internal/history", "internal/quotapolicy", "internal/setup"},
 				"internal/gitcontrol":    {"internal/execution"},
 				"internal/archivepolicy": {"internal/gitcontrol", "internal/model", "internal/reap", "internal/repository", "internal/setup"},
 				"internal/setup":         {"internal/gitcontrol", "internal/cachepolicy", "internal/quotapolicy"},
@@ -58,7 +59,7 @@ func TestArchitecture(t *testing.T) {
 				"internal/autoarchive":   {"internal/bench", "internal/archivepolicy", "internal/model", "internal/repository", "internal/setup"},
 				"internal/checkpointset": {"internal/model", "internal/gitcontrol"},
 				"internal/protocolv2":    {"internal/checkpointset", "internal/model"},
-				"internal/workspace":     {"internal/checkpointset", "internal/model", "internal/quotapolicy", "internal/repository", "internal/setup"},
+				"internal/workspace":     {"internal/creation", "internal/checkpointset", "internal/model", "internal/quotapolicy", "internal/repository", "internal/setup"},
 				"internal/execution":     {"internal/cachepolicy"},
 				"internal/model":         {"internal/execution"},
 				"internal/creation":      {"internal/model", "internal/repository"},

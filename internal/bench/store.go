@@ -6,10 +6,12 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/benchstate"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/gitcontrol"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/statepath"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/statestore"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -29,7 +31,7 @@ type Store struct {
 	spaceProbe         func(string) (Space, error)
 	quotaApply         func(HostConfig, string, string, uint64) (hoststorage.Assignment, error)
 }
-type database map[string]*Bench
+type database = benchstate.Database
 
 func (s Store) validate() error {
 	if s.MirrorTimeout < 0 || s.MirrorTimeout > time.Hour {
@@ -44,61 +46,44 @@ func (s Store) transaction(fn func(database) error) error {
 	return s.transactionSQL(func(records database, _ *sql.Tx) error { return fn(records) })
 }
 func (s Store) transactionSQL(fn func(database, *sql.Tx) error) error {
+	return s.session(func(session *statestore.Session) error { return s.update(session, fn) })
+}
+
+// A session retains the host lock across sequential durable state transitions.
+// It must not call a public mutation recursively: use update on this session.
+func (s Store) session(fn func(*statestore.Session) error) error {
 	if err := s.validate(); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(s.State, 0700); err != nil {
-		return err
-	}
-	lock, err := os.OpenFile(filepath.Join(s.State, "lock"), os.O_CREATE|os.O_RDWR, 0600)
-	if err != nil {
-		return err
-	}
-	defer lock.Close()
-	if err = syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
-		return err
-	}
-	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
-	state, err := filepath.EvalSymlinks(s.State)
-	if err != nil {
-		return err
-	}
-	if err = gitcontrol.Recover(state); err != nil {
-		return err
-	}
-	db, err := s.openSQL(false)
-	if err != nil {
-		return err
-	}
-	defer db.Close()
-	tx, err := db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	if err = s.migrate(tx); err != nil {
-		return err
-	}
-	records, err := loadRecords(tx)
-	if err != nil {
-		return err
-	}
-	if err = fn(records, tx); err != nil {
-		return err
-	}
-	if err = validRecords(records); err != nil {
-		return err
-	}
-	for key, b := range records {
-		raw, e := json.Marshal(b)
-		if e != nil {
-			return e
+	return statestore.Within(s.State, gitcontrol.Recover, fn)
+}
+
+func (s Store) update(session *statestore.Session, fn func(database, *sql.Tx) error) error {
+	return session.Update(func(tx *sql.Tx) error {
+		if err := s.migrate(tx); err != nil {
+			return err
 		}
-		if _, e = tx.Exec("INSERT INTO benches(key, record) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET record=excluded.record WHERE record != excluded.record", key, string(raw)); e != nil {
-			return e
+		records, err := loadRecords(tx)
+		if err != nil {
+			return err
 		}
-	}
-	return tx.Commit()
+		if err = fn(records, tx); err != nil {
+			return err
+		}
+		if err = validRecords(records); err != nil {
+			return err
+		}
+		for key, b := range records {
+			raw, e := json.Marshal(b)
+			if e != nil {
+				return e
+			}
+			if _, e = tx.Exec("INSERT INTO benches(key, record) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET record=excluded.record WHERE record != excluded.record", key, string(raw)); e != nil {
+				return e
+			}
+		}
+		return nil
+	})
 }
 
 // Status does not create directories, lock files, databases or journal files.
