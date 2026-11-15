@@ -44,4 +44,4 @@ SUPERBENCH_WORKSPACE_MANAGED_TRIAL="$trial" \
 SUPERBENCH_WORKSPACE_QUOTA_HELPER="$quota_helper" \
 SUPERBENCH_WORKSPACE_CGROUP_ROOT="$cgroups" \
 SUPERBENCH_WORKSPACE_OLD_CLI="$old_cli" \
- "$test_binary" -test.run '^TestManagedWorkspace(AggregateQuota|PreparationLifecycle|ExecutionLifecycle|RecoveryLifecycle|ArchiveLifecycle)$' -test.v -test.timeout 4m
+ "$test_binary" -test.run '^TestManagedWorkspace(AggregateQuota|PreparationLifecycle|ExecutionLifecycle|RecoveryLifecycle|ArchiveLifecycle|HistorySchema18Refusal)$' -test.v -test.timeout 4m

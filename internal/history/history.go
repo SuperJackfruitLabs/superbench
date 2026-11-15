@@ -40,6 +40,7 @@ type Record struct {
 	CollectedSHA256  string
 	CollectionReason string
 	Revision         int64
+	Interruption     *InterruptedObservation `json:",omitempty"`
 }
 
 func Schema(tx *sql.Tx) error {
@@ -48,6 +49,9 @@ func Schema(tx *sql.Tx) error {
 	return e
 }
 func Start(tx *sql.Tx, r Record) error {
+	if r.Interruption != nil {
+		return errors.New("interruption requires an existing supervised intent")
+	}
 	if r.Origin == "" {
 		r.Origin = "supervised"
 	}
@@ -90,11 +94,25 @@ func Get(db Reader, id string) (Record, error) {
 	return r, e
 }
 func Save(tx *sql.Tx, r Record) error {
+	return save(tx, r, false)
+}
+func save(tx *sql.Tx, r Record, observe bool) error {
 	if r.Origin == "" {
 		r.Origin = "supervised"
 	}
 	if e := valid(r); e != nil {
 		return e
+	}
+	prior, e := Get(tx, r.ID)
+	if e != nil {
+		return e
+	}
+	if prior.Interruption != nil {
+		if !sameObservation(prior.Interruption, r.Interruption) || !sameInterruptedEvidence(prior, r) {
+			return errors.New("interrupted observation evidence is immutable")
+		}
+	} else if r.Interruption != nil && !observe {
+		return errors.New("interruption requires digest-bound observation approval")
 	}
 	raw, e := json.Marshal(r)
 	if e != nil {
@@ -169,6 +187,9 @@ func Seal(tx *sql.Tx, id string, file reap.Entry, size int64, exit *int, truncat
 	if e != nil {
 		return e
 	}
+	if r.Interruption != nil {
+		return errors.New("interrupted observation cannot become a complete capture")
+	}
 	if r.Collection != "" || !r.CollectedAt.IsZero() {
 		return errors.New("history already collecting")
 	}
@@ -223,5 +244,5 @@ func valid(r Record) error {
 	if !r.CollectedAt.IsZero() && (r.ReleasedAt.IsZero() || r.File == nil || len(r.Collection) != 64) {
 		return errors.New("invalid collection evidence")
 	}
-	return nil
+	return validInterruption(r)
 }
