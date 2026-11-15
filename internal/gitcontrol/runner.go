@@ -296,32 +296,30 @@ func readControl(dir, name string) (controlIntent, error) {
 	return j, nil
 }
 
-// Recover fences only validated private intents while the caller holds the
-// store lock. It never clears a bench lease or guesses that an old writer ended.
-func Recover(state string) error {
+func recoveryInventory(state string) (string, []controlIntent, error) {
 	if !filepath.IsAbs(state) || filepath.Clean(state) != state {
-		return errors.New("Git control state must be canonical and absolute")
+		return "", nil, errors.New("Git control state must be canonical and absolute")
 	}
 	if _, e := os.Lstat(state); os.IsNotExist(e) {
-		return nil
+		return "", nil, nil
 	}
 	dir, e := controlDir(state, false)
 	if e != nil {
-		return e
+		return "", nil, e
 	}
 	f, e := os.Open(dir)
 	if os.IsNotExist(e) {
-		return nil
+		return "", nil, nil
 	}
 	if e != nil {
-		return e
+		return "", nil, e
 	}
 	defer f.Close()
 	var intents []controlIntent
 	for {
 		entries, e := f.ReadDir(128)
 		if e != nil && e != io.EOF {
-			return e
+			return "", nil, e
 		}
 		for _, entry := range entries {
 			name := entry.Name()
@@ -329,17 +327,27 @@ func Recover(state string) error {
 				continue
 			}
 			if len(intents) >= 1000 {
-				return errors.New("Git control recovery exceeds intent limit")
+				return "", nil, errors.New("Git control recovery exceeds intent limit")
 			}
 			j, e := readControl(dir, name)
 			if e != nil {
-				return e
+				return "", nil, e
 			}
 			intents = append(intents, j)
 		}
 		if e == io.EOF {
 			break
 		}
+	}
+	return dir, intents, nil
+}
+
+// Recover fences only validated private intents while the caller holds the
+// store lock. It never clears a bench lease or guesses that an old writer ended.
+func Recover(state string) error {
+	dir, intents, e := recoveryInventory(state)
+	if e != nil {
+		return e
 	}
 	// Validate all roots before any journal can authorize a filesystem operation.
 	// Even after a reboot, a missing historical root fails closed until the
