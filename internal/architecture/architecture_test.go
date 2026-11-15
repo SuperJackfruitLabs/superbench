@@ -50,6 +50,8 @@ func TestArchitecture(t *testing.T) {
 			rel, _ := filepath.Rel(root, filepath.Dir(path))
 			rel = filepath.ToSlash(rel)
 			edges := map[string][]string{
+				"internal/handoffjournal":    {"internal/crosshost", "internal/quotapolicy"},
+				"internal/crosshost":         {"internal/model"},
 				"internal/workspaceinit":     {"internal/model", "internal/workspace"},
 				"internal/controlcontext":    {"internal/benchstate", "internal/statestore", "internal/execution", "internal/gitcontrol", "internal/operationcontrol"},
 				"internal/bench":             {"internal/localprep", "internal/controlcontext", "internal/operationcancel", "internal/operationcontrol", "internal/workspaceinit", "internal/runprotection", "internal/workspacerepair", "internal/workspacearchive", "internal/stageexec", "internal/workspaceprep", "internal/workspace", "internal/benchstate", "internal/statestore", "internal/statepath", "internal/gitcontrol", "internal/quotapolicy", "internal/cachepolicy", "internal/archivepolicy", "internal/model", "internal/creation", "internal/repository", "internal/output", "internal/execution", "internal/setup", "internal/hoststorage", "internal/reap", "internal/history", "internal/retention"},
