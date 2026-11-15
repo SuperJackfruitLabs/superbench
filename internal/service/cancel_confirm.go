@@ -105,7 +105,12 @@ func (s *Server) reconcileCancellation(ctx context.Context, t operationcontrol.T
 	if err != nil {
 		return "", err
 	}
-	if err = s.config.Store.ReconcileOperationCancellation(ctx, i, helpers, func() error { return r.verifyCancellationInventory(i, helpers) }); err != nil {
+	manager, err := s.config.Store.OperationCancellation()
+	if err != nil {
+		return "", err
+	}
+	manager.CheckBarrier = func() error { return r.verifyCancellationInventory(i, helpers) }
+	if err = manager.Reconcile(ctx, i, helpers); err != nil {
 		return "", err
 	}
 	if err = r.confirmCancellation(i); err != nil {
