@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -140,7 +141,7 @@ func TestExecutionSchemaRequiresExplicitOrMutatingUpgrade(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if _, e = db.Exec("PRAGMA user_version=1"); e != nil {
+	if _, e = db.Exec("DROP TABLE workspace_operation_cancellations; DROP TABLE workspace_operation_runs; DROP TABLE workspace_operations; PRAGMA user_version=1"); e != nil {
 		t.Fatal(e)
 	}
 	db.Close()
@@ -182,12 +183,12 @@ func TestStorageUpgradeRefusesActiveOldSupervisor(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if _, e = db.Exec("PRAGMA user_version=2"); e != nil {
+	if _, e = db.Exec("DROP TABLE workspace_operation_cancellations; DROP TABLE workspace_operation_runs; DROP TABLE workspace_operations; PRAGMA user_version=2"); e != nil {
 		t.Fatal(e)
 	}
 	db.Close()
-	if e = s.Migrate(); e == nil {
-		t.Fatal("upgraded underneath an active old supervisor")
+	if e = s.Migrate(); e == nil || !strings.Contains(e.Error(), "stop supervised executions with the installed binary") {
+		t.Fatal("upgrade did not reach active old supervisor guard", e)
 	}
 	db, e = s.openSQL(true)
 	if e != nil {

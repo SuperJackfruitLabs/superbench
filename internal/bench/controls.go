@@ -2,10 +2,9 @@ package bench
 
 import (
 	"context"
-	"path/filepath"
 
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/controlcontext"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/execution"
-	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/gitcontrol"
 )
 
 func (s Store) controlContext() context.Context {
@@ -16,30 +15,13 @@ func (s Store) controlContext() context.Context {
 }
 
 // Commit the schema barrier before a control child can outlive its controller.
-// A failed outer operation must not roll this barrier back to an older binary.
 func (s Store) withControls(ctx context.Context, required bool) (Store, context.Context, error) {
-	if s.controls != nil {
-		return s, s.controls, nil
-	}
-	if !execution.Supported || s.executor != nil {
-		return s, ctx, nil
-	}
-	root := s.CgroupRoot
-	if root == "" {
-		root = "/sys/fs/cgroup/superbench"
-	}
-	if !required && !gitcontrol.Available(root) {
-		return s, ctx, nil
-	}
-	if err := s.Migrate(); err != nil {
-		return s, ctx, err
-	}
-	state, err := filepath.EvalSymlinks(s.State)
+	controls, err := controlcontext.Configure(ctx, controlcontext.Config{Existing: s.controls, State: s.State, Root: s.CgroupRoot, Timeout: s.MirrorTimeout, Required: required, Injected: s.executor != nil, Migrate: s.Migrate, Current: s.RequireOperationState})
+	s.controls = controls
 	if err != nil {
 		return s, ctx, err
 	}
-	s.controls = gitcontrol.WithRunner(ctx, &gitcontrol.Runner{State: state, Root: root, Timeout: s.MirrorTimeout})
-	return s, s.controls, nil
+	return s, controls, nil
 }
 
 func (s Store) reconciliationControls(key string) (Store, error) {
@@ -62,4 +44,12 @@ func (s Store) reconciliationControls(key string) (Store, error) {
 	}
 	s, _, err = s.withControls(context.Background(), required)
 	return s, err
+}
+
+// RequireOperationState validates the preinstalled schema without migration or recovery.
+func (s Store) RequireOperationState() error {
+	if err := s.validate(); err != nil {
+		return err
+	}
+	return controlcontext.RequireCurrent(s.State)
 }

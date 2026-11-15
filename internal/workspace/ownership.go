@@ -9,6 +9,7 @@ import (
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/benchstate"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/operationcontrol"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/repository"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspacepolicy"
 )
@@ -31,7 +32,7 @@ func (l Lifecycle) Acquire(ctx context.Context, key, holder string) (*model.Benc
 	}
 	var committed *model.Bench
 	err = l.Within(func(update Update) error {
-		if err := update(func(rows benchstate.Database, _ *sql.Tx) error {
+		if err := update(func(rows benchstate.Database, tx *sql.Tx) error {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
@@ -51,7 +52,7 @@ func (l Lifecycle) Acquire(ctx context.Context, key, holder string) (*model.Benc
 				return err
 			}
 			committed = privateRecord(b)
-			return nil
+			return operationcontrol.AdmitContext(ctx, tx, key, b.Workspace.ID)
 		}); err != nil {
 			return err
 		}
@@ -111,12 +112,15 @@ func (l Lifecycle) Acquire(ctx context.Context, key, holder string) (*model.Benc
 		}
 		candidate.Workspace.Preparation = nil
 		candidate.Workspace.Stage = nil
-		if err := update(func(rows benchstate.Database, _ *sql.Tx) error {
+		if err := update(func(rows benchstate.Database, tx *sql.Tx) error {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
 			if !reflect.DeepEqual(rows[key], committed) {
 				return errors.New("workspace identity or availability changed during acquisition")
+			}
+			if err := operationcontrol.BindContext(ctx, tx, candidate); err != nil {
+				return err
 			}
 			rows[key] = privateRecord(candidate)
 			return nil
@@ -143,12 +147,12 @@ func (l Lifecycle) Release(ctx context.Context, key, token string) (*model.Bench
 	}
 	var committed *model.Bench
 	err = l.Within(func(update Update) error {
-		if err := update(func(rows benchstate.Database, _ *sql.Tx) error {
+		if err := update(func(rows benchstate.Database, tx *sql.Tx) error {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
 			b := rows[key]
-			if err := l.owner(b, token); err != nil {
+			if err := l.ownerContext(ctx, tx, b, token); err != nil {
 				return err
 			}
 			if b.Workspace.Phase != "ready" || b.Workspace.Pending != nil || b.Workspace.Checkpoint == nil {
@@ -180,7 +184,7 @@ func (l Lifecycle) Release(ctx context.Context, key, token string) (*model.Bench
 			if !reflect.DeepEqual(b, committed) {
 				return errors.New("workspace release ownership or checkpoint changed")
 			}
-			if err := l.owner(b, token); err != nil {
+			if err := l.ownerContext(ctx, tx, b, token); err != nil {
 				return err
 			}
 			current, err := l.Inspect(ctx, b, true)

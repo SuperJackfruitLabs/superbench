@@ -15,6 +15,7 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/benchstate"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/operationcontrol"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/repository"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/statepath"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspace"
@@ -150,6 +151,9 @@ func (m Manager) Archive(ctx context.Context, key string, grace time.Duration, c
 			}
 			b := rows[key]
 			if err := m.available(b); err != nil {
+				return err
+			}
+			if err := operationcontrol.GuardContext(ctx, tx, b); err != nil {
 				return err
 			}
 			committed = workspace.Clone(b)

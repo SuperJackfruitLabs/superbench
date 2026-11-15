@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotahelper"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -26,12 +27,8 @@ type Policy struct {
 	ReserveInodes   uint64
 	upgradingInodes bool
 }
-type Assignment struct {
-	Path      string
-	ProjectID uint32
-	Bytes     uint64
-	Inodes    uint64
-}
+type Assignment = quotahelper.Assignment
+
 type ledger struct {
 	FormatVersion  int            `json:",omitempty"`
 	FilesystemUUID string         `json:",omitempty"`

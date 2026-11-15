@@ -10,8 +10,8 @@ import (
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/creation"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
-	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotapolicy"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/repository"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspaceplan"
 )
 
 // Materializer consumes the exact plan durably held by the caller. Gate must
@@ -26,38 +26,9 @@ type Materializer struct {
 }
 
 func validateMaterialization(plan Plan) (string, error) {
-	spec := Spec{Key: plan.Key, CheckpointRepository: plan.CheckpointRepository, QuotaBytes: plan.QuotaBytes}
-	for _, member := range plan.Members {
-		spec.Repositories = append(spec.Repositories, Repository{Name: member.Name, Repository: member.Repository, Branch: member.Branch, Base: member.Base})
-	}
-	normalized, err := normalize(spec)
-	if err != nil {
-		return "", err
-	}
-	data := filepath.Dir(filepath.Dir(plan.Root))
-	if !filepath.IsAbs(plan.Root) || filepath.Clean(plan.Root) != plan.Root || plan.Root != filepath.Join(data, "benches", plan.Key) {
-		return "", errors.New("workspace root differs from its registered location")
-	}
-	for i, member := range plan.Members {
-		r := normalized.Repositories[i]
-		if member.Branch != r.Branch || member.Base != r.Base || member.Path != filepath.Join(plan.Root, member.Name) || member.Mirror != repository.Path(data, member.Repository) || !model.ValidCommit(member.Source) || !quotapolicy.ValidBytes(member.RepositoryQuotaBytes) || member.RepositoryQuotaBytes != 0 && member.RepositoryQuotaBytes != plan.QuotaBytes {
-			return "", errors.New("workspace member differs from the pinned normalized plan")
-		}
-		if member.ObjectFormat != "sha1" && member.ObjectFormat != "sha256" || member.ObjectFormat == "sha1" && len(member.Source) != 40 || member.ObjectFormat == "sha256" && len(member.Source) != 64 {
-			return "", errors.New("invalid workspace member object format")
-		}
-		for _, previous := range plan.Members[:i] {
-			if previous.Repository == member.Repository && branchNamespaceConflict(previous.Branch, member.Branch) {
-				return "", errors.New("workspace task branches conflict in the repository ref namespace")
-			}
-		}
-	}
-	return data, nil
+	return workspaceplan.ValidateMaterialization(plan)
 }
-
-func branchNamespaceConflict(a, b string) bool {
-	return strings.HasPrefix(a, b+"/") || strings.HasPrefix(b, a+"/")
-}
+func branchNamespaceConflict(a, b string) bool { return workspaceplan.BranchNamespaceConflict(a, b) }
 
 // Ref ownership is checked without pruning stale registrations or moving any
 // worktree. Even a same-commit branch elsewhere belongs to that checkout.
@@ -166,7 +137,7 @@ func (m Materializer) Materialize(ctx context.Context, plan Plan) error {
 		out, err := m.Git(ctx, dir, args...)
 		return strings.TrimSpace(out), err
 	}
-	files := creation.Files{Data: data, Git: git}
+	files := creation.Files{Data: data, Git: git, Context: ctx}
 	// Validate the whole vector before creating the first member. No network
 	// refresh occurs here: moving remote tips cannot change the selected sources.
 	for _, member := range plan.Members {

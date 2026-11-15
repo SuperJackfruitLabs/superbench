@@ -13,6 +13,7 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/execution"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/history"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/operationcontrol"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/output"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/setup"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/stageexec"
@@ -90,7 +91,7 @@ func (m Manager) execute(ctx context.Context, key, token string, plan memberPlan
 				root = "/sys/fs/cgroup/superbench"
 			}
 			stage = &execution.Execution{ID: id, Root: root, Phase: "starting", Log: filepath.Join(m.State, "run-"+id+".log"), LogLimitBytes: limit}
-			identity, err := m.Backend.Create(root, id)
+			identity, err := operationcontrol.Value(ctx, func() (execution.Identity, error) { return m.Backend.Create(root, id) })
 			if err != nil {
 				return err
 			}
@@ -99,7 +100,7 @@ func (m Manager) execute(ctx context.Context, key, token string, plan memberPlan
 			b.Lease.Execution = stage
 			b.Workspace.Stage = &model.WorkspaceStage{Name: plan.member.Name, Digest: plan.digest}
 			continuation = b.Lease.Continuation
-			return history.Start(tx, history.Record{ID: id, Key: key, Holder: b.Lease.Holder, StartedAt: time.Now().UTC()})
+			return operationcontrol.StartHistory(ctx, tx, b, history.Record{ID: id, Key: key, Holder: b.Lease.Holder, StartedAt: time.Now().UTC()})
 		})
 	})
 	if err != nil {
@@ -186,7 +187,7 @@ func (m Manager) start(ctx context.Context, key, token, continuation string, pla
 			if err = ctx.Err(); err != nil {
 				return err
 			}
-			if err = m.Backend.Start(cmd, e); err != nil {
+			if err = operationcontrol.Effect(ctx, func() error { return m.Backend.Start(cmd, e) }); err != nil {
 				return err
 			}
 			b.Lease.Execution.Phase = "running"

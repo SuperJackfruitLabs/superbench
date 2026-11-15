@@ -13,6 +13,7 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/execution"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/history"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/operationcontrol"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/setup"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspace"
 )
@@ -168,6 +169,9 @@ func (m Manager) Prepare(ctx context.Context, key, token, selector string, offli
 	if err = m.preparable(b); err != nil {
 		return b, err
 	}
+	if err = m.enterOperation(ctx, key, token); err != nil {
+		return nil, err
+	}
 	defer m.reconcileCancellation(ctx, key, token, &result, &operationErr)
 	if _, err = (workspace.Lifecycle{State: m.State, Data: m.Data, Git: m.Git}).Inspect(ctx, b, false); err != nil {
 		return b, err
@@ -316,7 +320,7 @@ func (m Manager) environment(ctx context.Context, plan memberPlan) ([]string, er
 			return nil, errors.New("checkout-local cache namespace must be untracked and Git-readable")
 		}
 	}
-	paths, err := cachepolicy.Prepare(m.Data, plan.member.Path, settings)
+	paths, err := operationcontrol.Value(ctx, func() (cachepolicy.Paths, error) { return cachepolicy.Prepare(m.Data, plan.member.Path, settings) })
 	if err != nil {
 		return nil, err
 	}

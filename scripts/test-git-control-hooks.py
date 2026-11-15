@@ -308,7 +308,7 @@ if new and mode=='pause':
         assert alive(record), 'controller-only kill unexpectedly fenced detached helper'
         assert f.status().get('Lease') and alive(record), 'read-only status performed recovery'
         with sqlite3.connect(f.state / 'bench.db') as db:
-            assert db.execute('PRAGMA user_version').fetchone()[0] == 22
+            assert db.execute('PRAGMA user_version').fetchone()[0] == 25
         previous = run([args.old_bench, 'status', '--state', f.state, '--data', f.data, 'task'])
         assert previous.returncode != 0 and 'unsupported state schema' in previous.stderr
         blocked = run(f.command('lease-repair', '--holder', 'competitor', 'task'))

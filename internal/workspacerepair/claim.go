@@ -11,6 +11,7 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/benchstate"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/initrepair"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/operationcontrol"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/transferguard"
 )
 
@@ -48,6 +49,9 @@ func (m Manager) Claim(ctx context.Context, p Plan, id string) (out *Result, ope
 	err = m.Prep.Gate(p.Key, func() error {
 		defer func() { locks.close() }()
 		return m.Prep.Update(func(rows benchstate.Database, tx *sql.Tx) error {
+			if err := operationcontrol.GuardContext(ctx, tx, rows[p.Key]); err != nil {
+				return err
+			}
 			if err := ctx.Err(); err != nil {
 				return err
 			}

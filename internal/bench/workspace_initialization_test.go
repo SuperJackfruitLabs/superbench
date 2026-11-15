@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspace"
 )
 
@@ -22,5 +23,26 @@ func TestInitializationCancellationAfterStagingKeepsStoppedOwner(t *testing.T) {
 	}
 	if _, err := s.PrepareWorkspaceContext(context.Background(), b.Key, b.Lease.Token, "", false); err == nil {
 		t.Fatal("initialization continued after canceled handoff")
+	}
+}
+
+func TestInitializationReplayCharacterization(t *testing.T) {
+	for _, phase := range []string{"ready", "archived", "reaped"} {
+		t.Run(phase, func(t *testing.T) {
+			b := &Bench{Key: "card", Workspace: &model.Workspace{Phase: phase}}
+			if phase != "ready" {
+				b.Workspace.Archive = &model.WorkspaceArchive{}
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			got, err := (Store{}).finishWorkspaceInitialization(ctx, b)
+			if err != nil || got != b {
+				t.Fatal("completed replay unexpectedly touched controls or changed result", err)
+			}
+		})
+	}
+	b := &Bench{Key: "card", Workspace: &model.Workspace{Phase: "ready", Transfer: &model.WorkspaceTransfer{}}}
+	if got, err := (Store{}).finishWorkspaceInitialization(context.Background(), b); got != nil || !errors.Is(err, workspace.ErrTransfer) {
+		t.Fatal("transfer replay disclosed result", err)
 	}
 }

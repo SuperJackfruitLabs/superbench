@@ -40,7 +40,7 @@ func TestSchema19UpgradePreservesLegitimateInterruptedHistoryBytesAndReceipts(t 
 	if err := migrateForTest(db, t.TempDir(), nil); err != nil {
 		t.Fatal(err)
 	}
-	assertVersion(t, db, 22)
+	assertVersion(t, db, SchemaVersion)
 	after := databaseAuthority(t, db)
 	if before != after {
 		t.Fatal("schema19 migration rewrote existing authority")

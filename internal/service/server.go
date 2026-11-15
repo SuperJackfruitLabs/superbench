@@ -8,7 +8,6 @@ import (
 	"log"
 	"mime"
 	"net/http"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -28,16 +27,20 @@ type Config struct {
 	ArchiveInterval    time.Duration
 }
 type Server struct {
-	config    Config
-	ctx       context.Context
-	receipts  *receipts
-	slots     chan struct{}
-	handlers  sync.WaitGroup
-	admission sync.Mutex
-	closing   bool
+	proposedCancellation bool
+	cancelWake           chan struct{}
+	config               Config
+	ctx                  context.Context
+	receipts             *receipts
+	slots                chan struct{}
+	handlers             sync.WaitGroup
+	admission            sync.Mutex
+	closing              bool
 }
 
-func Serve(ctx context.Context, c Config) error {
+func Serve(ctx context.Context, c Config) error { return serve(ctx, c, false) }
+
+func serve(ctx context.Context, c Config, proposed bool) error {
 	if c.MaxActive == 0 {
 		c.MaxActive = 8
 	}
@@ -56,23 +59,39 @@ func Serve(ctx context.Context, c Config) error {
 	if c.ArchiveInterval < time.Second || c.ArchiveInterval > 24*time.Hour {
 		return errors.New("invalid archive interval")
 	}
-	listener, lock, e := listen(c.Socket, c.Store.State)
+	if proposed {
+		if err := c.Store.RequireOperationState(); err != nil {
+			return err
+		}
+	}
+	listener, lock, e := listenMode(c.Socket, c.Store.State, proposed)
 	if e != nil {
 		return e
 	}
 	defer listener.Close()
 	defer lock.Close()
-	if e = c.Store.Migrate(); e != nil {
-		return e
+	if !proposed {
+		if e = c.Store.Migrate(); e != nil {
+			return e
+		}
 	}
 	r, e := openReceipts(c.Store.State)
 	if e != nil {
 		return e
 	}
-	defer r.db.Close()
+	defer r.Close()
 	lifetime, cancel := context.WithCancel(ctx)
 	defer cancel()
-	s := &Server{config: c, ctx: lifetime, receipts: r, slots: make(chan struct{}, c.MaxActive)}
+	s := &Server{config: c, ctx: lifetime, receipts: r, slots: make(chan struct{}, c.MaxActive), proposedCancellation: proposed, cancelWake: make(chan struct{}, 1)}
+	operationDone := make(chan struct{})
+	if proposed {
+		go func() {
+			defer close(operationDone)
+			s.runOperationReconciler(lifetime, s.cancelWake, func(err error) { log.Printf("operation reconciliation blocked: %v", err) })
+		}()
+	} else {
+		close(operationDone)
+	}
 	maintenanceDone := make(chan struct{})
 	go func() {
 		defer close(maintenanceDone)
@@ -113,6 +132,7 @@ func Serve(ctx context.Context, c Config) error {
 		_ = httpServer.Close()
 	}
 	s.handlers.Wait()
+	<-operationDone
 	<-maintenanceDone
 	<-archiveDone
 	if e == http.ErrServerClosed {
@@ -122,6 +142,10 @@ func Serve(ctx context.Context, c Config) error {
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if s.proposedCancellation {
+		r.Close = true
+		w.Header().Set("Connection", "close")
+	}
 	if strings.HasPrefix(r.URL.Path, "/v2/") {
 		s.serveV2(w, r)
 		return
@@ -141,6 +165,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method == "GET" && r.URL.Path == "/healthz" {
+		if s.promoteNormal(r) != nil {
+			s.reply(w, protocol.Request{}, nil, 503, "unavailable", "normal connection limit reached")
+			return
+		}
 		s.reply(w, protocol.Request{}, map[string]any{"service": "superbench", "version": protocol.Version}, 200, "", "")
 		return
 	}
@@ -179,6 +207,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if s.promoteNormal(r) != nil {
+		s.reply(w, request, nil, 503, "unavailable", "normal connection limit reached")
+		return
+	}
 	select {
 	case s.slots <- struct{}{}:
 		defer func() { <-s.slots }()
@@ -195,7 +227,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		var cached *receipt
 		e = s.config.Store.WithLegacy(request.Key, func() error {
 			var claimErr error
-			cached, claimErr = s.receipts.claim(uid, request.RequestID, digest)
+			cached, claimErr = s.receipts.Claim(uid, request.RequestID, digest)
 			return claimErr
 		})
 		if e != nil {
@@ -225,7 +257,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if cached != nil {
-			s.raw(w, cached.status, cached.body)
+			s.raw(w, cached.HTTPStatus(), cached.Bytes())
 			return
 		}
 	}
@@ -241,7 +273,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if protocol.Growth(request.Operation) {
-		if e = s.receipts.finish(uid, request.RequestID, encoded, status); e != nil {
+		if e = s.receipts.Finish(uid, request.RequestID, encoded, status); e != nil {
 			s.reply(w, request, result, 503, "operation_in_doubt", "receipt save failed; inspect retained bench state")
 			return
 		}
@@ -346,4 +378,3 @@ func (s *Server) raw(w http.ResponseWriter, status int, body []byte) {
 	w.WriteHeader(status)
 	_, _ = w.Write(body)
 }
-func receiptKey(uid uint32, id string) string { return strconv.FormatUint(uint64(uid), 10) + ":" + id }

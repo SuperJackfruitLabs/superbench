@@ -16,6 +16,7 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/execution"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/history"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/operationcontrol"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/output"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/stageexec"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspace"
@@ -86,7 +87,7 @@ func (m Manager) payloadEnvironment(ctx context.Context, b *model.Bench, selecto
 	}
 	// Omitted repository_name means the aggregate root. No member implicitly
 	// supplies the root's configuration; its caches use the fixed shared policy.
-	paths, err := cachepolicy.Prepare(m.Data, b.Path, cachepolicy.Settings{})
+	paths, err := operationcontrol.Value(ctx, func() (cachepolicy.Paths, error) { return cachepolicy.Prepare(m.Data, b.Path, cachepolicy.Settings{}) })
 	if err != nil {
 		return nil, err
 	}
@@ -195,7 +196,7 @@ func (m Manager) Run(ctx context.Context, key, token, selector string, args []st
 				root = "/sys/fs/cgroup/superbench"
 			}
 			stage = &execution.Execution{ID: id, Root: root, Phase: "starting", Log: filepath.Join(m.State, "run-"+id+".log"), LogLimitBytes: limit}
-			identity, err := m.Backend.Create(root, id)
+			identity, err := operationcontrol.Value(ctx, func() (execution.Identity, error) { return m.Backend.Create(root, id) })
 			if err != nil {
 				return err
 			}
@@ -204,7 +205,7 @@ func (m Manager) Run(ctx context.Context, key, token, selector string, args []st
 			b.Lease.Execution = stage
 			b.Workspace.Stage = nil
 			continuation = b.Lease.Continuation
-			return history.Start(tx, history.Record{ID: id, Key: key, Holder: b.Lease.Holder, StartedAt: time.Now().UTC()})
+			return operationcontrol.StartHistory(ctx, tx, b, history.Record{ID: id, Key: key, Holder: b.Lease.Holder, StartedAt: time.Now().UTC()})
 		})
 	})
 	if err != nil {
@@ -242,7 +243,7 @@ func (m Manager) Run(ctx context.Context, key, token, selector string, args []st
 				if err := ctx.Err(); err != nil {
 					return err
 				}
-				if err := m.Backend.Start(cmd, e); err != nil {
+				if err := operationcontrol.Effect(ctx, func() error { return m.Backend.Start(cmd, e) }); err != nil {
 					return err
 				}
 				b.Lease.Execution.Phase = "running"

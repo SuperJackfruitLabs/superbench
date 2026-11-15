@@ -44,7 +44,7 @@ func validateTransferRecovery(b *model.Bench) error {
 
 // ValidateSchema21 preserves the historical transfer format without retirement.
 func ValidateSchema21(b *model.Bench) error {
-	if err := Validate(b); err != nil {
+	if err := ValidateSchema25(b); err != nil {
 		return err
 	}
 	if b.Workspace.Transfer != nil && b.Workspace.Transfer.Recovery != nil {

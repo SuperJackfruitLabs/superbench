@@ -40,7 +40,7 @@ func TestSchema21UpgradePreservesOriginalTransferJournalAndAllExistingAuthority(
 	if err := migrateForTest(db, t.TempDir(), nil); err != nil {
 		t.Fatal(err)
 	}
-	assertVersion(t, db, 22)
+	assertVersion(t, db, SchemaVersion)
 	if before != databaseAuthority(t, db) {
 		t.Fatal("migration rewrote original authority")
 	}

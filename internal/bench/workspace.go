@@ -2,12 +2,13 @@ package bench
 
 import (
 	"context"
-	"errors"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/operationcontrol"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/repository"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/statestore"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspace"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspacearchive"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspaceinit"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspaceprep"
 )
 
@@ -61,8 +62,10 @@ func (s Store) workspaceControls(ctx context.Context) (Store, context.Context, e
 	if err := ctx.Err(); err != nil {
 		return s, ctx, err
 	}
-	if err := s.Migrate(); err != nil {
-		return s, ctx, err
+	if _, scoped := operationcontrol.FromContext(ctx); !scoped {
+		if err := s.Migrate(); err != nil {
+			return s, ctx, err
+		}
 	}
 	return s.withControls(ctx, false)
 }
@@ -87,41 +90,26 @@ func (s Store) InitializeWorkspaceContext(ctx context.Context, creationID string
 	return s.finishWorkspaceInitialization(ctx, b)
 }
 
-func (s Store) finishWorkspaceInitialization(ctx context.Context, b *Bench) (result *Bench, operationErr error) {
-	if b.Workspace.Transfer != nil || b.Workspace.TransferredFrom != nil {
-		return nil, workspace.ErrTransfer
-	}
-	if b.Workspace.InitializationRepair != nil {
-		return nil, workspace.ErrInitializationRepair
-	}
-	if b.Workspace.Phase == "ready" || b.Workspace.Archive != nil {
-		return b, nil
-	}
-	key, token := b.Key, b.Lease.Token
-	defer func() {
-		if ctxErr := ctx.Err(); ctxErr != nil && result != nil && result.Lease != nil {
-			stopped, stopErr := s.workspacePreparation().Stop(key, token, false)
-			if stopped != nil {
-				result = stopped
-			}
-			operationErr = errors.Join(operationErr, ctxErr, stopErr)
-		}
-	}()
-	s, ctx, err := s.workspaceControls(ctx)
-	if err != nil {
-		return b, err
-	}
-	if b.Workspace.Pending == nil {
-		b, err = s.workspacePreparation().PrepareAcquired(ctx, b, "", false)
+func (s Store) finishWorkspaceInitialization(ctx context.Context, b *Bench) (*Bench, error) {
+	return (workspaceinit.Manager{Stop: func(key, token string) (*Bench, error) {
+		return s.workspacePreparation().Stop(key, token, false)
+	}, Continue: func(ctx context.Context, b *Bench) (*Bench, error) {
+		controlled, child, err := s.workspaceControls(ctx)
 		if err != nil {
 			return b, err
 		}
-	}
-	finished, err := s.workspaceLifecycle().FinishInitialization(ctx, b.Key, b.Lease.Token)
-	if finished == nil {
-		return b, err
-	}
-	return finished, err
+		if b.Workspace.Pending == nil {
+			b, err = controlled.workspacePreparation().PrepareAcquired(child, b, "", false)
+			if err != nil {
+				return b, err
+			}
+		}
+		finished, err := controlled.workspaceLifecycle().FinishInitialization(child, b.Key, b.Lease.Token)
+		if finished == nil {
+			return b, err
+		}
+		return finished, err
+	}}).Complete(ctx, b)
 }
 
 // StageWorkspaceRecoveryContext materializes only the exact sealed source

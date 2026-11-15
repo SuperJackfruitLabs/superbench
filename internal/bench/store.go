@@ -4,12 +4,12 @@ package bench
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/benchstate"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/gitcontrol"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/operationcontrol"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/statepath"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/statestore"
 	"os"
@@ -53,38 +53,23 @@ func (s Store) session(fn func(*statestore.Session) error) error {
 	if err := s.validate(); err != nil {
 		return err
 	}
-	return statestore.Within(s.State, gitcontrol.Recover, fn)
+	before := gitcontrol.Recover
+	if _, scoped := operationcontrol.FromContext(s.controlContext()); scoped {
+		before = nil
+	}
+	return statestore.Within(s.State, before, fn)
 }
 
 func (s Store) update(session *statestore.Session, fn func(database, *sql.Tx) error) error {
 	return session.Update(func(tx *sql.Tx) error {
-		if err := s.migrate(tx); err != nil {
+		check := s.migrate
+		if _, scoped := operationcontrol.FromContext(s.controlContext()); scoped {
+			check = func(tx *sql.Tx) error { return benchstate.CheckVersion(tx) }
+		}
+		if err := check(tx); err != nil {
 			return err
 		}
-		records, err := loadRecords(tx)
-		if err != nil {
-			return err
-		}
-		before := benchstate.Capture(records)
-		if err = fn(records, tx); err != nil {
-			return err
-		}
-		if err = benchstate.ValidateTransition(before, records); err != nil {
-			return err
-		}
-		if err = validRecords(records); err != nil {
-			return err
-		}
-		for key, b := range records {
-			raw, e := json.Marshal(b)
-			if e != nil {
-				return e
-			}
-			if _, e = tx.Exec("INSERT INTO benches(key, record) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET record=excluded.record WHERE record != excluded.record", key, string(raw)); e != nil {
-				return e
-			}
-		}
-		return nil
+		return benchstate.Update(tx, fn)
 	})
 }
 

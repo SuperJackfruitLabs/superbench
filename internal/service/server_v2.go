@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -8,6 +9,7 @@ import (
 	"net/http"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/bench"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/operationcontrol"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/protocolv2"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspaceapi"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspaceops"
@@ -47,6 +49,12 @@ func (s *Server) serveV2(w http.ResponseWriter, r *http.Request) {
 		s.replyV2(w, protocolv2.Request{}, nil, 413, "invalid_request", "request body exceeds limit")
 		return
 	}
+	if s.proposedCancellation {
+		if cancellation, parseErr := protocolv2.ParseCancelRequest(body); parseErr == nil {
+			s.cancelV2(w, uid, cancellation)
+			return
+		}
+	}
 	request, err := protocolv2.Parse(body)
 	if err != nil {
 		s.replyV2(w, protocolv2.Request{}, nil, 400, "invalid_request", "invalid workspace operation request")
@@ -56,6 +64,10 @@ func (s *Server) serveV2(w http.ResponseWriter, r *http.Request) {
 		s.replyV2(w, request, nil, 403, "forbidden", "operator authority required")
 		return
 	}
+	if s.promoteNormal(r) != nil {
+		s.replyV2(w, request, nil, 503, "unavailable", "normal connection limit reached")
+		return
+	}
 	select {
 	case s.slots <- struct{}{}:
 		defer func() { <-s.slots }()
@@ -63,6 +75,8 @@ func (s *Server) serveV2(w http.ResponseWriter, r *http.Request) {
 		s.replyV2(w, request, nil, 503, "unavailable", "active operation limit reached")
 		return
 	}
+	dispatchContext := s.ctx
+	var intent operationcontrol.Intent
 	manager := workspaceops.Manager{Store: s.config.Store}
 	if !protocolv2.Growth(request.Operation) {
 		if err := manager.Preflight(request); err != nil {
@@ -77,7 +91,7 @@ func (s *Server) serveV2(w http.ResponseWriter, r *http.Request) {
 			s.replyV2(w, request, nil, 400, "invalid_request", "invalid workspace operation request")
 			return
 		}
-		prior, found, lookupErr := s.receipts.lookup(uid, request.RequestID, digest)
+		prior, found, lookupErr := s.receipts.Lookup(uid, request.RequestID, digest)
 		if found || lookupErr != nil {
 			s.replayV2(w, request, prior, lookupErr)
 			return
@@ -96,7 +110,7 @@ func (s *Server) serveV2(w http.ResponseWriter, r *http.Request) {
 			}
 			if len(rows) == 1 && rows[0].Workspace != nil && rows[0].Workspace.CreationID == identity {
 				// Another dispatch may have claimed the receipt after our initial lookup.
-				prior, found, lookupErr = s.receipts.lookup(uid, request.RequestID, digest)
+				prior, found, lookupErr = s.receipts.Lookup(uid, request.RequestID, digest)
 				if found || lookupErr != nil {
 					s.replayV2(w, request, prior, lookupErr)
 					return
@@ -108,7 +122,7 @@ func (s *Server) serveV2(w http.ResponseWriter, r *http.Request) {
 		if err := manager.Preflight(request); err != nil {
 			// A concurrent same-ID request may have completed while preflight observed
 			// its changed owner. Recheck before reporting the mutable state conflict.
-			prior, found, lookupErr = s.receipts.lookup(uid, request.RequestID, digest)
+			prior, found, lookupErr = s.receipts.Lookup(uid, request.RequestID, digest)
 			if found || lookupErr != nil {
 				s.replayV2(w, request, prior, lookupErr)
 				return
@@ -118,9 +132,28 @@ func (s *Server) serveV2(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var cached *receipt
+		var deferStop func()
+		defer func() {
+			if deferStop != nil {
+				deferStop()
+			}
+		}()
 		err = s.config.Store.WithWorkspace(request.Key, request.Operation == "create" || request.Operation == "recover", func() error {
 			var claimErr error
-			cached, claimErr = s.receipts.claim(uid, request.RequestID, digest)
+			if s.proposedCancellation {
+				intent, claimErr = newOperationIntent(request, uid, digest)
+				if claimErr != nil {
+					return claimErr
+				}
+				var stop func()
+				cached, dispatchContext, stop, claimErr = s.receipts.ClaimScope(s.ctx, intent)
+				// No controller is attached for historical replay or admission failure.
+				if stop != nil {
+					deferStop = stop
+				}
+			} else {
+				cached, claimErr = s.receipts.Claim(uid, request.RequestID, digest)
+			}
 			return claimErr
 		})
 		if err != nil {
@@ -133,7 +166,7 @@ func (s *Server) serveV2(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	result, proof, operationErr := s.dispatchV2(request, uid)
+	result, proof, operationErr := s.dispatchV2(dispatchContext, request, uid)
 	status, code, message := 200, "", ""
 	if operationErr != nil {
 		status, code, message = operationErrorV2(operationErr)
@@ -156,18 +189,24 @@ func (s *Server) serveV2(w http.ResponseWriter, r *http.Request) {
 		encoded, _ = json.Marshal(responseV2(request, nil, code, message))
 	}
 	if protocolv2.Growth(request.Operation) {
-		if err := s.receipts.finish(uid, request.RequestID, encoded, status); err != nil {
-			if encodeErr != nil {
+		if err := s.receipts.Finish(uid, request.RequestID, encoded, status); err != nil {
+			if encodeErr != nil || errors.Is(err, errCancelRequested) {
 				result = nil
 			}
 			s.replyV2(w, request, result, 503, "operation_in_doubt", "receipt save failed; inspect retained workspace state")
 			return
 		}
 	}
+	if s.proposedCancellation && protocolv2.Growth(request.Operation) {
+		// The historical response commit is the cutoff, never HTTP delivery.
+		if err := s.finalizeOperation(intent); err != nil {
+			s.wakeCancellation()
+		}
+	}
 	s.raw(w, status, encoded)
 }
 
-func (s *Server) dispatchV2(r protocolv2.Request, uid uint32) (protocolv2.Result, protocolv2.Authority, error) {
+func (s *Server) dispatchV2(ctx context.Context, r protocolv2.Request, uid uint32) (protocolv2.Result, protocolv2.Authority, error) {
 	proof := protocolv2.Authority{}
 	switch r.Operation {
 	case "status":
@@ -189,7 +228,7 @@ func (s *Server) dispatchV2(r protocolv2.Request, uid uint32) (protocolv2.Result
 		}
 		return &protocolv2.HostStatus{Managed: h.Managed, DataFreeBytes: h.Data.Free, StateFreeBytes: h.State.Free}, proof, nil
 	}
-	out, err := (workspaceops.Manager{Store: s.config.Store}).Execute(s.ctx, r, uid)
+	out, err := (workspaceops.Manager{Store: s.config.Store}).Execute(ctx, r, uid)
 	result, proof, projectionErr := workspaceapi.Operation(r, out, err)
 	return result, proof, errors.Join(err, projectionErr)
 }
@@ -247,9 +286,9 @@ func (s *Server) replayV2(w http.ResponseWriter, request protocolv2.Request, cac
 		s.replyV2(w, request, nil, 503, "operation_in_doubt", "stored response unavailable")
 		return
 	}
-	if _, err := protocolv2.ParseResponse(cached.body, cached.status, request); err != nil {
+	if _, err := protocolv2.ParseResponse(cached.Bytes(), cached.HTTPStatus(), request); err != nil {
 		s.replyV2(w, request, nil, 503, "operation_in_doubt", "stored response requires local reconciliation")
 		return
 	}
-	s.raw(w, cached.status, cached.body)
+	s.raw(w, cached.HTTPStatus(), cached.Bytes())
 }

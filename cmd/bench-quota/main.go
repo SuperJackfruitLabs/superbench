@@ -26,6 +26,17 @@ func run(args []string) error {
 	if *policy != "/etc/superbench/storage.json" && (os.Getuid() != 0 || os.Geteuid() != 0 || os.Getenv("SUDO_UID") != "") {
 		return fmt.Errorf("policy override requires a direct root caller")
 	}
+	if f.NArg() > 0 && isOperationCommand(f.Arg(0)) {
+		request, err := parseOperation(f.Args())
+		if err != nil {
+			return err
+		}
+		p, err := hoststorage.Load(*policy)
+		if err != nil {
+			return err
+		}
+		return runOperation(context.Background(), p, request, os.Stdout)
+	}
 	migrating := f.NArg() == 1 && f.Arg(0) == "migrate-inodes"
 	retirement := f.NArg() == 3 && (f.Arg(0) == "retire-approved" || f.Arg(0) == "verify-retired" || f.Arg(0) == "verify-retirement-authority") && f.Arg(1) == "bench"
 	verifying := f.NArg() == 3 && f.Arg(0) == "verify" && f.Arg(1) == "bench"

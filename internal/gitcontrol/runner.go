@@ -18,9 +18,11 @@ import (
 	"time"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/execution"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/operationcontrol"
 )
 
-const controlVersion = "superbench.git-control.v1"
+const controlVersion = "superbench.git-control.v2"
+const legacyControlVersion = "superbench.git-control.v1"
 const maxIntent = 4096
 
 var controlID = regexp.MustCompile(`^[a-f0-9]{32}$`)
@@ -43,10 +45,16 @@ func Run(ctx context.Context, cmd *exec.Cmd) error {
 	if r, _ := ctx.Value(runnerContextKey{}).(*Runner); r != nil {
 		return r.Run(ctx, cmd)
 	}
-	return cmd.Run()
+	if err := operationcontrol.Effect(ctx, cmd.Start); err != nil {
+		return err
+	}
+	return cmd.Wait()
 }
 
-type controlIntent struct{ Version, Root, ID, HostID, BootID string }
+type controlIntent struct {
+	Version, Root, ID, HostID, BootID string
+	OperationID, OperationEpoch       string `json:",omitempty"`
+}
 
 func (j controlIntent) execution() *execution.Execution {
 	return &execution.Execution{Root: j.Root, ID: j.ID, HostID: j.HostID, BootID: j.BootID, Phase: "starting"}
@@ -156,7 +164,7 @@ func (r Runner) Run(ctx context.Context, cmd *exec.Cmd) error {
 	if e := validateRoot(r.Root); e != nil {
 		return e
 	}
-	dir, e := controlDir(r.State, true)
+	dir, e := operationcontrol.Value(ctx, func() (string, error) { return controlDir(r.State, true) })
 	if e != nil {
 		return e
 	}
@@ -166,11 +174,15 @@ func (r Runner) Run(ctx context.Context, cmd *exec.Cmd) error {
 	}
 	id := hex.EncodeToString(rawID[:])
 	host := execution.Host{}
-	identity, e := host.Create(r.Root, id)
+	identity, e := operationcontrol.Value(ctx, func() (execution.Identity, error) { return host.Create(r.Root, id) })
 	if e != nil {
 		return e
 	}
 	j := controlIntent{Version: controlVersion, Root: r.Root, ID: id, HostID: identity.HostID, BootID: identity.BootID}
+	if op, ok := operationcontrol.FromContext(ctx); ok {
+		j.OperationID = op.Target.ID()
+		j.OperationEpoch = op.Epoch
+	}
 	scope := j.execution()
 	if e = saveControl(dir, j); e != nil {
 		_ = host.Fence(scope)
@@ -179,10 +191,12 @@ func (r Runner) Run(ctx context.Context, cmd *exec.Cmd) error {
 	if cmd.WaitDelay == 0 || cmd.WaitDelay > 2*time.Second {
 		cmd.WaitDelay = 2 * time.Second
 	}
-	e = ctx.Err()
-	if e == nil {
-		e = host.Start(cmd, scope)
-	}
+	e = operationcontrol.Effect(ctx, func() error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		return host.Start(cmd, scope)
+	})
 	if e != nil {
 		if fenceErr := host.Fence(scope); fenceErr != nil {
 			return errors.Join(e, fmt.Errorf("Git control fence failed; intent retained: %w", fenceErr))
@@ -252,7 +266,7 @@ func readControl(dir, name string) (controlIntent, error) {
 			return j, errors.New("ambiguous Git control intent")
 		}
 		switch key {
-		case "Version", "Root", "ID", "HostID", "BootID":
+		case "Version", "Root", "ID", "HostID", "BootID", "OperationID", "OperationEpoch":
 		default:
 			return j, errors.New("unknown Git control intent field")
 		}
@@ -273,38 +287,39 @@ func readControl(dir, name string) (controlIntent, error) {
 	if decoder.Decode(&j) != nil {
 		return j, errors.New("invalid Git control intent fields")
 	}
-	if j.Version != controlVersion || j.ID != id || !controlID.MatchString(j.ID) || !hostID.MatchString(j.HostID) || len(j.BootID) < 1 || len(j.BootID) > 128 || strings.ContainsAny(j.BootID, "\x00\r\n\t ") {
+	if (j.Version != controlVersion && j.Version != legacyControlVersion) || j.ID != id || !controlID.MatchString(j.ID) || !hostID.MatchString(j.HostID) || len(j.BootID) < 1 || len(j.BootID) > 128 || strings.ContainsAny(j.BootID, "\x00\r\n\t ") {
 		return j, errors.New("invalid Git control intent identity")
+	}
+	if j.Version == legacyControlVersion && (seen["OperationID"] || seen["OperationEpoch"]) || (j.OperationID != "" || j.OperationEpoch != "") && (!hostID.MatchString(j.OperationID) || !controlID.MatchString(j.OperationEpoch)) || seen["OperationID"] != seen["OperationEpoch"] {
+		return j, errors.New("invalid Git operation provenance")
 	}
 	return j, nil
 }
 
-// Recover fences only validated private intents while the caller holds the
-// store lock. It never clears a bench lease or guesses that an old writer ended.
-func Recover(state string) error {
+func recoveryInventory(state string) (string, []controlIntent, error) {
 	if !filepath.IsAbs(state) || filepath.Clean(state) != state {
-		return errors.New("Git control state must be canonical and absolute")
+		return "", nil, errors.New("Git control state must be canonical and absolute")
 	}
 	if _, e := os.Lstat(state); os.IsNotExist(e) {
-		return nil
+		return "", nil, nil
 	}
 	dir, e := controlDir(state, false)
 	if e != nil {
-		return e
+		return "", nil, e
 	}
 	f, e := os.Open(dir)
 	if os.IsNotExist(e) {
-		return nil
+		return "", nil, nil
 	}
 	if e != nil {
-		return e
+		return "", nil, e
 	}
 	defer f.Close()
 	var intents []controlIntent
 	for {
 		entries, e := f.ReadDir(128)
 		if e != nil && e != io.EOF {
-			return e
+			return "", nil, e
 		}
 		for _, entry := range entries {
 			name := entry.Name()
@@ -312,11 +327,11 @@ func Recover(state string) error {
 				continue
 			}
 			if len(intents) >= 1000 {
-				return errors.New("Git control recovery exceeds intent limit")
+				return "", nil, errors.New("Git control recovery exceeds intent limit")
 			}
 			j, e := readControl(dir, name)
 			if e != nil {
-				return e
+				return "", nil, e
 			}
 			intents = append(intents, j)
 		}
@@ -324,18 +339,39 @@ func Recover(state string) error {
 			break
 		}
 	}
+	return dir, intents, nil
+}
+
+// Recover fences only validated private intents while the caller holds the
+// store lock. It never clears a bench lease or guesses that an old writer ended.
+func Recover(state string) error {
+	host := execution.Host{}
+	return recoverAll(state, validateRoot, host.Fence)
+}
+
+func recoverAll(state string, validate func(string) error, fence func(*execution.Execution) error) error {
+	dir, intents, e := recoveryInventory(state)
+	if e != nil {
+		return e
+	}
+	// Operation-attributed controls require their exact cancellation authority.
+	// Preflight all entries before even validating roots or fencing legacy scopes.
+	for _, j := range intents {
+		if j.OperationID != "" {
+			return operationcontrol.ErrBusy
+		}
+	}
 	// Validate all roots before any journal can authorize a filesystem operation.
 	// Even after a reboot, a missing historical root fails closed until the
 	// operator restores a validated cgroup location; we do not duplicate the
 	// execution backend's host/boot authority to bypass this filesystem check.
 	for _, j := range intents {
-		if e = validateRoot(j.Root); e != nil {
+		if e = validate(j.Root); e != nil {
 			return e
 		}
 	}
-	host := execution.Host{}
 	for _, j := range intents {
-		if e = host.Fence(j.execution()); e != nil {
+		if e = fence(j.execution()); e != nil {
 			return fmt.Errorf("Git control recovery fence failed; intent retained: %w", e)
 		}
 		if e = removeControl(dir, j.ID); e != nil {

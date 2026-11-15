@@ -149,7 +149,7 @@ func TestMigration14PreservesStagedGroupAndRejectsNewLifecycleData(t *testing.T)
 		if err := migrateForTest(db, t.TempDir(), nil); err != nil {
 			t.Fatal(err)
 		}
-		assertVersion(t, db, 22)
+		assertVersion(t, db, SchemaVersion)
 	}
 	b := preparedAggregate()
 	db := oldDatabase(t, 14, b)

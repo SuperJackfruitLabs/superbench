@@ -36,7 +36,7 @@ func v2Fixture(t *testing.T) (*Server, protocolv2.Request, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = receipts.db.Close() })
+	t.Cleanup(func() { _ = receipts.Close() })
 	t.Cleanup(func() {
 		_ = filepath.WalkDir(c.Store.Data, func(path string, entry fs.DirEntry, err error) error {
 			if err != nil {
@@ -149,7 +149,7 @@ func v2Files(t *testing.T, root string) map[string][32]byte {
 func v2ReceiptCount(t *testing.T, s *Server) int {
 	t.Helper()
 	var n int
-	if err := s.receipts.db.QueryRow("SELECT count(*) FROM receipts").Scan(&n); err != nil {
+	if err := receiptTestDB(t, s).QueryRow("SELECT count(*) FROM receipts").Scan(&n); err != nil {
 		t.Fatal(err)
 	}
 	return n

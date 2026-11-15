@@ -19,7 +19,7 @@ func TestV2HTTPRunningInterruptedAndCompletedReceiptsNeverRedispatch(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cached, err := s.receipts.claim(v2Operator, create.RequestID, digest); err != nil || cached != nil {
+	if cached, err := s.receipts.Claim(v2Operator, create.RequestID, digest); err != nil || cached != nil {
 		t.Fatal("claim failed", err)
 	}
 	v2Error(t, s, v2Operator, create, "in_progress")
@@ -28,7 +28,7 @@ func TestV2HTTPRunningInterruptedAndCompletedReceiptsNeverRedispatch(t *testing.
 	}
 	// A new receipt handle represents service restart; opening marks the abandoned
 	// running receipt interrupted and cannot make its operation executable again.
-	if err := s.receipts.db.Close(); err != nil {
+	if err := s.receipts.Close(); err != nil {
 		t.Fatal(err)
 	}
 	replacement, err := openReceipts(s.config.Store.State)
@@ -36,7 +36,7 @@ func TestV2HTTPRunningInterruptedAndCompletedReceiptsNeverRedispatch(t *testing.
 		t.Fatal(err)
 	}
 	s.receipts = replacement
-	t.Cleanup(func() { _ = replacement.db.Close() })
+	t.Cleanup(func() { _ = replacement.Close() })
 	v2Error(t, s, v2Operator, create, "operation_in_doubt")
 	if len(v2Snapshot(t, s)) != 0 {
 		t.Fatal("interrupted creation repeated")
@@ -51,7 +51,7 @@ func TestV2HTTPReceiptCapacityBlocksGrowthButNotReconciliation(t *testing.T) {
 	v2OK(t, s, v2Operator, create)
 	leased, _ := v2OK(t, s, v2Operator, protocolv2.Request{Operation: "lease", Key: create.Key, Holder: "capacity-owner", RequestID: "capacity-lease"})
 	token := v2Mutation(t, leased).Grant.LeaseToken
-	_, err := s.receipts.db.Exec(`WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<10000) INSERT INTO receipts(owner,id,digest,state,body,status) SELECT 9999,'fill-'||x,'unused','done',X'7B7D',200 FROM n`)
+	_, err := receiptTestDB(t, s).Exec(`WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<10000) INSERT INTO receipts(owner,id,digest,state,body,status) SELECT 9999,'fill-'||x,'unused','done',X'7B7D',200 FROM n`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +84,7 @@ func TestV2HTTPReceiptCapacityBlocksGrowthButNotReconciliation(t *testing.T) {
 func TestV2HTTPReceiptFinishFailureRetainsBoundedIndependentlyOwnedGrant(t *testing.T) {
 	s, create, _ := v2Fixture(t)
 	v2OK(t, s, v2Operator, create)
-	if _, err := s.receipts.db.Exec(`CREATE TRIGGER fail_completion BEFORE UPDATE OF state ON receipts WHEN NEW.state='done' BEGIN SELECT RAISE(FAIL,'injected receipt completion failure'); END`); err != nil {
+	if _, err := receiptTestDB(t, s).Exec(`CREATE TRIGGER fail_completion BEFORE UPDATE OF state ON receipts WHEN NEW.state='done' BEGIN SELECT RAISE(FAIL,'injected receipt completion failure'); END`); err != nil {
 		t.Fatal(err)
 	}
 	request := protocolv2.Request{Operation: "lease", Key: create.Key, Holder: "retained-owner", RequestID: "completion-failure"}

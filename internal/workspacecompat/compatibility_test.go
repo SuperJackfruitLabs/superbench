@@ -248,7 +248,7 @@ func TestOldScalarSchemaStillMigratesThroughMutation(t *testing.T) {
 		db.Close()
 		t.Fatal(err)
 	}
-	if _, err = db.Exec("PRAGMA user_version=13"); err != nil {
+	if _, err = db.Exec("DROP TABLE workspace_operation_cancellations; DROP TABLE workspace_operation_runs; DROP TABLE workspace_operations; PRAGMA user_version=13"); err != nil {
 		db.Close()
 		t.Fatal(err)
 	}

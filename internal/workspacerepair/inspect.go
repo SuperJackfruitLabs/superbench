@@ -12,6 +12,7 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/benchstate"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/history"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/initrepair"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/operationcontrol"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/reap"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/retention"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspace"
@@ -76,6 +77,9 @@ func (m Manager) inspectState(ctx context.Context, rows benchstate.Database, tx 
 	var p Plan
 	b, err := stoppedOwner(rows, key)
 	if err != nil {
+		return p, err
+	}
+	if err = operationcontrol.GuardContext(ctx, tx, b); err != nil {
 		return p, err
 	}
 	if err = m.fence(b); err != nil {
