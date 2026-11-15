@@ -31,6 +31,9 @@ func (i Identity) valid() bool {
 	return hex64.MatchString(i.OperationID) && hex32.MatchString(i.Epoch) && hex64.MatchString(i.StateIdentity) && hex64.MatchString(i.Authority) && hex64.MatchString(i.BinarySHA256)
 }
 
+// Valid reports whether all immutable identity fields have their exact wire shape.
+func (i Identity) Valid() bool { return i.valid() }
+
 type Proof struct {
 	Version   string
 	Identity  Identity
