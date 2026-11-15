@@ -33,6 +33,9 @@ func LoadKinds(r Reader, state string) (Database, error) {
 		return nil, err
 	}
 	if version < SchemaVersion {
+		if err := historicalOperations(r); err != nil {
+			return nil, err
+		}
 		if version < 19 {
 			if err := historicalHistory(r); err != nil {
 				return nil, err

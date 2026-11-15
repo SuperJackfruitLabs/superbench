@@ -15,6 +15,7 @@ import (
 var errConflict = errors.New("request id reused with a different operation body")
 var errInDoubt = errors.New("request outcome requires reconciliation")
 var errInProgress = errors.New("request is running")
+var errCancelRequested = errors.New("operation cancellation requested")
 var errCapacity = errors.New("request receipt capacity exhausted")
 
 type receipt struct {
@@ -60,22 +61,31 @@ func openReceipts(state string) (*receipts, error) {
 		db.Close()
 		return nil, e
 	}
-	if version != 0 && version != 1 {
+	if version != 0 && version != 1 && version != 2 {
 		db.Close()
 		return nil, errors.New("unsupported receipt schema")
 	}
-	if version == 0 {
+	if version < 2 {
 		tx, e := db.Begin()
 		if e != nil {
 			db.Close()
 			return nil, e
 		}
-		if _, e = tx.Exec(`CREATE TABLE receipts (owner INTEGER NOT NULL, id TEXT NOT NULL, digest TEXT NOT NULL, state TEXT NOT NULL, body BLOB, status INTEGER, PRIMARY KEY(owner,id))`); e != nil {
+		statement := `ALTER TABLE receipts ADD COLUMN cancel_state TEXT NOT NULL DEFAULT ''`
+		if version == 0 {
+			statement = `CREATE TABLE receipts (owner INTEGER NOT NULL, id TEXT NOT NULL, digest TEXT NOT NULL, state TEXT NOT NULL, body BLOB, status INTEGER, cancel_state TEXT NOT NULL DEFAULT '', PRIMARY KEY(owner,id))`
+		}
+		if _, e = tx.Exec(statement); e != nil {
 			tx.Rollback()
 			db.Close()
 			return nil, e
 		}
-		if _, e = tx.Exec("PRAGMA user_version=1"); e != nil {
+		if _, e = tx.Exec(`CREATE TABLE operation_cancels (owner INTEGER NOT NULL, id TEXT NOT NULL, digest TEXT NOT NULL, state TEXT NOT NULL CHECK(state IN ('cancel_requested','cancelled')), PRIMARY KEY(owner,id))`); e != nil {
+			tx.Rollback()
+			db.Close()
+			return nil, e
+		}
+		if _, e = tx.Exec("PRAGMA user_version=2"); e != nil {
 			tx.Rollback()
 			db.Close()
 			return nil, e
@@ -102,16 +112,19 @@ func (r *receipts) lookup(uid uint32, id, digest string) (*receipt, bool, error)
 }
 func (r *receipts) lookupLocked(uid uint32, id, digest string) (*receipt, bool, error) {
 	key := receiptKey(uid, id)
-	var prior, state string
+	var prior, state, cancelled string
 	var body []byte
 	var status sql.NullInt64
-	err := r.db.QueryRow("SELECT digest,state,body,status FROM receipts WHERE owner=? AND id=?", uid, id).Scan(&prior, &state, &body, &status)
+	err := r.db.QueryRow("SELECT digest,state,cancel_state,body,status FROM receipts WHERE owner=? AND id=?", uid, id).Scan(&prior, &state, &cancelled, &body, &status)
 	if err == nil {
 		if prior != digest {
 			return nil, true, errConflict
 		}
 		if state == "done" && status.Valid {
 			return &receipt{body: body, status: int(status.Int64)}, true, nil
+		}
+		if cancelled != "" {
+			return nil, true, errCancelRequested
 		}
 		if r.active[key] {
 			return nil, true, errInProgress
@@ -125,6 +138,9 @@ func (r *receipts) lookupLocked(uid uint32, id, digest string) (*receipt, bool, 
 	if _, retained := r.active[key]; retained {
 		return nil, true, errInDoubt
 	}
+	if err := cancelBarrier(r.db, uid, id, digest); err != nil {
+		return nil, true, err
+	}
 	return nil, false, nil
 }
 func (r *receipts) claim(uid uint32, id, digest string) (*receipt, error) {
@@ -134,15 +150,25 @@ func (r *receipts) claim(uid uint32, id, digest string) (*receipt, error) {
 		return cached, err
 	}
 	key := receiptKey(uid, id)
-	var e error
+	tx, e := r.db.Begin()
+	if e != nil {
+		return nil, e
+	}
+	defer tx.Rollback()
+	if e = cancelBarrier(tx, uid, id, digest); e != nil {
+		return nil, e
+	}
 	var count, bytes, pending int64
-	if e = r.db.QueryRow("SELECT count(*),coalesce(sum(length(body)),0),coalesce(sum(CASE WHEN state='running' THEN 1 ELSE 0 END),0) FROM receipts").Scan(&count, &bytes, &pending); e != nil {
+	if e = tx.QueryRow("SELECT count(*),coalesce(sum(length(body)),0),coalesce(sum(CASE WHEN state='running' THEN 1 ELSE 0 END),0) FROM receipts").Scan(&count, &bytes, &pending); e != nil {
 		return nil, e
 	}
 	if count >= 10000 || bytes+(pending+1)*(64<<10) > 64<<20 {
 		return nil, errCapacity
 	}
-	if _, e = r.db.Exec("INSERT INTO receipts(owner,id,digest,state) VALUES (?,?,?,'running')", uid, id, digest); e != nil {
+	if _, e = tx.Exec("INSERT INTO receipts(owner,id,digest,state) VALUES (?,?,?,'running')", uid, id, digest); e != nil {
+		return nil, e
+	}
+	if e = tx.Commit(); e != nil {
 		return nil, e
 	}
 	r.active[key] = true
@@ -165,7 +191,10 @@ func (r *receipts) finish(uid uint32, id string, body []byte, status int) error 
 	if !r.active[receiptKey(uid, id)] {
 		return errInDoubt
 	}
-	result, e := r.db.Exec("UPDATE receipts SET state='done',body=?,status=? WHERE owner=? AND id=? AND state='running'", body, status, uid, id)
+	if e := admittedCancelBarrier(r.db, uid, id); e != nil {
+		return e
+	}
+	result, e := r.db.Exec("UPDATE receipts SET state='done',body=?,status=? WHERE owner=? AND id=? AND state='running' AND cancel_state=''", body, status, uid, id)
 	if e != nil {
 		return e
 	}
@@ -174,6 +203,9 @@ func (r *receipts) finish(uid uint32, id string, body []byte, status int) error 
 		return e
 	}
 	if changed != 1 {
+		if e := admittedCancelBarrier(r.db, uid, id); e != nil {
+			return e
+		}
 		return errInDoubt
 	}
 	delete(r.active, key)

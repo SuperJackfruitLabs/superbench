@@ -52,7 +52,7 @@ func TestSchema18UpgradePreservesExactHistoryStateAndReceipts(t *testing.T) {
 	if err := migrateForTest(db, t.TempDir(), nil); err != nil {
 		t.Fatal(err)
 	}
-	assertVersion(t, db, 22)
+	assertVersion(t, db, SchemaVersion)
 	if err := CheckVersion(db); err != nil {
 		t.Fatal(err)
 	}

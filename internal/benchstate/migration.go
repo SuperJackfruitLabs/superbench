@@ -10,6 +10,7 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/history"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/initrepair"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/operationcontrol"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/reftransfer"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/setup"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspacepolicy"
@@ -33,7 +34,10 @@ func Migrate(tx *sql.Tx, state string, pinMigratedInodes func(*model.Bench) erro
 	if version == SchemaVersion {
 		return nil
 	}
-	if version >= 1 && version <= 21 {
+	if version >= 1 && version <= 22 {
+		if err := historicalOperations(tx); err != nil {
+			return err
+		}
 		records, err := Load(tx)
 		if err != nil {
 			return err
@@ -98,7 +102,10 @@ func Migrate(tx *sql.Tx, state string, pinMigratedInodes func(*model.Bench) erro
 		if err = reftransfer.Schema(tx); err != nil {
 			return err
 		}
-		_, err = tx.Exec("PRAGMA user_version=22")
+		if err = operationcontrol.Schema(tx); err != nil {
+			return err
+		}
+		_, err = tx.Exec("PRAGMA user_version=23")
 		return err
 	}
 	if version != 0 {
@@ -141,7 +148,10 @@ func Migrate(tx *sql.Tx, state string, pinMigratedInodes func(*model.Bench) erro
 	if err = reftransfer.Schema(tx); err != nil {
 		return err
 	}
-	_, err = tx.Exec("PRAGMA user_version=22")
+	if err = operationcontrol.Schema(tx); err != nil {
+		return err
+	}
+	_, err = tx.Exec("PRAGMA user_version=23")
 	return err
 }
 
@@ -185,6 +195,21 @@ func historicalHistory(r Reader) error {
 	}
 	if count != 0 {
 		return errors.New("interrupted history requires current state schema")
+	}
+	return nil
+}
+
+// An older schema cannot claim operation provenance or cancellation authority.
+func historicalOperations(r Reader) error {
+	var n int
+	if err := r.QueryRow("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='workspace_operations'").Scan(&n); err != nil || n == 0 {
+		return err
+	}
+	if err := r.QueryRow("SELECT count(*) FROM workspace_operations").Scan(&n); err != nil {
+		return err
+	}
+	if n != 0 {
+		return errors.New("operation bindings require current state schema")
 	}
 	return nil
 }
