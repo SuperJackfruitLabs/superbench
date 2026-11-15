@@ -3,96 +3,26 @@ package hoststorage
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"syscall"
-	"time"
-	"unicode/utf8"
+
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/storageproof"
 )
 
-const MaxStorageIdentity = 65536
-const storageVersion = "superbench.storage-identity.v1"
+const MaxStorageIdentity = storageproof.MaxIdentity
+const storageVersion = storageproof.Version
 
-// StorageIdentity binds an existing physical data root. Managed identities also
-// pin its dedicated filesystem, fixed policy, existing ledger and owner anchor.
-// It is evidence to recheck, never permission to create or adopt a directory.
-type StorageIdentity struct {
-	Version, Root, BenchKey                                                string
-	Device, Inode                                                          uint64
-	Mount                                                                  string
-	Managed                                                                bool
-	FilesystemUUID, PolicySHA256, LedgerSHA256, AnchorSHA256, ConfigSHA256 string `json:",omitempty"`
-	Assignment                                                             Assignment
-}
-
-func (s StorageIdentity) validate() error {
-	if s.Version != storageVersion || !Key.MatchString(s.BenchKey) || !utf8.ValidString(s.Root) || !utf8.ValidString(s.Mount) || !filepath.IsAbs(s.Root) || filepath.Clean(s.Root) != s.Root || s.Root == "/" || s.Device == 0 || s.Inode == 0 || s.Mount == "" || len(s.Mount) > 8192 || s.Assignment.Path != filepath.Join(s.Root, "benches", s.BenchKey) {
-		return errors.New("invalid storage identity")
-	}
-	if s.Managed {
-		if !volumePattern.MatchString(s.FilesystemUUID) || s.Assignment.ProjectID < 10000 || s.Assignment.Bytes == 0 || s.Assignment.Inodes == 0 {
-			return errors.New("invalid managed storage identity")
-		}
-		for _, digest := range []string{s.PolicySHA256, s.LedgerSHA256, s.AnchorSHA256, s.ConfigSHA256} {
-			decoded, err := hex.DecodeString(digest)
-			if err != nil || len(decoded) != 32 || hex.EncodeToString(decoded) != digest {
-				return errors.New("invalid storage digest")
-			}
-		}
-	} else if s.FilesystemUUID != "" || s.PolicySHA256 != "" || s.LedgerSHA256 != "" || s.AnchorSHA256 != "" || s.ConfigSHA256 != "" || s.Assignment.ProjectID != 0 || s.Assignment.Bytes != 0 || s.Assignment.Inodes != 0 {
-		return errors.New("unmanaged storage cannot claim managed evidence")
-	}
-	return nil
-}
-
-func (s StorageIdentity) Bytes() ([]byte, error) {
-	if err := s.validate(); err != nil {
-		return nil, err
-	}
-	raw, err := json.Marshal(s)
-	if len(raw) > MaxStorageIdentity {
-		return nil, errors.New("storage identity exceeds limit")
-	}
-	return raw, err
-}
+type StorageIdentity = storageproof.Identity
 
 func ParseStorageIdentity(raw []byte) (StorageIdentity, error) {
-	var s StorageIdentity
-	if len(raw) > MaxStorageIdentity {
-		return s, errors.New("storage identity exceeds limit")
-	}
-	if err := strictStorageJSON(raw, &s); err != nil {
-		return StorageIdentity{}, err
-	}
-	canonical, err := s.Bytes()
-	if err != nil {
-		return StorageIdentity{}, err
-	}
-	if !bytes.Equal(raw, canonical) {
-		return StorageIdentity{}, errors.New("storage identity is not canonical")
-	}
-	return s, nil
+	return storageproof.ParseIdentity(raw)
 }
-
-func strictStorageJSON(raw []byte, v any) error {
-	d := json.NewDecoder(bytes.NewReader(raw))
-	d.DisallowUnknownFields()
-	if err := d.Decode(v); err != nil {
-		return err
-	}
-	if err := d.Decode(new(any)); err != io.EOF {
-		return errors.New("trailing storage JSON")
-	}
-	return nil
-}
-
-func storageDigest(raw []byte) string { sum := sha256.Sum256(raw); return hex.EncodeToString(sum[:]) }
+func strictStorageJSON(raw []byte, v any) error { return storageproof.StrictJSON(raw, v) }
+func storageDigest(raw []byte) string           { return storageproof.Digest(raw) }
 
 func physicalStorageRoot(root string) (uint64, uint64, error) {
 	if !filepath.IsAbs(root) || filepath.Clean(root) != root || root == "/" {
@@ -176,7 +106,7 @@ func (w Worker) inspectStorage(ctx context.Context, key string, expected Assignm
 	if err != nil {
 		return zero, err
 	}
-	if err = s.validate(); err != nil {
+	if err = s.Validate(); err != nil {
 		return zero, err
 	}
 	endDevice, endInode, err := physicalStorageRoot(w.Data)
@@ -233,7 +163,7 @@ func (w Worker) inspectStorageConfig() (*HostConfig, error) {
 }
 
 func (w Worker) VerifyStorage(ctx context.Context, s StorageIdentity) error {
-	if err := s.validate(); err != nil {
+	if err := s.Validate(); err != nil {
 		return err
 	}
 	if s.Root != w.Data {
@@ -249,42 +179,6 @@ func (w Worker) VerifyStorage(ctx context.Context, s StorageIdentity) error {
 	return nil
 }
 
-type storageOutput struct {
-	buffer   bytes.Buffer
-	overflow bool
-	stop     context.CancelFunc
-}
-
-func (b *storageOutput) Write(raw []byte) (int, error) {
-	if len(raw) > MaxStorageIdentity-b.buffer.Len() {
-		b.overflow = true
-		if b.stop != nil {
-			b.stop()
-		}
-		return 0, errors.New("storage command output exceeds limit")
-	}
-	return b.buffer.Write(raw)
-}
-
 func storageCommand(ctx context.Context, binary string, args ...string) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, binary, args...)
-	cmd.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL=C"}
-	var stdout, stderr storageOutput
-	stdout.stop, stderr.stop = cancel, cancel
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	cmd.WaitDelay = time.Second
-	err := cmd.Run()
-	if stdout.overflow || stderr.overflow {
-		return nil, errors.New("storage command output exceeds limit")
-	}
-	if err != nil {
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		return nil, errors.New("read-only storage verification command failed")
-	}
-	return stdout.buffer.Bytes(), nil
+	return storageproof.VerificationCommand(ctx, binary, args...)
 }

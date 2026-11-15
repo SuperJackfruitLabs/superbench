@@ -36,7 +36,7 @@ func (a RetirementApproval) validate() error {
 	if a.Version != RetirementVersion || a.Key != a.Storage.BenchKey || !a.Storage.Managed {
 		return errors.New("invalid managed retirement approval")
 	}
-	if err := a.Storage.validate(); err != nil {
+	if err := a.Storage.Validate(); err != nil {
 		return err
 	}
 	r := a.Root
@@ -84,7 +84,7 @@ func ParseRetirementApproval(raw []byte) (RetirementApproval, error) {
 // thaws the root must approve that exact final mode in its durable manifest.
 func CaptureRetirementRoot(s StorageIdentity) (RetirementRoot, error) {
 	var r RetirementRoot
-	if err := s.validate(); err != nil {
+	if err := s.Validate(); err != nil {
 		return r, err
 	}
 	parent, err := openRetirementParent(s, nil)
