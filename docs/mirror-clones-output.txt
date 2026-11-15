@@ -1,0 +1,38 @@
+Reviewed mirror clone staging collection — 2026-11-15
+
+Verified source archive SHA256:
+44f109b8edb8963d4226724093a2e038c06643aaa4bc9408bb3dba40c3c2f627
+574 regular files; exact manifest verified before Linux checks.
+
+Linux amd64, Go1.26.4:
+sh scripts/check.sh: PASS (gofmt, 4 deployment tests, vet, full race suite,
+and CLI/quota-helper/daemon builds).
+Python managed runtime drill: PASS, exit0.
+
+PASS: managed publication retires only its empty stage and exact own metadata
+PASS: cooperative clone remains protected despite command success
+PASS: controller SIGKILL leaves a setsid writer; managed inspection fences it before planning
+PASS: wrong/changed approvals preserve data; exact collection/replay removes only approved staging entries
+PASS: returned root refuses old approval; fresh empty-root disposition and exact metadata retirement do not revive it
+UNCOVERED: shared package-cache GC, legacy/cooperative adoption, cross-host recovery and whole Phase 1
+
+Built Linux binary SHA256:
+d79583db8b4f45736752341fbe9aeed21db47953d7bcc9865b32280b333a95ca  bench
+304c2357447e0295be280edad6ea7d25c3ce550e972eb88d9e29fb9dea298450  bench-quota
+b3abd22d3e3fa9b1bfe5b65e783b0f18b87d9742beca834be74c936cafb8f421  benchd
+
+The owned fixture directory and cgroup were independently verified absent after
+terminal success. The outside symlink target remained unchanged through collection.
+Only the clone controller was interrupted with actual SIGKILL in this runtime
+drill. Other journal/root-removal/retirement interruption boundaries are covered
+by component error injection; no exact-boundary process-kill claim is made.
+
+Native darwin/arm64, Go1.26.4:
+sh scripts/check.sh: PASS, including full race suite and all three builds.
+Final reviewed CLI source passed the required checks again; unchanged suites
+used the Go test cache from the preceding full successful run.
+No native managed descendant-fencing or standalone laptop preparation claim.
+
+This slice does not complete Phase1, activate a board pilot, collect shared
+package stores/published mirrors, adopt cooperative/legacy stages, collect HTTP
+receipts or prove cross-host/backup-rollback authority.

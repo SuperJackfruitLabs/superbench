@@ -282,8 +282,9 @@ including protected held/failed evidence and durable interruption recovery.
 Approved automatic log policy execution is implemented in [automatic-retention.md](automatic-retention.md); broader collection remains pending. Use a reviewed candidate plan and verify the same files/ownership
 before collection; never treat age as proof that a writer stopped. Shared cache
 collection remains pending. [Unpublished clone staging](mirror-clones.md) has
-its own reviewed lifecycle with original managed writer provenance; runtime
-verification is recorded separately before claiming that slice complete.
+its own reviewed lifecycle with original managed writer provenance. Required
+native/Linux checks and the managed controller-kill collection drill
+[passed](mirror-clones-output.txt); broader collection remains pending.
 
 Receipt collection must not make an old request ID executable again. Existing
 v1 opaque IDs need durable tombstones when their response payload is retired.

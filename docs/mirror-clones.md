@@ -72,8 +72,10 @@ journal budgets. scripts/test-mirror-clones.py is a disposable Linux runtime
 drill: it kills an owned clone controller, proves a detached writer survives,
 then requires managed inspection to fence it before collection. It also checks
 managed publication, cooperative refusal, exact replay, outside-symlink target
-preservation and root disposition. Runtime results must be recorded separately;
-the existence of this driver is not evidence that it passed.
+preservation and root disposition. The [recorded results](mirror-clones-output.txt) include passing native/Linux
+required checks, the actual controller-kill drill and verified fixture cleanup.
+Root-removal and metadata-retirement boundaries use component error injection,
+not process kills at those exact journal boundaries.
 
 No cross-host transfer, rollback-resistant backup authority, cooperative-stage
 adoption, shared-cache GC or whole Phase 1 completion is claimed here.
