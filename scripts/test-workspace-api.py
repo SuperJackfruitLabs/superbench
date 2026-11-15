@@ -65,21 +65,21 @@ class Drill:
             assert 0 <= index < len(self.obligations[scenario])
             self.covered[scenario].add(index)
 
-    def transfer_unavailable(self, key, phase):
+    def transfer_unavailable(self, key, phase, workspace_phase="ready"):
         specific, raw = self.request(self.payload("status", key=key))
         rows = specific["result"]["benches"]
         assert len(rows) == 1 and rows[0]["key"] == key
         source = rows[0]
-        assert source["phase"] == "ready" and source["transfer_state"] == phase
+        assert source["phase"] == workspace_phase and source["transfer_state"] == phase
         assert source["ready_for_acquisition"] is False and "lease" not in source
         assert "grant" not in specific["result"] and b"lease_token" not in raw
         complete, raw = self.request(self.payload("status"))
         matches = [row for row in complete["result"]["benches"] if row["key"] == key]
         assert matches == [source] and b"lease_token" not in raw
         before = self.record(key)
-        assert before.get("Lease") is None and before["Workspace"]["Phase"] == "ready"
+        assert before.get("Lease") is None and before["Workspace"]["Phase"] == workspace_phase
         self.prove("original-ref-transfer-availability", 0, 1)
-        print("PASS: " + phase + " source remains in complete status inventory, ready initialization phase and no writer availability/grant", flush=True)
+        print("PASS: " + phase + " source remains in complete status inventory, " + workspace_phase + " lifecycle phase and no writer availability/grant", flush=True)
 
     def run(self, words, expected=0):
         result = subprocess.run(list(map(str, words)), capture_output=True, text=True, timeout=45)
