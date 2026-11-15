@@ -75,7 +75,9 @@ func (r Runner) Run(ctx context.Context, plan Plan) (*Result, error) {
 		return result, fmt.Errorf("start failed; lease retained: %w", err)
 	}
 	done := make(chan struct{})
+	monitorDone := make(chan struct{})
 	go func() {
+		defer close(monitorDone)
 		select {
 		case <-ctx.Done():
 			_ = r.Backend.Fence(plan.Execution)
@@ -85,6 +87,9 @@ func (r Runner) Run(ctx context.Context, plan Plan) (*Result, error) {
 	}()
 	waitErr := cmd.Wait()
 	close(done)
+	// No cancellation callback may escape into a later operation that retains
+	// the same lease token. Join before publishing the stopped/sealed result.
+	<-monitorDone
 	if cmd.ProcessState != nil {
 		result.ExitCode = cmd.ProcessState.ExitCode()
 	}
