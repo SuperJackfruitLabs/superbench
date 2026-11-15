@@ -18,6 +18,10 @@ func (r *receipts) operationScope(parent context.Context, i operationcontrol.Int
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	return r.operationScopeLocked(parent, i, false)
+}
+
+func (r *receipts) operationScopeLocked(parent context.Context, i operationcontrol.Intent, intentCommitted bool) (context.Context, context.CancelFunc, error) {
 	if err := r.operationAdmission(i); err != nil {
 		return nil, nil, err
 	}
@@ -28,7 +32,18 @@ func (r *receipts) operationScope(parent context.Context, i operationcontrol.Int
 	if _, ok := r.controllers[key]; ok {
 		return nil, nil, errInDoubt
 	}
-	if err := r.saveOperationIntent(i); err != nil {
+	if intentCommitted {
+		stored, err := r.operationIntent(i.Target)
+		if err != nil {
+			return nil, nil, err
+		}
+		if stored != i {
+			return nil, nil, errConflict
+		}
+		if err = r.requireHelperTracking(i); err != nil {
+			return nil, nil, err
+		}
+	} else if err := r.saveOperationIntent(i); err != nil {
 		return nil, nil, err
 	}
 	ctx, cancel := context.WithCancel(parent)

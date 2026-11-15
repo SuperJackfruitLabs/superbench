@@ -16,10 +16,7 @@ func TestPrivateReconciliationProvesPreAdmissionCancellationWithoutCreatingWorks
 			s, _, _ := v2Fixture(t)
 			i := operationcontrol.Intent{Target: operationcontrol.Target{UID: v2Operator, RequestID: "before-admission", Digest: strings.Repeat("a", 64)}, Key: "card", Operation: "create", Epoch: strings.Repeat("b", 32)}
 			if typed {
-				if _, err := s.receipts.Claim(i.Target.UID, i.Target.RequestID, i.Target.Digest); err != nil {
-					t.Fatal(err)
-				}
-				_, stop, err := s.receipts.Scope(context.Background(), i)
+				_, _, stop, err := s.receipts.ClaimScope(context.Background(), i)
 				if err != nil {
 					t.Fatal(err)
 				}

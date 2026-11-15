@@ -9,10 +9,14 @@ import (
 // A typed, durable v2 intent precedes every engine effect. Generic v1 and
 // historical interrupted receipts do not gain operation-epoch authority.
 func (r *receipts) operationIntent(t operationcontrol.Target) (operationcontrol.Intent, error) {
+	return loadOperationIntent(r.db, t)
+}
+
+func loadOperationIntent(q cancelReader, t operationcontrol.Target) (operationcontrol.Intent, error) {
 	var i operationcontrol.Intent
 	i.Target.UID = t.UID
 	i.Target.RequestID = t.RequestID
-	err := r.db.QueryRow(`SELECT digest,key,operation,epoch FROM operation_intents WHERE owner=? AND id=?`, t.UID, t.RequestID).Scan(&i.Target.Digest, &i.Key, &i.Operation, &i.Epoch)
+	err := q.QueryRow(`SELECT digest,key,operation,epoch FROM operation_intents WHERE owner=? AND id=?`, t.UID, t.RequestID).Scan(&i.Target.Digest, &i.Key, &i.Operation, &i.Epoch)
 	if err != nil {
 		return i, err
 	}
