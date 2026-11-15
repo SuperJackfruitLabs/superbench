@@ -88,8 +88,9 @@ Cleanup verification
   No installed policy, service, production tag or unrelated host cleanup changed.
 
 Limits and retained failures
-  Initial pre-unlink process-crash injection is native test coverage, not a
-  separate managed Linux kill drill. Optional legacy CLI coverage was absent.
+  Native fault injection covers failure after durable removal intent and before
+  unlink. No process-kill drill at that exact boundary is claimed. Optional
+  legacy CLI coverage was absent.
   External Git GC can rewrite an original quarantined HEAD reflog. Strict
   verification then refuses replay even when private retained copies, object
   pins, history and receipts survive. No GC-transparent replay claim is made.

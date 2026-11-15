@@ -63,8 +63,9 @@ This is same-host source retirement after completed transfer, not cross-host
 recovery or approval to clean unrelated host files. An external Git GC can rewrite
 an original quarantined HEAD reflog. Strict evidence verification then refuses
 replay even when private retained copies and object pins survive; GC-transparent
-replay is not promised. Process-crash injection before root unlink is covered by
-native tests; managed runtime verification must be read at its recorded scope.
+replay is not promised. Native fault injection covers failure after durable removal intent and before
+unlink; no process-kill drill at that exact boundary is claimed. Managed runtime
+verification must be read at its recorded scope.
 
 The exact source and runtime checks are recorded in the
 [verification evidence](workspace-missing-archive-output.txt).
