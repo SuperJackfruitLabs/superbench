@@ -125,7 +125,9 @@ relinquishes a source before warming a fresh local destination on its branches.
 Reviewed [missing-checkout recovery](docs/workspace-missing-transfer.md) retains
 surviving files and administrative evidence and rebuilds only the last complete
 confirmed checkpoint. Native/Linux checks and managed recovery regressions
-[passed](docs/workspace-missing-transfer-output.txt); source archive/reap remains pending.
+[passed](docs/workspace-missing-transfer-output.txt). Separate reviewed
+[source archive/reap](docs/workspace-missing-archive.md) preserves missing-member
+evidence and requires zero actual quota usage before retirement.
 If create/recover stops after creating its worktree but before registration, retry
 with exactly the same arguments. The intent pins the original SHA; adoption
 requires the expected path, shared git directory, branch, HEAD and clean files.
@@ -136,8 +138,8 @@ atomic transaction.
 
 ## Safety boundaries and deliberate limitations
 
-- One host, one repository per bench. No cross-host lease coordination. Recovery
-  elsewhere requires the operator to stop the old host's writer first.
+- Single-repository benches and grouped workspaces on one host. No cross-host
+  lease coordination. Recovery elsewhere requires the operator to stop the old host's writer first.
 - Leases are cooperative: they block other CLI acquisitions, not direct edits,
   arbitrary shells, or processes sharing the same uid. Supervised Linux runs use
   cgroup fencing; neither mode provides uid/mount isolation.

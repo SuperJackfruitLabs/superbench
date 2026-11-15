@@ -16,6 +16,7 @@ import (
 	"syscall"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/benchstate"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/reap"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspace"
@@ -32,6 +33,8 @@ type Plan struct {
 	Registrations               []Registration           `json:",omitempty"`
 	Transfer                    *model.WorkspaceTransfer `json:",omitempty"`
 	FreezeDigest, ReapAfter     string
+	Retirement                  *hoststorage.RetirementApproval `json:",omitempty"`
+	Missing                     *MissingFreeze                  `json:",omitempty"`
 	Tree                        reap.Tree
 	Digest                      string
 }
@@ -68,8 +71,11 @@ func ReadPlan(raw []byte) (*Plan, error) {
 	if err != nil {
 		return nil, err
 	}
-	if p.Version != PlanVersion || !keyPattern.MatchString(p.Key) || p.Digest != digest {
+	if (p.Version != PlanVersion && p.Version != MissingPlanVersion) || !keyPattern.MatchString(p.Key) || p.Digest != digest {
 		return nil, errors.New("invalid aggregate reap approval")
+	}
+	if (p.Version == MissingPlanVersion) != (p.Missing != nil) {
+		return nil, errors.New("missing reap approval version differs")
 	}
 	return &p, nil
 }
@@ -99,6 +105,9 @@ func matches(p *Plan, b *model.Bench) bool {
 func (m Manager) plan(ctx context.Context, tx *sql.Tx, b *model.Bench) (*Plan, error) {
 	if err := m.available(b); err != nil {
 		return nil, err
+	}
+	if missingSource(b) {
+		return m.planMissing(ctx, tx, b)
 	}
 	a := b.Workspace.Archive
 	if b.Workspace.Phase != "archived" || a == nil || a.FrozenAt == "" || a.ReapingDigest != "" {

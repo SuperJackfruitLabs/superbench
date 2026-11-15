@@ -248,6 +248,10 @@ func writeExclusive(path string, raw []byte) error {
 	return errors.Join(e, f.Close())
 }
 func (m MissingManager) publishEvidence(ctx context.Context, p MissingPlan, entries []Entry) (missingEvidence, error) {
+	return m.publishEvidenceWithGate(ctx, p, entries, m.guard)
+}
+
+func (m MissingManager) publishEvidenceWithGate(ctx context.Context, p MissingPlan, entries []Entry, gate func(context.Context, MissingPlan) error) (missingEvidence, error) {
 	var evidence missingEvidence
 	root := filepath.Dir(p.Evidence)
 	if err := os.Mkdir(root, 0700); err != nil && !os.IsExist(err) {
@@ -337,7 +341,7 @@ func (m MissingManager) publishEvidence(ctx context.Context, p MissingPlan, entr
 			return evidence, err
 		}
 	}
-	if err = m.guard(ctx, p); err != nil {
+	if err = gate(ctx, p); err != nil {
 		return evidence, err
 	}
 	current, err := adminSnapshot(ctx, p.Admin)

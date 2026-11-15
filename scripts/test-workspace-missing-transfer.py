@@ -208,7 +208,7 @@ def blocked_source(d, create, raw, uncertain):
     d.prove("original-ref-transfer-availability", 2)
 
 
-def transfer_and_repair(d, source, a_files, a_index, b_index, staged, reflog, create, raw, uncertain, old_token):
+def transfer_and_repair(d, source, a_files, a_index, b_index, staged, reflog, create, raw, uncertain, old_token, run_retention_gc=True):
     evidence = d.source_evidence()
     plan = d.cli("inspect-missing-transfer", "source", remote=False, flags=["--target", "target", "--transfer-id", "missing-original-refs", "--quota-bytes", str(32 << 20)])
     assert plan["Version"] == "superbench.workspace-missing-transfer.v1" and plan["SourceID"] == source["Workspace"]["ID"]
@@ -284,6 +284,9 @@ def transfer_and_repair(d, source, a_files, a_index, b_index, staged, reflog, cr
     assert_source(d, source, a_files, a_index, evidence)
     status, _ = d.request(d.payload("status", key="target")); d.sealed({"result": {"workspace": status["result"]["benches"][0]}})
     assert d.cli("continue-missing-transfer", "source", remote=False, flags=["--transfer-id", plan["ID"]]) == complete
+    if not run_retention_gc:
+        print("PASS: complete missing-source recovery retained exact quarantine; external GC deliberately deferred until archive/reap acceptance", flush=True)
+        return plan
     # Destructive maintenance is restricted to this disposable mirror, after
     # completion. Explicit quarantine refs must retain unpublished B objects.
     mirror = source["Workspace"]["Members"][1]["Mirror"]
