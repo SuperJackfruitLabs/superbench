@@ -57,7 +57,7 @@ func TestArchitecture(t *testing.T) {
 				"internal/workspacecopy":     {"internal/model"},
 				"internal/prepinput":         {"internal/setup"},
 				"internal/prepproof":         {"internal/model", "internal/history"},
-				"internal/transferguard":     {"internal/model", "internal/reftransfer", "internal/worktreetransfer", "internal/hoststorage", "internal/repository"},
+				"internal/transferguard":     {"internal/setup", "internal/model", "internal/reftransfer", "internal/worktreetransfer", "internal/hoststorage", "internal/repository"},
 				"internal/runprotection":     {"internal/model"},
 				"internal/hoststorage":       {"internal/model", "internal/output"},
 				"internal/stageexec":         {"internal/execution", "internal/output"},

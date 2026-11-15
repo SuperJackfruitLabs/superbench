@@ -121,8 +121,11 @@ func check(ctx context.Context, c Config, db reftransfer.Reader, target *model.B
 		return errors.New("incoming transfer source is not its permanently retired checkpoint")
 	}
 
-	if p.Checkpoint == nil || target.Workspace.CheckpointRepository != source.Workspace.CheckpointRepository || p.CheckpointRepository != source.Workspace.CheckpointRepository || target.RequestedQuotaBytes != p.QuotaBytes {
+	if p.Checkpoint == nil || target.Workspace.CheckpointRepository != source.Workspace.CheckpointRepository || p.CheckpointRepository != source.Workspace.CheckpointRepository {
 		return errors.New("incoming transfer checkpoint or quota differs")
+	}
+	if err := checkQuota(ctx, c, p, target); err != nil {
+		return err
 	}
 	var repository string
 	for _, m := range source.Workspace.Members {
