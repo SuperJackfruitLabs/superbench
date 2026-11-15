@@ -37,6 +37,16 @@ func (r *receipts) requestCancelLocked(uid uint32, id, digest string) (string, e
 		if state == "done" {
 			return "already_completed", nil
 		}
+		if state != "running" && state != "interrupted" {
+			return "", errInDoubt
+		}
+		switch cancelled {
+		case "cancelled":
+			return "cancelled", nil
+		case "", "cancel_requested":
+		default:
+			return "", errInDoubt
+		}
 		result, err := tx.Exec(`UPDATE receipts SET cancel_state='cancel_requested' WHERE owner=? AND id=? AND digest=? AND state<>'done'`, uid, id, digest)
 		if err != nil {
 			return "", err
@@ -65,6 +75,9 @@ func (r *receipts) requestCancelLocked(uid uint32, id, digest string) (string, e
 	if err == nil {
 		if prior != digest {
 			return "", errConflict
+		}
+		if state != "cancel_requested" && state != "cancelled" {
+			return "", errInDoubt
 		}
 		return state, nil
 	}

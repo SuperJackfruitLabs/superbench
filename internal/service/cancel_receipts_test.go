@@ -145,3 +145,31 @@ func TestIgnoredCancellationWriteNeverAcknowledgesBarrier(t *testing.T) {
 		t.Fatal("ignored tombstone acknowledged", state, err)
 	}
 }
+
+func TestConfirmedCancellationIsMonotonicAndRejectsCorruptAuthority(t *testing.T) {
+	r, err := openReceipts(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.db.Close()
+	digest := strings.Repeat("b", 64)
+	if _, err = r.claim(7, "confirmed", digest); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = r.db.Exec(`UPDATE receipts SET cancel_state='cancelled' WHERE owner=7 AND id='confirmed'`); err != nil {
+		t.Fatal(err)
+	}
+	if state, err := r.requestCancel(7, "confirmed", digest); err != nil || state != "cancelled" {
+		t.Fatal("confirmed cancellation regressed", state, err)
+	}
+	var state string
+	if err = r.db.QueryRow(`SELECT cancel_state FROM receipts WHERE owner=7 AND id='confirmed'`).Scan(&state); err != nil || state != "cancelled" {
+		t.Fatal(state, err)
+	}
+	if _, err = r.db.Exec(`UPDATE receipts SET cancel_state='corrupt' WHERE owner=7 AND id='confirmed'`); err != nil {
+		t.Fatal(err)
+	}
+	if state, err := r.requestCancel(7, "confirmed", digest); !errors.Is(err, errInDoubt) || state != "" {
+		t.Fatal("corrupt cancellation authority adopted", state, err)
+	}
+}
