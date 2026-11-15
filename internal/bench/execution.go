@@ -15,7 +15,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"syscall"
 	"time"
 )
 
@@ -46,19 +45,7 @@ func newLease(holder string) (*Lease, error) { return model.NewLease(holder) }
 // The execution gate linearizes start and stop independently from the global
 // state lock. It is never held while waiting for a command's execution to finish.
 func (s Store) executionGate(key string, fn func() error) error {
-	if !keyPattern.MatchString(key) {
-		return errors.New("invalid bench key")
-	}
-	f, e := os.OpenFile(filepath.Join(s.State, "execution-"+key+".lock"), os.O_CREATE|os.O_RDWR, 0600)
-	if e != nil {
-		return e
-	}
-	defer f.Close()
-	if e = syscall.Flock(int(f.Fd()), syscall.LOCK_EX); e != nil {
-		return e
-	}
-	defer syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
-	return fn()
+	return stageexec.Gate(s.State, key, fn)
 }
 
 type commandPlan func(*Bench, *sql.Tx, *setup.Config) ([]string, func(*sql.Tx, string) error, error)
