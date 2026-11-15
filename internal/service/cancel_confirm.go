@@ -105,11 +105,42 @@ func (s *Server) reconcileCancellation(ctx context.Context, t operationcontrol.T
 	if err != nil {
 		return "", err
 	}
-	if err = s.config.Store.ReconcileOperationCancellation(ctx, i, helpers); err != nil {
+	if err = s.config.Store.ReconcileOperationCancellation(ctx, i, helpers, func() error { return r.verifyCancellationInventory(i, helpers) }); err != nil {
 		return "", err
 	}
 	if err = r.confirmCancellation(i); err != nil {
 		return "", err
 	}
 	return "cancelled", nil
+}
+
+// Verify the exact immutable inventory again after privileged waits and before
+// the terminal core commit; no recorder can widen it after cancel admission.
+func (r *receipts) verifyCancellationInventory(i operationcontrol.Intent, expected []operationcontrol.Helper) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var digest, state, barrier string
+	if err := r.db.QueryRow(`SELECT digest,state,cancel_state FROM receipts WHERE owner=? AND id=?`, i.Target.UID, i.Target.RequestID).Scan(&digest, &state, &barrier); err != nil {
+		return err
+	}
+	if digest != i.Target.Digest {
+		return errConflict
+	}
+	if (state != "running" && state != "interrupted") || barrier != "cancel_requested" {
+		return errInDoubt
+	}
+	got, err := r.operationHelpers(i)
+	if err != nil {
+		return err
+	}
+	if len(got) != len(expected) {
+		return errInDoubt
+	}
+	// operationHelpers orders kind/key. Callers persist exactly this vector.
+	for n := range got {
+		if got[n] != expected[n] {
+			return errInDoubt
+		}
+	}
+	return nil
 }

@@ -12,6 +12,7 @@ import (
 
 func TestPrivateControllerSealsUnknownThenAllowsOnlyOldEpochRetry(t *testing.T) {
 	m, db, i, b, f := fixture(t)
+	m.CheckBarrier = func() error { return nil }
 	b.Lease.StopRequested = false
 	b.Lease.Continuation = strings.Repeat("f", 32)
 	b.Lease.Execution.Phase = "running"
@@ -49,6 +50,7 @@ func TestPrivateControllerSealsUnknownThenAllowsOnlyOldEpochRetry(t *testing.T) 
 }
 func TestMalformedHelperVectorRefusesBeforeAnyGitOrFenceEffect(t *testing.T) {
 	m, _, i, _, f := fixture(t)
+	m.CheckBarrier = func() error { return nil }
 	gitChecks := 0
 	m.RecoverGit = func(operationcontrol.Control, operationcontrol.Intent) error { gitChecks++; return nil }
 	if err := m.Reconcile(context.Background(), i, []operationcontrol.Helper{{}}); err == nil {
@@ -56,5 +58,29 @@ func TestMalformedHelperVectorRefusesBeforeAnyGitOrFenceEffect(t *testing.T) {
 	}
 	if gitChecks != 0 || f.count != 0 {
 		t.Fatal("invalid vector caused effects", gitChecks, f.count)
+	}
+}
+
+func TestPrivateControllerCannotConfirmAfterBarrierAuthorityChanges(t *testing.T) {
+	m, db, i, _, _ := fixture(t)
+	m.RecoverGit = func(operationcontrol.Control, operationcontrol.Intent) error { return nil }
+	checks := 0
+	m.CheckBarrier = func() error {
+		checks++
+		if checks == 3 {
+			return operationcontrol.ErrAuthority
+		}
+		return nil
+	}
+	if err := m.Reconcile(context.Background(), i, nil); err == nil {
+		t.Fatal("changed final receipt authority confirmed")
+	}
+	got, err := operationcontrol.Get(db, i.Target)
+	if err != nil || got.Phase != "bound" {
+		t.Fatal(got, err)
+	}
+	m.CheckBarrier = func() error { return nil }
+	if err = m.Reconcile(context.Background(), i, nil); err != nil {
+		t.Fatal("exact proof retry failed", err)
 	}
 }

@@ -211,6 +211,11 @@ func (m Manager) Conclude(i operationcontrol.Intent) error {
 					return err
 				}
 			}
+			if m.CheckBarrier != nil {
+				if err = m.CheckBarrier(); err != nil {
+					return err
+				}
+			}
 			return operationcontrol.ConcludeCancellation(tx, i, b)
 		})
 	})

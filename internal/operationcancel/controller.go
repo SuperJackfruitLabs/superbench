@@ -15,6 +15,12 @@ import (
 // Admission must independently certify helper tracking before supplying this
 // closed inventory, including the meaningful empty-inventory case.
 func (m Manager) Reconcile(ctx context.Context, i operationcontrol.Intent, helpers []operationcontrol.Helper) error {
+	if m.CheckBarrier == nil {
+		return operationcontrol.ErrAuthority
+	}
+	if err := m.CheckBarrier(); err != nil {
+		return err
+	}
 	if len(helpers) > operationcontrol.MaxHelpers {
 		return operationcontrol.ErrAuthority
 	}
@@ -38,6 +44,9 @@ func (m Manager) Reconcile(ctx context.Context, i operationcontrol.Intent, helpe
 		if _, err = quotahelper.Cancel(ctx, i, h); err != nil {
 			return err
 		}
+	}
+	if err = m.CheckBarrier(); err != nil {
+		return err
 	}
 	if err = ctx.Err(); err != nil {
 		return err

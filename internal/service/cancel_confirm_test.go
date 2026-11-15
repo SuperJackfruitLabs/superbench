@@ -77,3 +77,39 @@ func TestCancellationCannotReplaceHistoricalCompletedReceipt(t *testing.T) {
 		t.Fatal(got, err)
 	}
 }
+
+func TestCancellationInventoryCannotChangeAcrossHelperWait(t *testing.T) {
+	r, err := openReceipts(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.db.Close()
+	i := operationcontrol.Intent{Target: operationcontrol.Target{UID: 8, RequestID: "inventory", Digest: strings.Repeat("a", 64)}, Key: "card", Operation: "run", Epoch: strings.Repeat("b", 32)}
+	if _, err = r.claim(i.Target.UID, i.Target.RequestID, i.Target.Digest); err != nil {
+		t.Fatal(err)
+	}
+	ctx, stop, err := r.operationScope(context.Background(), i)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stop()
+	if err = operationcontrol.RecordHelper(ctx, helperFixture(i)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = r.requestCancelV2(i.Target.UID, i.Target.RequestID, i.Target.Digest); err != nil {
+		t.Fatal(err)
+	}
+	expected, err := r.operationHelpers(i)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = r.verifyCancellationInventory(i, expected); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = r.db.Exec(`DELETE FROM operation_helpers`); err != nil {
+		t.Fatal(err)
+	}
+	if err = r.verifyCancellationInventory(i, expected); err == nil {
+		t.Fatal("helper lost while waiting was certified absent")
+	}
+}

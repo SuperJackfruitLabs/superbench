@@ -25,10 +25,11 @@ type Backend interface {
 }
 
 type Manager struct {
-	State      string
-	Backend    Backend
-	Expected   *Inventory
-	RecoverGit func(operationcontrol.Control, operationcontrol.Intent) error
+	State        string
+	Backend      Backend
+	Expected     *Inventory
+	RecoverGit   func(operationcontrol.Control, operationcontrol.Intent) error
+	CheckBarrier func() error
 	// Gate excludes starts and ownership changes. Update must hold the host lock
 	// through commit, with selective operation recovery, never global Git recovery
 	// while an unrelated operation is live. The durable cancel barrier precedes it.
