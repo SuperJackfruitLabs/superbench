@@ -38,7 +38,9 @@ type Server struct {
 	closing              bool
 }
 
-func Serve(ctx context.Context, c Config) error {
+func Serve(ctx context.Context, c Config) error { return serve(ctx, c, false) }
+
+func serve(ctx context.Context, c Config, proposed bool) error {
 	if c.MaxActive == 0 {
 		c.MaxActive = 8
 	}
@@ -57,14 +59,21 @@ func Serve(ctx context.Context, c Config) error {
 	if c.ArchiveInterval < time.Second || c.ArchiveInterval > 24*time.Hour {
 		return errors.New("invalid archive interval")
 	}
-	listener, lock, e := listen(c.Socket, c.Store.State)
+	if proposed {
+		if err := c.Store.RequireOperationState(); err != nil {
+			return err
+		}
+	}
+	listener, lock, e := listenMode(c.Socket, c.Store.State, proposed)
 	if e != nil {
 		return e
 	}
 	defer listener.Close()
 	defer lock.Close()
-	if e = c.Store.Migrate(); e != nil {
-		return e
+	if !proposed {
+		if e = c.Store.Migrate(); e != nil {
+			return e
+		}
 	}
 	r, e := openReceipts(c.Store.State)
 	if e != nil {
@@ -73,7 +82,16 @@ func Serve(ctx context.Context, c Config) error {
 	defer r.Close()
 	lifetime, cancel := context.WithCancel(ctx)
 	defer cancel()
-	s := &Server{config: c, ctx: lifetime, receipts: r, slots: make(chan struct{}, c.MaxActive)}
+	s := &Server{config: c, ctx: lifetime, receipts: r, slots: make(chan struct{}, c.MaxActive), proposedCancellation: proposed, cancelWake: make(chan struct{}, 1)}
+	operationDone := make(chan struct{})
+	if proposed {
+		go func() {
+			defer close(operationDone)
+			s.runOperationReconciler(lifetime, s.cancelWake, func(err error) { log.Printf("operation reconciliation blocked: %v", err) })
+		}()
+	} else {
+		close(operationDone)
+	}
 	maintenanceDone := make(chan struct{})
 	go func() {
 		defer close(maintenanceDone)
@@ -114,6 +132,7 @@ func Serve(ctx context.Context, c Config) error {
 		_ = httpServer.Close()
 	}
 	s.handlers.Wait()
+	<-operationDone
 	<-maintenanceDone
 	<-archiveDone
 	if e == http.ErrServerClosed {
