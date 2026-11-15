@@ -104,10 +104,47 @@ func (m Manager) current(key string) (*model.Bench, error) {
 	return b, err
 }
 
-// Prepare completes selected initialization members. An empty selector prepares
+// A completed request may race a subsequent acquisition before its final read.
+// Its former token must never disclose the new owner's private capabilities.
+func (m Manager) ownedCurrent(key, token string) (*model.Bench, error) {
+	b, err := m.current(key)
+	if err != nil {
+		return nil, err
+	}
+	if b.Lease != nil {
+		if _, err := owned(benchstate.Database{key: b}, key, token); err != nil {
+			return nil, err
+		}
+	}
+	return b, nil
+}
+
+// PrepareAcquired preserves the already-committed owner across cancellation
+// before Prepare can enter its ownership boundary. The caller supplies only
+// the private record returned by its successful acquisition or staging call.
+func (m Manager) PrepareAcquired(ctx context.Context, acquired *model.Bench, selector string, offline bool) (*model.Bench, error) {
+	if acquired == nil || acquired.Lease == nil {
+		return nil, errors.New("newly acquired workspace owner required")
+	}
+	key, token := acquired.Key, acquired.Lease.Token
+	result, err := m.Prepare(ctx, key, token, selector, offline)
+	if result == nil {
+		result = workspace.Clone(acquired)
+	}
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		stopped, stopErr := m.Stop(key, token, false)
+		if stopped != nil {
+			result = stopped
+		}
+		err = errors.Join(err, ctxErr, stopErr)
+	}
+	return result, err
+}
+
+// Prepare completes selected members under a held lease. An empty selector prepares
 // every member, recording a resumable success proof after each sealed stage.
 // The caller separately seals a checkpoint before publishing readiness.
-func (m Manager) Prepare(ctx context.Context, key, token, selector string, offline bool) (*model.Bench, error) {
+func (m Manager) Prepare(ctx context.Context, key, token, selector string, offline bool) (result *model.Bench, operationErr error) {
 	if err := m.validate(); err != nil {
 		return nil, err
 	}
@@ -119,11 +156,12 @@ func (m Manager) Prepare(ctx context.Context, key, token, selector string, offli
 		return nil, err
 	}
 	if _, err = owned(benchstate.Database{key: b}, key, token); err != nil {
+		return nil, err
+	}
+	if err = preparable(b); err != nil {
 		return b, err
 	}
-	if err = initializing(b); err != nil {
-		return b, err
-	}
+	defer m.reconcileCancellation(ctx, key, token, &result, &operationErr)
 	if _, err = (workspace.Lifecycle{State: m.State, Data: m.Data, Git: m.Git}).Inspect(ctx, b, false); err != nil {
 		return b, err
 	}
@@ -146,7 +184,7 @@ func (m Manager) Prepare(ctx context.Context, key, token, selector string, offli
 	}
 	for _, plan := range plans {
 		if err = m.member(ctx, key, token, plan, offline); err != nil {
-			last, readErr := m.current(key)
+			last, readErr := m.ownedCurrent(key, token)
 			return last, errors.Join(err, readErr)
 		}
 	}
@@ -155,7 +193,7 @@ func (m Manager) Prepare(ctx context.Context, key, token, selector string, offli
 		if e != nil {
 			return e
 		}
-		if e = initializing(current); e != nil {
+		if e = preparable(current); e != nil {
 			return e
 		}
 		if e = m.stopped(current); e != nil {
@@ -180,10 +218,12 @@ func (m Manager) Prepare(ctx context.Context, key, token, selector string, offli
 		if e = CheckPrepared(current); e != nil {
 			return e
 		}
-		current.Workspace.Phase = "prepared"
+		if current.Workspace.Phase != "ready" {
+			current.Workspace.Phase = "prepared"
+		}
 		return nil
 	})
-	last, readErr := m.current(key)
+	last, readErr := m.ownedCurrent(key, token)
 	return last, errors.Join(err, readErr)
 }
 
@@ -195,7 +235,7 @@ func (m Manager) member(ctx context.Context, key, token string, plan memberPlan,
 		if err != nil {
 			return err
 		}
-		if err = initializing(b); err != nil {
+		if err = preparable(b); err != nil {
 			return err
 		}
 		if err = ctx.Err(); err != nil {
@@ -235,7 +275,9 @@ func (m Manager) member(ctx context.Context, key, token string, plan memberPlan,
 		if err = retain(tx, b); err != nil {
 			return err
 		}
-		b.Workspace.Phase = "initializing"
+		if b.Workspace.Phase != "ready" {
+			b.Workspace.Phase = "initializing"
+		}
 		removeProof(b, plan.member.Name)
 		if plan.config != nil && plan.config.Hooks() {
 			done, e := setup.Completed(tx, receipt(b, plan.member.Name), plan.digest)

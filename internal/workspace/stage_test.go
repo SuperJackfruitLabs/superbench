@@ -331,3 +331,53 @@ func TestStageSourceSelectionUsesWholeOperationDeadline(t *testing.T) {
 		t.Fatal("selection timeout created checkout", err)
 	}
 }
+
+func TestCompletedCreationReplayCannotRevealLaterWriterCapability(t *testing.T) {
+	f, l, initial := preparedLifecycle(t)
+	ready, err := l.FinishInitialization(context.Background(), initial.Key, initial.Lease.Token)
+	if err != nil || ready.Lease != nil {
+		t.Fatal(ready, err)
+	}
+	if err = f.manager.Within(func(update Update) error {
+		return update(func(rows benchstate.Database, _ *sql.Tx) error {
+			b := rows[initial.Key]
+			lease, err := model.NewLease("later-writer")
+			if err != nil {
+				return err
+			}
+			lease.Continuation, err = model.Nonce()
+			if err != nil {
+				return err
+			}
+			b.Lease = lease
+			b.Workspace.Preparation = nil
+			return nil
+		})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	owner := f.read(t)
+	allocations, admissions := f.allocations, f.admissions
+	f.manager.Git = func(context.Context, string, ...string) (string, error) {
+		t.Fatal("completed creation replay executed Git")
+		return "", nil
+	}
+	replay, err := f.manager.Stage(context.Background(), "create1", f.spec)
+	if err != nil || replay == nil || replay.Workspace.Phase != "ready" || replay.Lease == nil || replay.Lease.Holder != "later-writer" {
+		t.Fatal(replay, err)
+	}
+	if replay.Lease.Token != "" || replay.Lease.Continuation != "" {
+		t.Fatal("completed creation replay disclosed later writer capability")
+	}
+	if f.allocations != allocations || f.admissions != admissions {
+		t.Fatal("completed replay repeated storage effects")
+	}
+	if !reflect.DeepEqual(owner, f.read(t)) {
+		t.Fatal("replay mutated later owner")
+	}
+	replay.Workspace.Members[0].Source = "caller-change"
+	replay.Lease.Holder = "caller-change"
+	if !reflect.DeepEqual(owner, f.read(t)) {
+		t.Fatal("replay shared mutable state with persisted owner")
+	}
+}

@@ -27,6 +27,8 @@ type Lifecycle struct {
 	Timeout     time.Duration
 	Within      func(func(Update) error) error
 	Git         func(context.Context, string, ...string) (string, error)
+	Admit       func() error
+	Allocate    func(*model.Bench) error
 	Stopped     func(*model.Bench) error
 	Prepared    func(*model.Bench) error
 	Released    func(*sql.Tx, *model.Bench) error

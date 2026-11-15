@@ -29,7 +29,7 @@ func (m Manager) execute(ctx context.Context, key, token string, plan memberPlan
 			if err != nil {
 				return err
 			}
-			if err = initializing(b); err != nil {
+			if err = preparable(b); err != nil {
 				return err
 			}
 			if b.Lease.Execution != nil {
@@ -125,15 +125,19 @@ func (m Manager) execute(ctx context.Context, key, token string, plan memberPlan
 			return m.Seal(stage.ID, c, exit, truncated)
 		},
 	}
-	if _, err = runner.Run(ctx, stageexec.Plan{Execution: stage, Dir: plan.member.Path, Args: args, Environment: env}); err != nil {
-		return err
+	_, runErr := runner.Run(ctx, stageexec.Plan{Execution: stage, Dir: plan.member.Path, Args: args, Environment: env})
+	if runErr != nil {
+		return runErr
 	}
 	return m.Update(func(rows benchstate.Database, tx *sql.Tx) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		b, err := owned(rows, key, token)
 		if err != nil {
 			return err
 		}
-		if err = initializing(b); err != nil {
+		if err = preparable(b); err != nil {
 			return err
 		}
 		if b.Lease.Continuation != continuation || b.Lease.Execution == nil || b.Lease.Execution.ID != stage.ID {
@@ -160,7 +164,7 @@ func (m Manager) start(ctx context.Context, key, token, continuation string, pla
 			if err != nil {
 				return err
 			}
-			if err = initializing(b); err != nil {
+			if err = preparable(b); err != nil {
 				return err
 			}
 			if b.Lease.Continuation != continuation || b.Lease.Execution == nil || b.Lease.Execution.ID != e.ID || b.Lease.Execution.Phase != "starting" {

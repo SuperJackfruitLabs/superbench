@@ -179,3 +179,28 @@ func TestDurableStageRequiresMatchingInitializationScope(t *testing.T) {
 		t.Fatal("prepared record kept active stage intent")
 	}
 }
+
+func TestReadyProofsDescribePriorPreparationWithoutGrantingPayloadAuthority(t *testing.T) {
+	b := prepared()
+	b.Workspace.Checkpoint = checkpoint(t, b)
+	b.Workspace.Checkpoint.Seal = strings.Repeat("f", 40)
+	b.Workspace.Phase = "ready"
+	b.Lease = nil
+	for _, held := range []bool{false, true} {
+		b.Workspace.Preparation = nil
+		if held {
+			b.Lease = &model.Lease{Holder: "worker", Token: strings.Repeat("2", 32), Continuation: strings.Repeat("3", 32)}
+		}
+		if err := Validate(b); err != nil {
+			t.Fatal("ready inventory cannot preserve a repaired clean checkpoint", err)
+		}
+		if err := ValidateSchema15(b); err == nil {
+			t.Fatal("schema16 partial proof shape accepted as15")
+		}
+	}
+	b.Workspace.Phase = "prepared"
+	b.Lease.Holder = "initialization"
+	if err := Validate(b); err == nil {
+		t.Fatal("initialization became prepared without every member proof")
+	}
+}

@@ -159,40 +159,45 @@ func newFixture(t *testing.T, n int, script func(int) string) *fixture {
 	return f
 }
 func (f *fixture) update(change func(benchstate.Database, *sql.Tx) error) error {
+	return f.within(func(update workspace.Update) error { return update(change) })
+}
+func (f *fixture) within(fn func(workspace.Update) error) error {
 	return statestore.Within(f.store.State, nil, func(session *statestore.Session) error {
-		return session.Update(func(tx *sql.Tx) error {
-			if err := benchstate.Migrate(tx, f.store.State, func(*model.Bench) error { return nil }); err != nil {
-				return err
-			}
-			rows, err := benchstate.Load(tx)
-			if err != nil {
-				return err
-			}
-			before := benchstate.Capture(rows)
-			proofs := len(rows["card"].Workspace.Preparation)
-			if err := change(rows, tx); err != nil {
-				return err
-			}
-			if f.failProof && len(rows["card"].Workspace.Preparation) > proofs {
-				f.failProof = false
-				return errors.New("injected proof save failure")
-			}
-			if err := benchstate.Validate(rows); err != nil {
-				return err
-			}
-			if err := benchstate.ValidateTransition(before, rows); err != nil {
-				return err
-			}
-			for key, b := range rows {
-				raw, err := json.Marshal(b)
+		return fn(func(change workspace.Change) error {
+			return session.Update(func(tx *sql.Tx) error {
+				if err := benchstate.Migrate(tx, f.store.State, func(*model.Bench) error { return nil }); err != nil {
+					return err
+				}
+				rows, err := benchstate.Load(tx)
 				if err != nil {
 					return err
 				}
-				if _, err := tx.Exec("INSERT INTO benches(key,record) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET record=excluded.record WHERE record!=excluded.record", key, string(raw)); err != nil {
+				before := benchstate.Capture(rows)
+				proofs := len(rows["card"].Workspace.Preparation)
+				if err := change(rows, tx); err != nil {
 					return err
 				}
-			}
-			return nil
+				if f.failProof && len(rows["card"].Workspace.Preparation) > proofs {
+					f.failProof = false
+					return errors.New("injected proof save failure")
+				}
+				if err := benchstate.Validate(rows); err != nil {
+					return err
+				}
+				if err := benchstate.ValidateTransition(before, rows); err != nil {
+					return err
+				}
+				for key, b := range rows {
+					raw, err := json.Marshal(b)
+					if err != nil {
+						return err
+					}
+					if _, err := tx.Exec("INSERT INTO benches(key,record) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET record=excluded.record WHERE record!=excluded.record", key, string(raw)); err != nil {
+						return err
+					}
+				}
+				return nil
+			})
 		})
 	})
 }
@@ -371,8 +376,10 @@ func TestWrongTokenHasNoPreparationEffects(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.manager.Prepare(context.Background(), "card", strings.Repeat("0", 48), "", false); err == nil {
-		t.Fatal("wrong owner accepted")
+	for _, token := range []string{"", strings.Repeat("0", 48)} {
+		if b, err := f.manager.Prepare(context.Background(), "card", token, "", false); err == nil || b != nil {
+			t.Fatal("wrong owner accepted or disclosed the current owner's capabilities", err)
+		}
 	}
 	after, err := os.ReadFile(filepath.Join(f.store.State, "bench.db"))
 	if err != nil || string(before) != string(after) {
@@ -424,18 +431,16 @@ func TestCancellationRevokesContinuationAndDoesNotStartLaterMember(t *testing.T)
 	case <-time.After(10 * time.Second):
 		t.Fatal("canceled preparation did not stop")
 	}
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		b := f.read()
-		if b.Lease.StopRequested && b.Lease.Continuation == "" {
-			if f.count(1, "once-count") != 0 {
-				t.Fatal("later member ran after cancel")
-			}
-			return
-		}
-		time.Sleep(time.Millisecond)
+	b := f.read()
+	if !b.Lease.StopRequested || b.Lease.Continuation != "" {
+		t.Fatal("canceled preparation returned before revoking initialization continuation")
 	}
-	t.Fatal("cancellation did not revoke initialization continuation")
+	if f.count(1, "once-count") != 0 {
+		t.Fatal("later member ran after cancel")
+	}
+	if _, err := f.prepare(context.Background(), ""); err == nil {
+		t.Fatal("immediate retry continued canceled initialization")
+	}
 }
 
 func TestEarlierHookCannotRedirectLaterMemberWithIdenticalInputs(t *testing.T) {
@@ -563,5 +568,36 @@ func TestHookPreparationCannotUseACommandFreeProof(t *testing.T) {
 	}
 	if err := workspaceprep.CheckPrepared(f.read()); err == nil {
 		t.Fatal("hook configuration accepted a command-free preparation proof")
+	}
+}
+
+func TestCanceledCachedPreparationReconcilesBeforeReturning(t *testing.T) {
+	f := newFixture(t, 2, nil)
+	if _, err := f.prepare(context.Background(), ""); err != nil {
+		t.Fatal(err)
+	}
+	beforeCreates, beforeStarts := f.backend.counts()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	update := f.manager.Update
+	calls := 0
+	f.manager.Update = func(change func(benchstate.Database, *sql.Tx) error) error {
+		calls++
+		// Both current member proofs were cached; no execution watcher exists.
+		// Cancel just before the final all-member phase update begins.
+		if calls == 3 {
+			cancel()
+		}
+		return update(change)
+	}
+	b, err := f.manager.Prepare(ctx, "card", f.initial.Lease.Token, "", false)
+	if !errors.Is(err, context.Canceled) || b == nil || b.Lease == nil || !b.Lease.StopRequested || b.Lease.Continuation != "" {
+		t.Fatalf("cached preparation returned before cancellation reconciliation: %+v %v", b, err)
+	}
+	if creates, starts := f.backend.counts(); creates != beforeCreates || starts != beforeStarts {
+		t.Fatal("cached canceled request repeated hooks")
+	}
+	if _, err := f.prepare(context.Background(), ""); err == nil {
+		t.Fatal("canceled cached preparation continued immediately")
 	}
 }

@@ -54,14 +54,20 @@ func owned(rows benchstate.Database, key, token string) (*model.Bench, error) {
 		return nil, errors.New("registered aggregate workspace required")
 	}
 	if b.Lease == nil || token == "" || subtle.ConstantTimeCompare([]byte(b.Lease.Token), []byte(token)) != 1 {
-		return nil, errors.New("workspace initialization ownership required")
+		return nil, errors.New("workspace writer ownership required")
 	}
 	return b, nil
 }
 
-func initializing(b *model.Bench) error {
-	if b.Lease.Holder != "initialization" || b.Lease.StopRequested || b.Lease.Continuation == "" || b.Workspace.Pending != nil || (b.Workspace.Phase != "initializing" && b.Workspace.Phase != "prepared") {
-		return errors.New("workspace preparation is stopped, pending checkpoint, or outside initialization")
+func preparable(b *model.Bench) error {
+	if b.Lease.StopRequested || b.Lease.Continuation == "" || b.Workspace.Pending != nil {
+		return errors.New("workspace preparation is stopped or pending checkpoint")
+	}
+	if b.Workspace.Phase == "ready" {
+		return nil
+	}
+	if b.Lease.Holder != "initialization" || (b.Workspace.Phase != "initializing" && b.Workspace.Phase != "prepared") {
+		return errors.New("workspace preparation is outside a held operational or initialization lease")
 	}
 	return nil
 }
@@ -165,4 +171,17 @@ func (m Manager) stop(key, token, continuation string, admin, internal bool) (*m
 		return err
 	})
 	return result, err
+}
+
+// Reconcile cancellation at the public API boundary, including cache-only,
+// skipped-proof and final-save paths which never enter the payload watcher.
+func (m Manager) reconcileCancellation(ctx context.Context, key, token string, result **model.Bench, operationErr *error) {
+	ctxErr := ctx.Err()
+	if ctxErr == nil {
+		return
+	}
+	_, stopErr := m.Stop(key, token, false)
+	current, readErr := m.ownedCurrent(key, token)
+	*result = current
+	*operationErr = errors.Join(*operationErr, ctxErr, stopErr, readErr)
 }
