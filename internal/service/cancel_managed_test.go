@@ -41,6 +41,9 @@ func TestManagedCancellationDaemon(t *testing.T) {
 	if !strings.HasPrefix(root, "/sys/fs/cgroup/superbench-cancel-") || filepath.Clean(root) != root {
 		t.Fatal("invalid fixture control root")
 	}
+	if err := installManagedCancellationGate(trial); err != nil {
+		t.Fatal(err)
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	config := Config{Socket: filepath.Join(trial, "run", "api.sock"), Store: bench.Store{State: filepath.Join(trial, "state"), Data: filepath.Join(trial, "data"), CgroupRoot: root}, Operators: map[uint32]bool{1001: true}, MaxActive: 64}

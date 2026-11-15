@@ -302,7 +302,17 @@ def main():
 
         def start_writer(self, key, label, token=None):
             marker = root / 'payload' / (label + '.json')
-            writer = "import json,os,time;assert os.getuid()==os.geteuid()==1001;from pathlib import Path;p=Path(" + repr(str(marker)) + ");p.write_text(json.dumps({'pid':os.getpid(),'start':Path('/proc/self/stat').read_text().split()[21],'sid':os.getsid(0)}));\nwhile True: print('retained descendant partial output',flush=True);time.sleep(.05)"
+            survival = root / 'payload' / (label + '.alive')
+            writer = ("import json,os,time;assert os.getuid()==os.geteuid()==1001;from pathlib import Path;"
+                "p=Path(" + repr(str(marker)) + ");q=p.with_suffix('.tmp');"
+                "q.write_text(json.dumps({'pid':os.getpid(),'start':Path('/proc/self/stat').read_text().split()[21],'sid':os.getsid(0)}));q.replace(p);"
+                "alive=Path(" + repr(str(survival)) + ");\n"
+                "while True:\n"
+                " if not alive.exists() or alive.stat().st_size<1048576:\n"
+                "  with alive.open('ab') as f: f.write(b'.');f.flush()\n"
+                " try: print('retained descendant partial output',flush=True)\n"
+                " except BrokenPipeError: pass\n"
+                " time.sleep(.05)")
             payload = "import os,subprocess,time;assert os.getuid()==os.geteuid()==1001;subprocess.Popen(['/usr/bin/setsid','/usr/bin/python3','-c'," + repr(writer) + "]);\nwhile True: time.sleep(1)"
             request = self.payload('run', key=key, holder='payload-owner', repository_name='a', checkpoint=False,
                 arguments=['/usr/bin/python3', '-c', payload], request_id=label)
@@ -359,13 +369,19 @@ def main():
         assert replay == historical
         print('PASS: durable completed cutoff survives lost delivery and daemon restart; verified cancel ACK permits exact historical replay only', flush=True)
 
-        # Crash leaves the actual setsid descendant and inherited capture open.
+        # Capture is a controller-drained pipe: only pre-crash bytes are real.
+        # A separate bounded owned file proves the setsid writer survives EPIPE.
         original, connection, fd, execution = d.start_writer('warm', 'crash-payload')
         original_count = len(d.history('warm'))
+        capture = d.state / ('run-' + execution['ID'] + '.log')
+        wait_for(lambda: capture.is_file() and capture.stat().st_size > 0, 'actual pre-crash partial capture')
+        precrash = capture.read_bytes()
         d.stop_daemon(crash=True); connection.close()
         assert not dead(fd)
-        before = (d.state / ('run-' + execution['ID'] + '.log')).stat().st_size
-        wait_for(lambda: (d.state / ('run-' + execution['ID'] + '.log')).stat().st_size > before, 'writer survived controller death')
+        survival = root / 'payload/crash-payload.alive'
+        before = survival.stat().st_size
+        wait_for(lambda: survival.stat().st_size > before, 'EPIPE-safe writer survived controller death')
+        assert capture.read_bytes().startswith(precrash)
         binding = d.binding(original)
         trigger = 'cancel_finalization_fixture'
         sql(d.state / 'bench.db', "CREATE TRIGGER " + trigger + " BEFORE UPDATE OF phase ON workspace_operations WHEN OLD.id='" + binding[0] + "' AND NEW.phase IN ('finished','stopped') BEGIN SELECT RAISE(IGNORE); END")
@@ -404,52 +420,114 @@ def main():
         d.stopped(current, execution, fd, False); os.close(fd)
         print('PASS: old epoch cannot stop later owner or same-token future run; disconnect does not cancel; exact current operation fences without admin-stop fallback', flush=True)
 
-        # A fixed helper queued before the outer policy lock may outlive its Go
-        # controller. Never kill the helper; cancellation waits the full barrier.
-        lock = os.open(root / 'quota-ledger/operations.lock', os.O_RDWR)
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        partial = d.payload('create', key='partial', checkpoint_repository='a', repositories=d.members,
-            initialize=True, quota_bytes=32 << 20, request_id='queued-create')
-        connection = d.pending(partial)
-        helper_fd = None
-        try:
-            def queued():
-                if not d.helpers(partial):
-                    return None
-                for process in Path('/proc').iterdir():
-                    if not process.name.isdigit():
-                        continue
-                    try:
-                        if os.readlink(process / 'exe') != args.quota_helper:
-                            continue
-                        words = (process / 'cmdline').read_bytes().split(b'\0')
-                        if b'apply-operation' not in words or b'partial' not in words:
-                            continue
-                        waits = [(task / 'wchan').read_text().strip() for task in (process / 'task').iterdir()]
-                        if any('lock' in value for value in waits):
-                            return int(process.name)
-                    except (FileNotFoundError, ProcessLookupError):
-                        continue
+        # Both cases use the actual recorded scoped helper invocation, including
+        # its epoch and policy authority. Never infer it from the request key.
+        def queued(original):
+            helpers = d.helpers(original)
+            if not helpers:
                 return None
-            helper_pid = wait_for(queued, 'original helper queued before policy lock')
-            assert_uid(helper_pid, 0)
-            helper_fd = os.pidfd_open(helper_pid)
-            original_binding = d.binding(partial)
-            d.stop_daemon(crash=True); connection.close()
-            assert not dead(helper_fd), 'queued helper did not survive controller loss'
-            d.start(); d.cancel(partial)
-            assert not dead(helper_fd)
-            assert d.binding(partial)[2] == 'bound'
-        finally:
-            fcntl.flock(lock, fcntl.LOCK_UN); os.close(lock)
-        wait_for(lambda: dead(helper_fd), 'original helper completed its atomic section'); os.close(helper_fd)
-        d.terminal(partial); d.prove_denied(partial)
-        b = d.record('partial')
-        assert b['Workspace']['Phase'] == 'materializing' and b['Lease']['StopRequested'] is True and not b['Lease'].get('Continuation')
-        assert not b['Lease'].get('Execution') and not b['Workspace'].get('Checkpoint')
-        assert d.binding(partial)[0:2] == original_binding[0:2] and d.binding(partial)[2] == 'stopped'
-        d.request(partial, (409, 503))
-        print('PASS: durable helper intent precedes Start; queued fixed helper survives controller death; ACK independent of outer lock; exact deny/quiescence precedes stopped partial-materialization terminal', flush=True)
+            expected = []
+            for h in helpers:
+                identity = h['Identity']
+                expected.append([str(h['Command']), 'apply-operation', h['Kind'], h['Key'], str(h['Requested']),
+                    *(identity[k] for k in ('OperationID', 'Epoch', 'StateIdentity', 'Authority', 'BinarySHA256'))])
+            for process in Path('/proc').iterdir():
+                if not process.name.isdigit():
+                    continue
+                try:
+                    if os.readlink(process / 'exe') != args.quota_helper:
+                        continue
+                    words = (process / 'cmdline').read_bytes().rstrip(b'\0').split(b'\0')
+                    if words not in [[w.encode() for w in invocation] for invocation in expected]:
+                        continue
+                    waits = [(task / 'wchan').read_text().strip() for task in (process / 'task').iterdir()]
+                    if any('lock' in value for value in waits):
+                        return int(process.name)
+                except (FileNotFoundError, ProcessLookupError):
+                    continue
+            return None
+
+        def queued_cancellation(key, request_id, after_shared):
+            request = d.payload('create', key=key, checkpoint_repository='a', repositories=d.members,
+                initialize=True, quota_bytes=32 << 20, request_id=request_id)
+            lock = os.open(root / 'quota-ledger/operations.lock', os.O_RDWR)
+            locked = False
+            helper_fd = None
+            gate = root / 'cancellation-gate'
+            trigger = 'materialization_helper_fixture'
+            try:
+                if after_shared:
+                    # Test-binary-only SQL callback runs after durable owner/plan,
+                    # before the bench-helper receipt INSERT commits. Shared
+                    # helpers have returned. No cancellation occurs in this gate.
+                    gate.mkdir(mode=0o755); gate.chmod(0o755)
+                    marker = gate / 'observed.json'
+                    marker.touch(mode=0o600); os.chown(marker, 1001, 1001)
+                    sql(d.state / 'service.db', "CREATE TRIGGER " + trigger +
+                        " BEFORE INSERT ON operation_helpers WHEN NEW.owner=1001 AND NEW.id='materialization-create' AND NEW.kind='bench' AND NEW.key='materializing' BEGIN SELECT superbench_cancellation_fixture_gate(NEW.owner,NEW.id,(SELECT digest FROM operation_intents WHERE owner=NEW.owner AND id=NEW.id),(SELECT epoch FROM operation_intents WHERE owner=NEW.owner AND id=NEW.id),NEW.invocation); END")
+                else:
+                    fcntl.flock(lock, fcntl.LOCK_EX); locked = True
+                connection = d.pending(request)
+                if after_shared:
+                    def observation():
+                        raw = marker.read_bytes()
+                        assert len(raw) <= 65536
+                        try:
+                            return json.loads(raw) if raw else None
+                        except json.JSONDecodeError:
+                            return None
+                    observed = wait_for(observation, 'actual bench-helper precommit gate')
+                    original_binding = d.binding(request)
+                    assert observed['Identity']['Epoch'] == original_binding[1] and observed['Kind'] == 'bench' and observed['Key'] == key
+                    b = d.record(key)
+                    assert original_binding[2] == 'bound' and b['Workspace']['Phase'] == 'materializing'
+                    assert not b['Lease'].get('Execution') and not b['Workspace'].get('Checkpoint')
+                    fcntl.flock(lock, fcntl.LOCK_EX); locked = True
+                    release = gate / 'release.tmp'
+                    release.write_bytes(marker.read_bytes()); release.chmod(0o644); release.replace(gate / 'release.json')
+                helper_pid = wait_for(lambda: queued(request), 'exact original helper queued before policy lock')
+                assert_uid(helper_pid, 0)
+                helper_fd = os.pidfd_open(helper_pid)
+                original_binding = d.binding(request)
+                assert original_binding[2] == ('bound' if after_shared else 'admitted')
+                if after_shared:
+                    sql(d.state / 'service.db', 'DROP TRIGGER ' + trigger)
+                else:
+                    assert sql(d.state / 'bench.db', 'SELECT count(*) FROM benches WHERE key=?', (key,))[0][0] == 0
+                d.stop_daemon(crash=True); connection.close()
+                assert not dead(helper_fd), 'queued helper did not survive controller loss'
+                d.start(); d.cancel(request)
+                assert not dead(helper_fd)
+                assert d.binding(request)[2] == ('bound' if after_shared else 'admitted')
+            finally:
+                # On a fixture failure allow an entered SQL callback to return;
+                # no effects can be approved from its marker. Unknown helpers
+                # still cause the outer fixture to preserve the owned runtime.
+                if after_shared and (gate / 'observed.json').is_file() and not (gate / 'release.json').exists():
+                    raw = (gate / 'observed.json').read_bytes()
+                    if raw:
+                        (gate / 'release.json').write_bytes(raw); (gate / 'release.json').chmod(0o644)
+                if locked:
+                    fcntl.flock(lock, fcntl.LOCK_UN)
+                os.close(lock)
+            wait_for(lambda: dead(helper_fd), 'original helper completed its atomic section'); os.close(helper_fd)
+            d.terminal(request); d.prove_denied(request)
+            assert d.binding(request)[0:2] == original_binding[0:2]
+            if after_shared:
+                b = d.record(key)
+                assert b['Workspace']['Phase'] == 'materializing' and b['Lease']['StopRequested'] is True and not b['Lease'].get('Continuation')
+                assert not b['Lease'].get('Execution') and not b['Workspace'].get('Checkpoint')
+                assert d.binding(request)[2] == 'stopped'
+            else:
+                assert sql(d.state / 'bench.db', 'SELECT count(*) FROM benches WHERE key=?', (key,))[0][0] == 0
+                assert not (d.data / 'benches' / key).exists()
+                assert d.binding(request)[2] == 'finished'
+            d.request(request, (409, 503))
+
+        queued_cancellation('partial', 'queued-create', False)
+        print('PASS: exact scoped shared helper survives controller death while queued; ACK independent of policy lock; deny/quiescence precedes cancellation without bench admission', flush=True)
+        queued_cancellation('materializing', 'materialization-create', True)
+        print('PASS: deterministic durable materializing owner precedes queued bench helper; restart cancellation ACK independent of policy lock; actual deny/quiescence precedes retained stopped-materialization terminal', flush=True)
         print('UNCOVERED: explicit repair of stopped materialization; public enablement; cross-host cancellation; macOS descendant fencing', flush=True)
         d.stop_daemon()
         d.log.flush()
