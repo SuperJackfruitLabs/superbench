@@ -11,6 +11,7 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/output"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/retention"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/setup"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/stageexec"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -208,63 +209,29 @@ func (s Store) runStage(ctx context.Context, key, holder string, args []string, 
 		checkpoint = false
 	}
 	result := &RunResult{Bench: b, ExitCode: -1, Execution: execution}
-	capture, err := output.Open(execution.Log, execution.LogLimitBytes)
+	stage, err := (stageexec.Runner{
+		Backend: s.backend(),
+		Start: func(ctx context.Context, cmd *exec.Cmd, execution *Execution) error {
+			return s.startExecution(ctx, key, b, cmd, execution)
+		},
+		Stop: func() (*Execution, error) {
+			stopped, err := s.stop(key, b.Lease.Token, false, continuation, true)
+			if err != nil {
+				return nil, err
+			}
+			result.Bench = stopped
+			return stopped.Lease.Execution, nil
+		},
+		Cancel: func() { _, _ = s.Stop(key, b.Lease.Token, false) },
+		Seal: func(capture *output.Capture, exit *int, truncated bool) error {
+			return s.sealRunLog(id, capture, exit, truncated)
+		},
+	}).Run(ctx, stageexec.Plan{Execution: execution, Dir: b.Path, Args: args, Environment: environment})
+	if stage != nil {
+		result.Execution, result.ExitCode, result.LogTruncated = stage.Execution, stage.ExitCode, stage.LogTruncated
+	}
 	if err != nil {
 		return result, err
-	}
-	defer capture.Close()
-
-	cmd := exec.Command(args[0], args[1:]...)
-	cmd.Dir = b.Path
-	cmd.Stdout = capture.Writer
-	cmd.Stderr = capture.Writer
-	cmd.Env = environment
-	// Persist intent before launch; stop and launch share this gate so a delayed
-	// supervisor cannot create a new writer after another caller fenced the lease.
-	err = s.startExecution(ctx, key, b, cmd, execution)
-	_ = capture.Writer.Close()
-	if err != nil {
-		if cmd.Process != nil {
-			if fenceErr := s.backend().Fence(execution); fenceErr != nil {
-				go func() { _ = cmd.Wait() }()
-				return result, errors.Join(err, fmt.Errorf("execution fencing failed; lease retained: %w", fenceErr))
-			}
-			_ = cmd.Wait()
-		}
-		// Leave the durable starting lease held on any ambiguous save/launch failure.
-		return result, fmt.Errorf("start failed; lease retained: %w", err)
-	}
-	done := make(chan struct{})
-	go func() {
-		select {
-		case <-ctx.Done():
-			// Kill the known scope even if state cannot be opened/written.
-			_ = s.backend().Fence(execution)
-			_, _ = s.Stop(key, b.Lease.Token, false)
-		case <-done:
-		}
-	}()
-	waitErr := cmd.Wait()
-	close(done)
-	if cmd.ProcessState != nil {
-		result.ExitCode = cmd.ProcessState.ExitCode()
-	}
-	stopped, err := s.stop(key, b.Lease.Token, false, continuation, true)
-	if err != nil {
-		return result, fmt.Errorf("unable to prove execution stopped; lease retained: %w", err)
-	}
-	result.Bench = stopped
-	result.Execution = stopped.Lease.Execution
-	logErr := capture.Finish()
-	result.LogTruncated = capture.Truncated
-	if logErr != nil {
-		return result, fmt.Errorf("command log failed; stopped lease retained: %w", logErr)
-	}
-	if err = s.sealRunLog(id, capture, &result.ExitCode, result.LogTruncated); err != nil {
-		return result, fmt.Errorf("log history save failed; stopped lease retained: %w", err)
-	}
-	if waitErr != nil {
-		return result, fmt.Errorf("command failed; stopped lease retained: %w", waitErr)
 	}
 	if finish != nil {
 		err = s.transactionSQL(func(records database, tx *sql.Tx) error {

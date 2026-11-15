@@ -1,0 +1,81 @@
+Aggregate warm initialization verification, 2026-11-15
+Base: 419b437deecd38a73062a8e9b8a1a0c027d0096e (PR 23 merge).
+Candidate: codex/aggregate-preparation source snapshot.
+Frozen code/test source archive SHA-256:
+7868210cade86c4994511eaf0be116dcd73e299c8ef5e77c6a3378550aa1a4a2
+Fresh Linux bench binary SHA-256:
+f8fc4bef366285822e91710694285e347f3290cf7f6146bfa7d80d29c1051645
+This evidence and documentation links were added after the verified snapshot;
+production code, test fixtures and runtime scripts are unchanged.
+
+macOS and approved Linux verification host, Go 1.26.4:
+  sh scripts/check.sh
+  Both exited 0: formatting, four installer tests, vet, complete race suite,
+  architecture limits and all three builds passed.
+
+Real SQLite/Git lifecycle tests verify complete-vector dirty-work refusal before
+publication, actual second-repository server push rejection, immutable pending
+generation retry, changed-HEAD refusal, checkpoint-save failure recovery,
+independent seal/pin/task-tip proof, stale preparation refusal and atomic
+readiness/history-release rollback. Per-member inspection rejects symlinked or
+foreign worktrees even when repository origin or preparation inputs match.
+
+Preparation tests verify two-member hooks, earlier-member proof retention after
+a later failure, sealed-success proof-save retry without repeating hooks,
+committed proof revocation before changed-input effects, complete-fingerprint
+once receipts, operator stop/cancellation and delayed-launch refusal, wrong
+tokens, 32-member preparation beyond the scalar eight-stage limit, cross-member
+symlink redirection refusal, and missing/failed retained-history rejection.
+Native injected-backend tests exercise owned process groups; they do not claim
+Linux cgroup or detached-writer containment. That proof is the live drill below.
+
+Schema tests verify legitimate schema-14 staged-group migration to 15, refusal
+of newer fields in older-schema records, preserved scalar migration guards,
+immutable identities/allocations/pending generations, staged execution identity,
+monotonic stop/revocation, sealed completion and bounded retained evidence.
+Existing scalar engine and service race tests also pass after execution/storage
+policy extraction into reusable components.
+
+Actual managed XFS/cgroup drill:
+  go test -c -o PRIVATE_BIN/workspaceflow.test ./internal/workspaceflow
+  bash scripts/test-workspace-staging.sh TEST_BINARY QUOTA_HELPER SCHEMA13_CLI
+  Exit 0 in an owned disposable mount namespace and cgroup subtree.
+
+  TestManagedWorkspaceAggregateQuota PASS:
+    Exactly one aggregate project for both member checkouts, 32 MiB total and
+    4096 inodes under a 64 MiB ceiling, plus the two fixed shared assignments.
+    In both member orders, the first writes 20,971,520 bytes and the second hits
+    the shared quota after 12,517,376 bytes. Exact retry preserves the ledger.
+    The retained schema-13 CLI refuses schema 15.
+
+  TestManagedWorkspacePreparationLifecycle PASS:
+    A configured setup hook creates a detached setsid descendant in its actual
+    payload cgroup. It is fenced before the next member can release its external
+    marker; the descendant never performs its delayed write.
+    Deliberate second-member failure retains the initialization token and
+    continuation, the first member's preparation proof, and sealed run evidence.
+    Retry skips the completed first member and reruns the failed second member.
+    The complete remote task/pin vector and canonical genesis seal are verified.
+    All three stage histories are sealed and released to that checkpoint before
+    ready/nillease commits; preparation output inherits the aggregate project.
+    Completed creation replay preserves readiness and allocation without
+    recreating a lease or repeating hooks.
+
+  Wrapper cleanup removed only its owned workers/cgroups, temporary mount and
+  trial files; the approved host's installed service/data were not changed.
+
+Fresh Linux CLI control regression:
+  python3 scripts/test-git-control-hooks.py --bench FRESH --old-bench SCHEMA12
+  Exit 0; all eight groups passed, including retained old hook/filter escapes,
+  controlled containment, user-hook descendant fencing, server rejection with
+  held ownership, controller SIGKILL/recovery with schema-15 downgrade refusal,
+  and warm checkout hook suppression. Owned runtime artifacts were cleaned.
+
+Independent review found no unresolved correctness issues after registered
+checkout identity was revalidated between member stages and before launch.
+
+Scope: internal aggregate warm initialization and checkpoint completion are
+implemented. Ordinary aggregate stage acquisition/payload execution/release,
+cold recovery into a fresh workspace, archive/reap, v2 service/CLI responses,
+native supervised preparation, broader collection and the board pilot remain
+required. No production release or phase completion is claimed.

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage"
 )
@@ -26,77 +25,19 @@ func (s Store) HostStatus() (HostStatus, error) {
 	}
 	return s.workerStorage().Status()
 }
-func (s Store) quota(c HostConfig, kind, key string) (hoststorage.Assignment, error) {
-	return s.workerStorage().Quota(c, kind, key, 0)
-}
 func (s Store) admit() error {
-	status, e := s.HostStatus()
-	if e != nil {
-		return e
+	if err := s.validate(); err != nil {
+		return err
 	}
-	minData, minState := uint64(64<<20), uint64(1<<20)
-	if status.Config != nil {
-		minData = status.Config.MinDataFreeBytes
-		minState = status.Config.MinStateFreeBytes
-		if status.Data.Device == status.State.Device {
-			return errors.New("managed state must be outside the quota data filesystem")
-		}
-	}
-	if status.Data.Free < minData {
-		return fmt.Errorf("data free-space reserve reached: %d available, %d required", status.Data.Free, minData)
-	}
-	if status.State.Free < minState {
-		return fmt.Errorf("state free-space reserve reached: %d available, %d required", status.State.Free, minState)
-	}
-	if status.Config != nil {
-		for _, key := range []string{"store", "mirrors"} {
-			if _, e = s.quota(*status.Config, "shared", key); e != nil {
-				return e
-			}
-		}
-	}
-	return nil
+	return s.workerStorage().Admit()
 }
 func (s Store) ConfigureHost(c HostConfig) error {
 	c = c.Defaults()
-	if e := c.Validate(s.Data); e != nil {
-		return e
+	if err := c.Validate(s.Data); err != nil {
+		return err
 	}
 	return s.transaction(func(db database) error {
-		prior, e := s.hostConfig()
-		if e != nil {
-			return e
-		}
-		if prior != nil && *prior != c {
-			return errors.New("host is already configured; explicit migration required")
-		}
-		if prior == nil && len(db) != 0 {
-			return errors.New("managed host requires fresh state; existing benches are not silently adopted")
-		}
-		data, e := s.space(s.Data)
-		if e != nil {
-			return e
-		}
-		state, e := s.space(s.State)
-		if e != nil {
-			return e
-		}
-		if data.Device == state.Device {
-			return errors.New("managed state must be outside the quota data filesystem")
-		}
-		if data.Free < c.MinDataFreeBytes || state.Free < c.MinStateFreeBytes {
-			return errors.New("insufficient host reserve for configuration")
-		}
-		for _, key := range []string{"store", "mirrors"} {
-			if _, e = s.quota(c, "shared", key); e != nil {
-				return e
-			}
-		}
-		raw, e := json.MarshalIndent(c, "", "  ")
-		if e != nil {
-			return e
-		}
-		return atomicWrite(s.State, filepath.Join(s.State, "host.json"), raw)
+		return s.workerStorage().Configure(c, len(db))
 	})
 }
 func (s Store) applyBenchQuota(c *creation) error {

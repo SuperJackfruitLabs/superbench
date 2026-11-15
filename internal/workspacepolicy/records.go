@@ -22,22 +22,27 @@ func shortBranch(s string) bool {
 	return utf8.ValidString(s) && len(s) <= 255 && s != "HEAD" && s != "@" && !strings.HasPrefix(s, "-") && !strings.HasPrefix(s, "refs/") && model.ValidBranchRef("refs/heads/"+s)
 }
 
-// Validate accepts only initialization records; readiness requires a later,
-// explicit lifecycle implementation rather than an inferred clean checkout.
+// Validate checks aggregate identity, bounded lifecycle evidence and ownership.
+// Producers must prove setup and remote confirmation before recording success.
 func Validate(b *model.Bench) error {
 	invalid := errors.New("invalid aggregate workspace record")
 	if b == nil || b.Workspace == nil || !key.MatchString(b.Key) {
 		return invalid
 	}
 	w := b.Workspace
-	if !identity.MatchString(w.ID) || !key.MatchString(w.CreationID) || (w.Phase != "materializing" && w.Phase != "initializing") {
+	if !identity.MatchString(w.ID) || !key.MatchString(w.CreationID) || (w.Phase != "materializing" && w.Phase != "initializing" && w.Phase != "prepared" && w.Phase != "ready") {
 		return invalid
 	}
 	if b.Repo != "" || b.Branch != "" || b.Mirror != "" || b.Checkpoint != "" || b.CreatedFrom != "" || b.ArchivedAt != "" || b.ReapAfter != "" || b.ArchiveFreezeDigest != "" || b.ArchiveFrozenAt != "" || b.ArchiveMerge != nil || b.ArchiveUnmerged != nil || b.ReapingDigest != "" || b.ReapedAt != "" {
 		return invalid
 	}
-	l := b.Lease
-	if l == nil || l.Holder != "initialization" || !token.MatchString(l.Token) || !identity.MatchString(l.Continuation) || l.Execution != nil || len(l.RetainedRuns) != 0 || l.StopRequested {
+	if err := validateLease(b); err != nil {
+		return invalid
+	}
+	if err := validatePreparation(b); err != nil {
+		return invalid
+	}
+	if err := validateCheckpoints(b); err != nil {
 		return invalid
 	}
 	if !filepath.IsAbs(b.Path) || filepath.Clean(b.Path) != b.Path {

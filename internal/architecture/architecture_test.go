@@ -50,7 +50,10 @@ func TestArchitecture(t *testing.T) {
 			rel, _ := filepath.Rel(root, filepath.Dir(path))
 			rel = filepath.ToSlash(rel)
 			edges := map[string][]string{
-				"internal/bench":           {"internal/workspace", "internal/benchstate", "internal/statestore", "internal/statepath", "internal/gitcontrol", "internal/quotapolicy", "internal/cachepolicy", "internal/archivepolicy", "internal/model", "internal/creation", "internal/repository", "internal/output", "internal/execution", "internal/setup", "internal/hoststorage", "internal/reap", "internal/history", "internal/retention"},
+				"internal/bench":           {"internal/stageexec", "internal/workspaceprep", "internal/workspace", "internal/benchstate", "internal/statestore", "internal/statepath", "internal/gitcontrol", "internal/quotapolicy", "internal/cachepolicy", "internal/archivepolicy", "internal/model", "internal/creation", "internal/repository", "internal/output", "internal/execution", "internal/setup", "internal/hoststorage", "internal/reap", "internal/history", "internal/retention"},
+				"internal/workspaceprep":   {"internal/benchstate", "internal/cachepolicy", "internal/execution", "internal/history", "internal/model", "internal/output", "internal/setup", "internal/stageexec", "internal/statepath", "internal/workspace"},
+				"internal/hoststorage":     {"internal/model", "internal/output"},
+				"internal/stageexec":       {"internal/execution", "internal/output"},
 				"internal/benchstate":      {"internal/workspacepolicy", "internal/model", "internal/archivepolicy", "internal/history", "internal/quotapolicy", "internal/setup"},
 				"internal/gitcontrol":      {"internal/execution"},
 				"internal/archivepolicy":   {"internal/gitcontrol", "internal/model", "internal/reap", "internal/repository", "internal/setup"},
