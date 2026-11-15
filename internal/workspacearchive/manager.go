@@ -80,6 +80,9 @@ func (m Manager) available(b *model.Bench) error {
 	if err := m.record(b); err != nil {
 		return err
 	}
+	if b.Workspace.Transfer != nil && b.Workspace.Transfer.Phase != "transferred" {
+		return errors.New("aggregate source transfer is incomplete")
+	}
 	if b.Lease != nil {
 		if m.Busy != nil {
 			return m.Busy
@@ -91,12 +94,21 @@ func (m Manager) available(b *model.Bench) error {
 	}
 	return nil
 }
-func (m Manager) checkout(ctx context.Context, b *model.Bench) error {
+func (m Manager) checkout(ctx context.Context, tx *sql.Tx, b *model.Bench) error {
 	if err := m.available(b); err != nil {
 		return err
 	}
+	if err := m.transferOrigin(tx, b); err != nil {
+		return err
+	}
 	l := m.lifecycle()
-	vector, err := l.Inspect(ctx, b, true)
+	var vector []model.WorkspaceCommit
+	var err error
+	if b.Workspace.Transfer != nil {
+		vector, err = l.InspectTransferred(ctx, b, true)
+	} else {
+		vector, err = l.Inspect(ctx, b, true)
+	}
 	if err != nil {
 		return err
 	}
@@ -106,7 +118,7 @@ func (m Manager) checkout(ctx context.Context, b *model.Bench) error {
 	if err := m.registrations(ctx, b, false, false); err != nil {
 		return err
 	}
-	return l.Confirm(ctx, b)
+	return m.confirm(ctx, b)
 }
 func now() string { return time.Now().UTC().Format(time.RFC3339Nano) }
 
@@ -127,7 +139,7 @@ func (m Manager) Archive(ctx context.Context, key string, grace time.Duration, c
 	var committed *model.Bench
 	err = m.Within(func(update workspace.Update) error {
 		var observed *model.Bench
-		if err := update(func(rows benchstate.Database, _ *sql.Tx) error {
+		if err := update(func(rows benchstate.Database, tx *sql.Tx) error {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
@@ -138,7 +150,7 @@ func (m Manager) Archive(ctx context.Context, key string, grace time.Duration, c
 			committed = workspace.Clone(b)
 			switch b.Workspace.Phase {
 			case "ready":
-				if err := m.checkout(ctx, b); err != nil {
+				if err := m.checkout(ctx, tx, b); err != nil {
 					return err
 				}
 				freeze, err := reap.NewFreeze(key, b.Path, b.Workspace.Checkpoint.Seal)
@@ -178,7 +190,7 @@ func (m Manager) Archive(ctx context.Context, key string, grace time.Duration, c
 				if !reflect.DeepEqual(expected, b) {
 					return errors.New("archive trigger changed workspace identity or checkpoint")
 				}
-				if err := m.checkout(ctx, b); err != nil {
+				if err := m.checkout(ctx, tx, b); err != nil {
 					return err
 				}
 				if err := reap.FreezePreflight(b.Path, freeze.Tree); err != nil {
@@ -211,7 +223,7 @@ func (m Manager) Archive(ctx context.Context, key string, grace time.Duration, c
 		}
 		prior := workspace.Clone(committed)
 		var finished *model.Bench
-		err := update(func(rows benchstate.Database, _ *sql.Tx) error {
+		err := update(func(rows benchstate.Database, tx *sql.Tx) error {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
@@ -219,7 +231,7 @@ func (m Manager) Archive(ctx context.Context, key string, grace time.Duration, c
 			if !reflect.DeepEqual(b, prior) {
 				return errors.New("aggregate archive intent changed")
 			}
-			if err := m.checkout(ctx, b); err != nil {
+			if err := m.checkout(ctx, tx, b); err != nil {
 				return err
 			}
 			freeze, err := reap.ReadFreeze(m.freezeJournal(key), key, b.Path, b.Workspace.Checkpoint.Seal, b.Workspace.Archive.FreezeDigest)
@@ -229,7 +241,7 @@ func (m Manager) Archive(ctx context.Context, key string, grace time.Duration, c
 			if err := reap.Freeze(b.Path, freeze.Tree); err != nil {
 				return err
 			}
-			if err := m.checkout(ctx, b); err != nil {
+			if err := m.checkout(ctx, tx, b); err != nil {
 				return err
 			}
 			if b.Workspace.Archive.FrozenAt == "" {
@@ -244,4 +256,11 @@ func (m Manager) Archive(ctx context.Context, key string, grace time.Duration, c
 		return err
 	})
 	return workspace.Clone(committed), err
+}
+
+func (m Manager) confirm(ctx context.Context, b *model.Bench) error {
+	if b.Workspace.Transfer != nil {
+		return m.lifecycle().ConfirmTransferred(ctx, b)
+	}
+	return m.lifecycle().Confirm(ctx, b)
 }

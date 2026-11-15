@@ -209,6 +209,9 @@ func (l Lifecycle) owner(b *model.Bench, token string) error {
 	if err := workspacepolicy.Validate(b); err != nil {
 		return err
 	}
+	if b.Workspace.Transfer != nil {
+		return ErrTransfer
+	}
 	if b.Workspace.Phase != "ready" && b.Workspace.InitializationRepair != nil && l.InitializationRepairID != b.Workspace.InitializationRepair.ID {
 		return ErrInitializationRepair
 	}

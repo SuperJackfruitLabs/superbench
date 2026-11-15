@@ -61,6 +61,9 @@ func owned(rows benchstate.Database, key, token string) (*model.Bench, error) {
 }
 
 func (m Manager) preparable(b *model.Bench) error {
+	if b.Workspace.Transfer != nil {
+		return workspace.ErrTransfer
+	}
 	if marker := b.Workspace.InitializationRepair; b.Workspace.Phase != "ready" && marker != nil && (m.RepairID == "" || m.RepairID != marker.ID) {
 		return errors.New("initialization requires its explicit repair continuation")
 	}

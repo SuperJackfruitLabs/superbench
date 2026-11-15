@@ -37,7 +37,7 @@ func (m Manager) Reap(ctx context.Context, approval Plan) (*model.Bench, error) 
 	var committed *model.Bench
 	err = m.Within(func(update workspace.Update) error {
 		var observed *model.Bench
-		if err := update(func(rows benchstate.Database, _ *sql.Tx) error {
+		if err := update(func(rows benchstate.Database, tx *sql.Tx) error {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
@@ -73,7 +73,7 @@ func (m Manager) Reap(ctx context.Context, approval Plan) (*model.Bench, error) 
 			if err := archivepolicy.Eligible(a.ArchivedAt, a.ReapAfter, time.Now()); err != nil {
 				return err
 			}
-			current, err := m.plan(ctx, b)
+			current, err := m.plan(ctx, tx, b)
 			if err != nil {
 				return err
 			}
@@ -98,7 +98,7 @@ func (m Manager) Reap(ctx context.Context, approval Plan) (*model.Bench, error) 
 			return nil
 		}
 		var finished *model.Bench
-		err := update(func(rows benchstate.Database, _ *sql.Tx) error {
+		err := update(func(rows benchstate.Database, tx *sql.Tx) error {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
@@ -108,10 +108,13 @@ func (m Manager) Reap(ctx context.Context, approval Plan) (*model.Bench, error) 
 			}
 			// Confirmation does not require surviving checkout paths; every retry
 			// proves the retained seal, all pins, task refs and mirror identities.
-			if err := m.lifecycle().Confirm(ctx, b); err != nil {
+			if err := m.transferJournal(tx, b); err != nil {
 				return err
 			}
-			if err := m.registrations(ctx, b, true, false); err != nil {
+			if err := m.confirm(ctx, b); err != nil {
+				return err
+			}
+			if err := m.registrations(ctx, b, true, false, approved.Registrations); err != nil {
 				return err
 			}
 			if _, err := os.Lstat(b.Path); err == nil {
@@ -132,7 +135,7 @@ func (m Manager) Reap(ctx context.Context, approval Plan) (*model.Bench, error) 
 			if err := emptyApprovedRoot(b.Path, approved.Tree); err != nil {
 				return err
 			}
-			if err := m.registrations(ctx, b, true, true); err != nil {
+			if err := m.registrations(ctx, b, true, true, approved.Registrations); err != nil {
 				return err
 			}
 			if b.ProjectID != 0 {

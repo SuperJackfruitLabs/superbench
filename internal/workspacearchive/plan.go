@@ -29,6 +29,8 @@ type Plan struct {
 	Version, Key, Path, BenchID string
 	Checkpoint                  *model.WorkspaceCheckpoint
 	Members                     []model.WorkspaceMember
+	Registrations               []Registration           `json:",omitempty"`
+	Transfer                    *model.WorkspaceTransfer `json:",omitempty"`
 	FreezeDigest, ReapAfter     string
 	Tree                        reap.Tree
 	Digest                      string
@@ -92,9 +94,9 @@ func readPlanFile(path string) (*Plan, error) {
 }
 func matches(p *Plan, b *model.Bench) bool {
 	a := b.Workspace.Archive
-	return a != nil && p.Key == b.Key && p.Path == b.Path && p.BenchID == b.Workspace.ID && reflect.DeepEqual(p.Checkpoint, b.Workspace.Checkpoint) && reflect.DeepEqual(p.Members, b.Workspace.Members) && p.FreezeDigest == a.FreezeDigest && p.ReapAfter == a.ReapAfter
+	return a != nil && p.Key == b.Key && p.Path == b.Path && p.BenchID == b.Workspace.ID && reflect.DeepEqual(p.Checkpoint, b.Workspace.Checkpoint) && reflect.DeepEqual(p.Members, b.Workspace.Members) && reflect.DeepEqual(p.Transfer, b.Workspace.Transfer) && p.FreezeDigest == a.FreezeDigest && p.ReapAfter == a.ReapAfter
 }
-func (m Manager) plan(ctx context.Context, b *model.Bench) (*Plan, error) {
+func (m Manager) plan(ctx context.Context, tx *sql.Tx, b *model.Bench) (*Plan, error) {
 	if err := m.available(b); err != nil {
 		return nil, err
 	}
@@ -102,7 +104,7 @@ func (m Manager) plan(ctx context.Context, b *model.Bench) (*Plan, error) {
 	if b.Workspace.Phase != "archived" || a == nil || a.FrozenAt == "" || a.ReapingDigest != "" {
 		return nil, errors.New("aggregate reap planning requires a completed read-only archive")
 	}
-	if err := m.checkout(ctx, b); err != nil {
+	if err := m.checkout(ctx, tx, b); err != nil {
 		return nil, err
 	}
 	freeze, err := reap.ReadFreeze(m.freezeJournal(b.Key), b.Key, b.Path, b.Workspace.Checkpoint.Seal, a.FreezeDigest)
@@ -135,8 +137,12 @@ func (m Manager) plan(ctx context.Context, b *model.Bench) (*Plan, error) {
 		oid, ok := objects[e.Path]
 		e.Recoverable = ok && (oid == e.GitSHA1 || oid == e.GitSHA256)
 	}
+	registrations, err := m.registrationSnapshot(ctx, b)
+	if err != nil {
+		return nil, err
+	}
 	clone := workspace.Clone(b)
-	p := &Plan{Version: PlanVersion, Key: b.Key, Path: b.Path, BenchID: b.Workspace.ID, Checkpoint: clone.Workspace.Checkpoint, Members: clone.Workspace.Members, FreezeDigest: a.FreezeDigest, ReapAfter: a.ReapAfter, Tree: tree}
+	p := &Plan{Version: PlanVersion, Key: b.Key, Path: b.Path, BenchID: b.Workspace.ID, Checkpoint: clone.Workspace.Checkpoint, Members: clone.Workspace.Members, Registrations: registrations, Transfer: clone.Workspace.Transfer, FreezeDigest: a.FreezeDigest, ReapAfter: a.ReapAfter, Tree: tree}
 	p.Digest, err = p.DigestValue()
 	if err != nil {
 		return nil, err
@@ -154,12 +160,12 @@ func (m Manager) PlanReap(ctx context.Context, key string) (*Plan, error) {
 	defer cancel()
 	var p *Plan
 	err = m.Within(func(update workspace.Update) error {
-		return update(func(rows benchstate.Database, _ *sql.Tx) error {
+		return update(func(rows benchstate.Database, tx *sql.Tx) error {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
 			var err error
-			p, err = m.plan(ctx, rows[key])
+			p, err = m.plan(ctx, tx, rows[key])
 			return err
 		})
 	})

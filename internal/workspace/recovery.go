@@ -107,6 +107,10 @@ func (m Manager) StageRecovery(ctx context.Context, creationID string, spec Reco
 }
 
 func (m Manager) recoveryPlan(ctx context.Context, timeout time.Duration, spec RecoverySpec) (Plan, error) {
+	return m.recoveryPlanAuthorized(ctx, timeout, spec, false)
+}
+
+func (m Manager) recoveryPlanAuthorized(ctx context.Context, timeout time.Duration, spec RecoverySpec, transferred bool) (Plan, error) {
 	var none Plan
 	mirrors := repository.Mirrors{State: m.State, Data: m.Data, Timeout: timeout}
 	configured := map[string]string{}
@@ -139,12 +143,25 @@ func (m Manager) recoveryPlan(ctx context.Context, timeout time.Duration, spec R
 	for _, target := range spec.Repositories {
 		ref := "refs/heads/" + target.Branch
 		for _, old := range manifest.Members {
-			if target.Repository == old.Repository && (ref == old.TaskRef || branchNamespaceConflict(ref, old.TaskRef)) {
+			if !transferred && target.Repository == old.Repository && (ref == old.TaskRef || branchNamespaceConflict(ref, old.TaskRef)) {
 				return none, errors.New("recovery requires distinct task refs; original writer ownership is not transferred")
 			}
 		}
 		if target.Repository == source.Repository && (ref == meta || branchNamespaceConflict(ref, meta)) {
 			return none, errors.New("recovery task ref conflicts with source checkpoint metadata")
+		}
+	}
+	if transferred {
+		for _, member := range manifest.Members {
+			local, e := m.Git(ctx, configured[member.Repository], "rev-parse", "--verify", member.TaskRef)
+			if e != nil || strings.TrimSpace(local) != member.Commit {
+				return none, errors.New("transferred local task ref changed before destination admission")
+			}
+			remote, e := m.Git(ctx, configured[member.Repository], "ls-remote", "--refs", "origin", member.TaskRef)
+			fields := strings.Fields(remote)
+			if e != nil || len(fields) != 2 || fields[0] != member.Commit || fields[1] != member.TaskRef {
+				return none, errors.New("transferred remote task ref changed before destination admission")
+			}
 		}
 	}
 	plan := Plan{Key: spec.Key, Root: filepath.Join(m.Data, "benches", spec.Key), CheckpointRepository: manifest.CheckpointRepository, QuotaBytes: spec.QuotaBytes}

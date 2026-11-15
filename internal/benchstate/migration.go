@@ -10,6 +10,7 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/history"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/initrepair"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/reftransfer"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/setup"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspacepolicy"
 )
@@ -32,13 +33,13 @@ func Migrate(tx *sql.Tx, state string, pinMigratedInodes func(*model.Bench) erro
 	if version == SchemaVersion {
 		return nil
 	}
-	if version >= 1 && version <= 19 {
+	if version >= 1 && version <= 20 {
 		records, err := Load(tx)
 		if err != nil {
 			return err
 		}
 		for _, b := range records {
-			if b.Workspace != nil && (version < 14 || version == 14 && workspacepolicy.ValidateSchema14(b) != nil || version == 15 && workspacepolicy.ValidateSchema15(b) != nil || version == 16 && workspacepolicy.ValidateSchema16(b) != nil || version == 17 && workspacepolicy.ValidateSchema17(b) != nil || version >= 18 && workspacepolicy.ValidateSchema19(b) != nil) {
+			if b.Workspace != nil && (version < 14 || version == 14 && workspacepolicy.ValidateSchema14(b) != nil || version == 15 && workspacepolicy.ValidateSchema15(b) != nil || version == 16 && workspacepolicy.ValidateSchema16(b) != nil || version == 17 && workspacepolicy.ValidateSchema17(b) != nil || (version == 18 || version == 19) && workspacepolicy.ValidateSchema19(b) != nil || version == 20 && workspacepolicy.ValidateSchema20(b) != nil) {
 				return errors.New("aggregate workspace cannot be adopted from an older state schema")
 			}
 			if b.Lease != nil && b.Lease.Execution != nil && b.Lease.Execution.Phase != "stopped" {
@@ -50,7 +51,12 @@ func Migrate(tx *sql.Tx, state string, pinMigratedInodes func(*model.Bench) erro
 				return err
 			}
 		}
-		if err := historicalRepairs(tx); err != nil {
+		if version < 20 {
+			if err := historicalRepairs(tx); err != nil {
+				return err
+			}
+		}
+		if err := historicalTransfers(tx); err != nil {
 			return err
 		}
 		for key, b := range records {
@@ -85,7 +91,10 @@ func Migrate(tx *sql.Tx, state string, pinMigratedInodes func(*model.Bench) erro
 		if err = initrepair.Schema(tx); err != nil {
 			return err
 		}
-		_, err = tx.Exec("PRAGMA user_version=20")
+		if err = reftransfer.Schema(tx); err != nil {
+			return err
+		}
+		_, err = tx.Exec("PRAGMA user_version=21")
 		return err
 	}
 	if version != 0 {
@@ -125,8 +134,25 @@ func Migrate(tx *sql.Tx, state string, pinMigratedInodes func(*model.Bench) erro
 	if err = initrepair.Schema(tx); err != nil {
 		return err
 	}
-	_, err = tx.Exec("PRAGMA user_version=20")
+	if err = reftransfer.Schema(tx); err != nil {
+		return err
+	}
+	_, err = tx.Exec("PRAGMA user_version=21")
 	return err
+}
+
+func historicalTransfers(r Reader) error {
+	var count int
+	if err := r.QueryRow("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='workspace_ref_transfers'").Scan(&count); err != nil || count == 0 {
+		return err
+	}
+	if err := r.QueryRow("SELECT count(*) FROM workspace_ref_transfers").Scan(&count); err != nil {
+		return err
+	}
+	if count != 0 {
+		return errors.New("task-ref transfer journal requires current state schema")
+	}
+	return nil
 }
 
 func historicalRepairs(r Reader) error {

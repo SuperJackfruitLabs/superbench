@@ -30,7 +30,7 @@ func workspaceCLI(args []string, stdout, stderr io.Writer) error {
 
 func workspaceCLIContext(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	if len(args) == 0 {
-		return errors.New("usage: bench workspace <create|recover|lease|setup|run|checkpoint|release|stop|stop_admin|archive|status|host_status|plan-reap|reap|inspect-history|reconcile-history|inspect-initialization|claim-initialization|continue-initialization> [flags] [key]; flags precede key")
+		return errors.New("usage: bench workspace <create|recover|lease|setup|run|checkpoint|release|stop|stop_admin|archive|status|host_status|plan-reap|reap|inspect-history|reconcile-history|inspect-initialization|claim-initialization|continue-initialization|inspect-transfer|begin-transfer|continue-transfer> [flags] [key]; flags precede key")
 	}
 	op := args[0]
 	if op == "host-status" {
@@ -40,7 +40,8 @@ func workspaceCLIContext(ctx context.Context, args []string, stdout, stderr io.W
 		op = "stop_admin"
 	}
 	repair := op == "inspect-initialization" || op == "claim-initialization" || op == "continue-initialization"
-	localAdmin := repair || op == "plan-reap" || op == "reap" || op == "inspect-history" || op == "reconcile-history"
+	transfer := op == "inspect-transfer" || op == "begin-transfer" || op == "continue-transfer"
+	localAdmin := repair || transfer || op == "plan-reap" || op == "reap" || op == "inspect-history" || op == "reconcile-history"
 	if !protocolv2.Known(op) && !localAdmin {
 		return fmt.Errorf("unknown workspace operation %q", op)
 	}
@@ -75,6 +76,8 @@ func workspaceCLIContext(ctx context.Context, args []string, stdout, stderr io.W
 	approve := f.String("approve", "", "exact reviewed plan Digest")
 	repairID := f.String("repair-id", "", "explicit local initialization repair identity")
 	rerunOnce := f.String("rerun-once", "", "review uncertain once hooks for these comma-separated members")
+	target := f.String("target", "", "fresh destination key for reviewed local transfer")
+	transferID := f.String("transfer-id", "", "explicit reviewed local transfer identity")
 	if err := f.Parse(args[1:]); err != nil {
 		return err
 	}
@@ -99,10 +102,27 @@ func workspaceCLIContext(ctx context.Context, args []string, stdout, stderr io.W
 		if op == "continue-initialization" {
 			allowed["repair-id"], allowed["token"] = true, true
 		}
+		if op == "inspect-transfer" {
+			allowed["target"], allowed["transfer-id"], allowed["quota-bytes"] = true, true, true
+		}
+		if op == "begin-transfer" {
+			allowed["plan"], allowed["approve"] = true, true
+		}
+		if op == "continue-transfer" {
+			allowed["transfer-id"] = true
+		}
 		for name := range visited {
 			if !allowed[name] {
 				return fmt.Errorf("flag --%s is not valid for local workspace %s", name, op)
 			}
+		}
+		if transfer {
+			for _, name := range []string{"state", "data", "cgroup-root", "plan", "approve", "target", "transfer-id"} {
+				if visited[name] && f.Lookup(name).Value.String() == "" {
+					return fmt.Errorf("flag --%s must not be empty", name)
+				}
+			}
+			return workspaceTransfer(ctx, store, op, key, *target, *transferID, *plan, *approve, *quota, stdout)
 		}
 		if repair {
 			for _, name := range []string{"state", "data", "cgroup-root", "plan", "approve", "repair-id", "token", "rerun-once"} {
@@ -119,6 +139,9 @@ func workspaceCLIContext(ctx context.Context, args []string, stdout, stderr io.W
 			return workspaceHistory(ctx, store, op, key, *plan, *approve, stdout)
 		}
 		return workspaceReap(ctx, store, op, key, *plan, *approve, stdout)
+	}
+	if visited["target"] || visited["transfer-id"] {
+		return errors.New("workspace transfer flags are local administration only")
 	}
 	if visited["repair-id"] || visited["rerun-once"] {
 		return errors.New("initialization repair flags are local administration only")

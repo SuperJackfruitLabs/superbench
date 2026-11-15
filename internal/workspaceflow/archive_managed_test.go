@@ -101,13 +101,13 @@ func TestManagedWorkspaceArchiveLifecycle(t *testing.T) {
 		checkCtx, done := context.WithTimeout(ctx, 15*time.Second)
 		out, oldErr := exec.CommandContext(checkCtx, previous, "status", "--state", state, "--data", data).CombinedOutput()
 		done()
-		if oldErr == nil || !strings.Contains(string(out), "unsupported state schema 20 (expected 17)") {
+		if oldErr == nil || !strings.Contains(string(out), "unsupported state schema 21 (expected 17)") {
 			t.Fatal("schema17 CLI did not refuse aggregate archive state", oldErr, string(out))
 		}
 		if !reflect.DeepEqual(before, snapshotWorkspace(t, store, ready.Key)) {
 			t.Fatal("old CLI changed archived record")
 		}
-		t.Log("PASS: schema17 CLI refuses schema20 without changing archive authority")
+		t.Log("PASS: schema17 CLI refuses schema21 without changing archive authority")
 	}
 	plan, err := store.PlanWorkspaceReapContext(ctx, ready.Key)
 	if err != nil {

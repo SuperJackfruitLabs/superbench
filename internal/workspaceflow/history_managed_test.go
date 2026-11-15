@@ -54,14 +54,14 @@ func TestManagedWorkspaceHistorySchema18Refusal(t *testing.T) {
 		cmd := exec.CommandContext(ctx, old, args...)
 		out, err := cmd.CombinedOutput()
 		cancel()
-		if err == nil || strings.TrimSpace(string(out)) != "bench: unsupported state schema 20 (expected 18)" {
+		if err == nil || strings.TrimSpace(string(out)) != "bench: unsupported state schema 21 (expected 18)" {
 			t.Fatalf("reviewed schema18 %s did not produce only the expected refusal: %v %q", operation, err, out)
 		}
 		if !reflect.DeepEqual(before, compatibilityStateFiles(t, state)) {
 			t.Fatal("old binary changed schema20 history, receipts or files")
 		}
 	}
-	t.Log("PASS: actual schema18 CLI status and mutation refuse schema19 before changing interrupted history, receipt evidence or state files")
+	t.Log("PASS: actual schema18 CLI status and mutation refuse schema21 before changing interrupted history, receipt evidence or state files")
 }
 
 func seedInterruptedCompatibilityHistory(t *testing.T, db *sql.DB) {
