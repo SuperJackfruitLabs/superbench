@@ -27,7 +27,7 @@ func TestMigratedTypedIntentCannotCertifyEmptyHelperInventory(t *testing.T) {
 	}
 	stop()
 	// Reproduce the actual old receipt schema and its missing tracking guarantee.
-	if _, err = r.db.Exec(`ALTER TABLE operation_intents DROP COLUMN helper_tracking;PRAGMA user_version=4`); err != nil {
+	if _, err = r.db.Exec(`ALTER TABLE operation_intents DROP COLUMN core_finalized;ALTER TABLE operation_intents DROP COLUMN helper_tracking;PRAGMA user_version=4`); err != nil {
 		t.Fatal(err)
 	}
 	r.db.Close()

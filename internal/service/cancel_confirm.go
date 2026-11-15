@@ -58,6 +58,9 @@ func (r *receipts) confirmCancellation(i operationcontrol.Intent) error {
 	if state != "interrupted" || barrier != "cancelled" {
 		return errInDoubt
 	}
+	if err = saveCoreFinalized(tx, i); err != nil {
+		return err
+	}
 	if err = tx.Commit(); err != nil {
 		return err
 	}

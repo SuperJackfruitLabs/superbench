@@ -12,6 +12,10 @@ import (
 func (r *receipts) finalizationCutoff(i operationcontrol.Intent) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	return r.finalizationCutoffLocked(i)
+}
+
+func (r *receipts) finalizationCutoffLocked(i operationcontrol.Intent) error {
 	stored, err := r.operationIntent(i.Target)
 	if err != nil {
 		return err
@@ -42,5 +46,8 @@ func (s *Server) finalizeOperation(i operationcontrol.Intent) error {
 	if err != nil {
 		return err
 	}
-	return manager.Finish(i, func() error { return s.receipts.finalizationCutoff(i) })
+	if err = manager.Finish(i, func() error { return s.receipts.finalizationCutoff(i) }); err != nil {
+		return err
+	}
+	return s.receipts.markCoreFinalized(i)
 }

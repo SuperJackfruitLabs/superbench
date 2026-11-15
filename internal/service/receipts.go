@@ -13,7 +13,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const receiptSchemaVersion = 5
+const receiptSchemaVersion = 6
 
 var errConflict = errors.New("request id reused with a different operation body")
 var errInDoubt = errors.New("request outcome requires reconciliation")
@@ -68,6 +68,16 @@ func openReceipts(state string) (*receipts, error) {
 	if version < 0 || version > receiptSchemaVersion {
 		db.Close()
 		return nil, errors.New("unsupported receipt schema")
+	}
+	if version < 6 {
+		var future int
+		if e = db.QueryRow(`SELECT count(*) FROM pragma_table_info('operation_intents') WHERE name='core_finalized'`).Scan(&future); e != nil || future != 0 {
+			db.Close()
+			if e != nil {
+				return nil, e
+			}
+			return nil, errInDoubt
+		}
 	}
 	if version < 5 {
 		var future int
@@ -159,6 +169,22 @@ func openReceipts(state string) (*receipts, error) {
 			return nil, err
 		}
 		if _, err = tx.Exec(`ALTER TABLE operation_intents ADD COLUMN helper_tracking INTEGER NOT NULL DEFAULT 0;PRAGMA user_version=5`); err != nil {
+			tx.Rollback()
+			db.Close()
+			return nil, err
+		}
+		if err = tx.Commit(); err != nil {
+			db.Close()
+			return nil, err
+		}
+	}
+	if version < 6 {
+		tx, err := db.Begin()
+		if err != nil {
+			db.Close()
+			return nil, err
+		}
+		if _, err = tx.Exec(`ALTER TABLE operation_intents ADD COLUMN core_finalized INTEGER NOT NULL DEFAULT 0;PRAGMA user_version=6`); err != nil {
 			tx.Rollback()
 			db.Close()
 			return nil, err
