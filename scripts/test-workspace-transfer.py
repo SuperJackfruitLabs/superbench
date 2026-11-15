@@ -105,6 +105,7 @@ def stopped_writer_before_review(d):
 def blocked_source(d, original_create, original_raw, source_before):
     before = d.record("source")
     assert before.get("Lease") is None and before["Workspace"]["Transfer"]["Phase"] in ("relinquishing", "transferred")
+    d.transfer_unavailable("source", before["Workspace"]["Transfer"]["Phase"])
     for operation, fields in (("lease", {"holder": "forbidden"}),
                               ("run", {"holder": "forbidden", "arguments": ["/usr/bin/touch", str(d.root / "forbidden-source-launch")]}),
                               ("setup", {"holder": "forbidden"}),
@@ -120,6 +121,7 @@ def blocked_source(d, original_create, original_raw, source_before):
     assert all(before[field] == source_before[field] for field in ("Path", "ProjectID", "QuotaBytes", "QuotaInodes"))
     assert before["Workspace"]["Checkpoint"] == source_before["Workspace"]["Checkpoint"]
     assert before["Workspace"]["Preparation"] == source_before["Workspace"]["Preparation"]
+    d.prove("original-ref-transfer-availability", 2)
 
 
 def transfer(d, members, original_create, original_raw):

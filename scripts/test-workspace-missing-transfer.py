@@ -83,6 +83,22 @@ class Drill(api.Drill):
         receipts = [row for row in receipts if (row[0], row[1]) in self.protected_receipts]
         return history, once, logs, receipts
 
+    def preserve_returned(self, name):
+        # These directories contain only this drill's controlled sentinel. Copy
+        # and verify it outside XFS before removing the fixture-owned original;
+        # rename cannot cross the loop mount and retaining its project elsewhere
+        # would leave this source's quota occupied for later retirement tests.
+        entries = list(self.returned.iterdir())
+        assert len(entries) == 1 and entries[0].name == "sentinel"
+        assert entries[0].is_file() and not entries[0].is_symlink()
+        before = bytes_snapshot(self.returned)
+        destination = self.root / name
+        assert not destination.exists() and not self.returned.is_symlink()
+        shutil.copytree(self.returned, destination)
+        assert bytes_snapshot(destination) == before
+        shutil.rmtree(self.returned)  # Only the exact controlled returned path.
+        assert not self.returned.exists()
+
     def old_cli_refusal(self):
         if not self.args.previous_cli:
             print("UNCOVERED schema21-cli-refusal: no previous binary supplied", flush=True)
@@ -178,6 +194,7 @@ def assert_source(d, source, files, index, evidence):
 
 def blocked_source(d, create, raw, uncertain):
     before = d.record("source")
+    d.transfer_unavailable("source", before["Workspace"]["Transfer"]["Phase"])
     for operation, fields in (("lease", {"holder": "forbidden"}), ("setup", {"holder": "forbidden"}),
                               ("create", {"repositories": create["repositories"], "checkpoint_repository": "a", "initialize": True}),
                               ("run", {"holder": "forbidden", "arguments": ["/usr/bin/touch", str(d.root / "forbidden-source-launch")]})):
@@ -188,6 +205,7 @@ def blocked_source(d, create, raw, uncertain):
     legacy = d.run(d.local("create-cold", "--repo", d.remotes["a"], "source"), expected=1)
     assert all(token not in legacy.stdout for token in d.tokens)
     assert d.record("source") == before and not (d.root / "forbidden-source-launch").exists()
+    d.prove("original-ref-transfer-availability", 2)
 
 
 def transfer_and_repair(d, source, a_files, a_index, b_index, staged, reflog, create, raw, uncertain, old_token):
@@ -204,6 +222,7 @@ def transfer_and_repair(d, source, a_files, a_index, b_index, staged, reflog, cr
     assert d.record("source")["Lease"]["Token"] == old_token
     started = d.cli("begin-missing-transfer", "source", remote=False, flags=["--plan", path, "--approve", plan["Digest"]])
     assert started["phase"] == "started" and "grant_token" not in started and "root_path" not in started
+    d.transfer_unavailable("source", "relinquishing")
     assert_source(d, source, a_files, a_index, evidence)
     d.old_cli_refusal()
     a_admin = Path(plan["Members"][0]["Present"]["Admin"])
@@ -221,7 +240,7 @@ def transfer_and_repair(d, source, a_files, a_index, b_index, staged, reflog, cr
     assert sentinel.read_bytes() == returned and not (d.root / "forbidden-source-launch").exists()
     assert (a_admin / "HEAD").read_text().startswith("ref: ")
     d.absent_target()
-    d.returned.rename(d.root / "preserved-returned-before-stage")
+    d.preserve_returned("preserved-returned-before-stage")
     # Now A's target hook recreates the missing source while preparation runs.
     d.reappear.write_text("only the owned target hook returns B")
     d.refuse("continue-missing-transfer", "source", ["--transfer-id", plan["ID"]])
@@ -236,7 +255,7 @@ def transfer_and_repair(d, source, a_files, a_index, b_index, staged, reflog, cr
     assert returned == b"returned source from A hook\n"
     d.refuse("continue-missing-transfer", "source", ["--transfer-id", plan["ID"]])
     assert sentinel.read_bytes() == returned and d.events("target")["b"] == {"once": 0, "each": 0}
-    d.returned.rename(d.root / "preserved-returned-from-target-hook")
+    d.preserve_returned("preserved-returned-from-target-hook")
     d.reappear.unlink()
     # Clearing the fixture fault cannot revive a revoked private continuation.
     before = d.events("target")
