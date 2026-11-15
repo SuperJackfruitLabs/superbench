@@ -12,7 +12,6 @@ import (
 	"time"
 )
 
-func protectedRuns(db database) map[string]bool { return runprotection.Runs(db) }
 func (s Store) sealRunLog(id string, c *output.Capture, exit *int, truncated bool) error {
 	entry, e := retention.Snapshot(s.State, id)
 	if e != nil {
@@ -35,8 +34,11 @@ func (s Store) History(key string, limit int) ([]history.Record, error) {
 func (s Store) ReconcileLog(id string) (*history.Record, error) {
 	var out *history.Record
 	e := s.transactionSQL(func(records database, tx *sql.Tx) error {
-		var e error
-		out, e = retention.Reconcile(tx, s.State, id, protectedRuns(records))
+		protected, e := runprotection.WithOperations(records, tx)
+		if e != nil {
+			return e
+		}
+		out, e = retention.Reconcile(tx, s.State, id, protected)
 		return e
 	})
 	return out, e
@@ -44,8 +46,11 @@ func (s Store) ReconcileLog(id string) (*history.Record, error) {
 func (s Store) PlanCollection(logAge, metadataAge time.Duration, limit int) (*retention.Plan, error) {
 	var out *retention.Plan
 	e := s.readSQL(func(records database, db reader) error {
-		var e error
-		out, e = retention.Build(db, s.State, protectedRuns(records), logAge, metadataAge, limit)
+		protected, e := runprotection.WithOperations(records, db)
+		if e != nil {
+			return e
+		}
+		out, e = retention.Build(db, s.State, protected, logAge, metadataAge, limit)
 		return e
 	})
 	return out, e
@@ -53,6 +58,10 @@ func (s Store) PlanCollection(logAge, metadataAge time.Duration, limit int) (*re
 func (s Store) Collect(p retention.Plan) (retention.Collection, error) {
 	var out retention.Collection
 	e := s.transactionSQL(func(records database, tx *sql.Tx) error {
+		protected, e := runprotection.WithOperations(records, tx)
+		if e != nil {
+			return e
+		}
 		raw, e := json.Marshal(p)
 		if e != nil {
 			return e
@@ -64,14 +73,17 @@ func (s Store) Collect(p retention.Plan) (retention.Collection, error) {
 		if space.Free < uint64(len(raw))*2+(1<<20) {
 			return errors.New("state reserve cannot journal this collection; use a smaller plan")
 		}
-		return retention.Prepare(tx, s.State, p, protectedRuns(records))
+		return retention.Prepare(tx, s.State, p, protected)
 	})
 	if e != nil {
 		return out, e
 	}
 	e = s.transactionSQL(func(records database, tx *sql.Tx) error {
-		var e error
-		out, e = retention.Apply(tx, s.State, p, protectedRuns(records), s.collectAfterDelete)
+		protected, e := runprotection.WithOperations(records, tx)
+		if e != nil {
+			return e
+		}
+		out, e = retention.Apply(tx, s.State, p, protected, s.collectAfterDelete)
 		return e
 	})
 	return out, e
@@ -89,8 +101,11 @@ func (s Store) ResumeCollection(digest string, cancel bool) (retention.Collectio
 	}
 	if cancel {
 		e = s.transactionSQL(func(records database, tx *sql.Tx) error {
-			var e error
-			out, e = retention.Cancel(tx, s.State, digest, protectedRuns(records))
+			protected, e := runprotection.WithOperations(records, tx)
+			if e != nil {
+				return e
+			}
+			out, e = retention.Cancel(tx, s.State, digest, protected)
 			return e
 		})
 		return out, e
@@ -129,8 +144,11 @@ func (s Store) Collections() ([]retention.Collection, error) {
 func (s Store) InspectLog(id string) (*retention.Adoption, error) {
 	var out *retention.Adoption
 	e := s.readSQL(func(records database, db reader) error {
-		var e error
-		out, e = retention.Inspect(db, s.State, id, protectedRuns(records))
+		protected, e := runprotection.WithOperations(records, db)
+		if e != nil {
+			return e
+		}
+		out, e = retention.Inspect(db, s.State, id, protected)
 		return e
 	})
 	return out, e
@@ -138,8 +156,11 @@ func (s Store) InspectLog(id string) (*retention.Adoption, error) {
 func (s Store) AdoptLog(p retention.Adoption) (history.Record, error) {
 	var out history.Record
 	e := s.transactionSQL(func(records database, tx *sql.Tx) error {
-		var e error
-		out, e = retention.Adopt(tx, s.State, p, protectedRuns(records))
+		protected, e := runprotection.WithOperations(records, tx)
+		if e != nil {
+			return e
+		}
+		out, e = retention.Adopt(tx, s.State, p, protected)
 		return e
 	})
 	return out, e

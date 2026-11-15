@@ -23,3 +23,9 @@ Independent exact-operation reconciliation must prove the helper deny barriers,
 writer fencing, sealed retained history, and inactive operation before producing
 `cancelled`. A durable completed original receipt instead yields the cap-free
 `already_completed` observation; cancellation never renews a historical grant.
+
+Released history remains protected while its operation epoch is active, including
+successful workspace release before the historical response is committed. Each
+collection read or mutation checks the same durable launch inventory under its
+state lock/transaction. The original completed-receipt cutoff permits core
+finalization and then ordinary retention; it does not permanently pin all history.
