@@ -30,27 +30,7 @@ func (s Store) StageWorkspaceContext(ctx context.Context, creationID string, spe
 	return m.Stage(ctx, creationID, spec)
 }
 
-func (s Store) allocateWorkspace(b *Bench) error {
-	c, err := s.hostConfig()
-	if err != nil {
-		return err
-	}
-	if c == nil {
-		if b.ProjectID != 0 {
-			return errors.New("managed workspace has no host policy")
-		}
-		return nil
-	}
-	a, err := s.workerStorage().Quota(*c, "bench", b.Key, b.RequestedQuotaBytes)
-	if err != nil {
-		return err
-	}
-	if a.Path != b.Path || a.ProjectID == 0 || a.Bytes == 0 || a.Inodes == 0 || b.RequestedQuotaBytes != 0 && a.Bytes != b.RequestedQuotaBytes || b.ProjectID != 0 && (b.ProjectID != a.ProjectID || b.QuotaBytes != a.Bytes || b.QuotaInodes != a.Inodes) {
-		return errors.New("workspace quota differs from its pinned allocation")
-	}
-	b.ProjectID, b.QuotaBytes, b.QuotaInodes = a.ProjectID, a.Bytes, a.Inodes
-	return nil
-}
+func (s Store) allocateWorkspace(b *Bench) error { return s.workerStorage().AssignWorkspace(b) }
 
 func (s Store) workspaceWithin(fn func(workspace.Update) error) error {
 	return s.session(func(session *statestore.Session) error {
@@ -96,10 +76,27 @@ func (s Store) PrepareWorkspaceContext(ctx context.Context, key, token, selector
 // a complete remotely confirmed genesis checkpoint, releasing the one init lease.
 func (s Store) InitializeWorkspaceContext(ctx context.Context, creationID string, spec workspace.Spec) (*Bench, error) {
 	b, err := s.StageWorkspaceContext(ctx, creationID, spec)
-	if err != nil || b.Workspace.Phase == "ready" {
+	if err != nil {
 		return b, err
 	}
-	s, ctx, err = s.workspaceControls(ctx)
+	return s.finishWorkspaceInitialization(ctx, b)
+}
+
+func (s Store) finishWorkspaceInitialization(ctx context.Context, b *Bench) (result *Bench, operationErr error) {
+	if b.Workspace.Phase == "ready" {
+		return b, nil
+	}
+	key, token := b.Key, b.Lease.Token
+	defer func() {
+		if ctxErr := ctx.Err(); ctxErr != nil && result != nil && result.Lease != nil {
+			stopped, stopErr := s.workspacePreparation().Stop(key, token, false)
+			if stopped != nil {
+				result = stopped
+			}
+			operationErr = errors.Join(operationErr, ctxErr, stopErr)
+		}
+	}()
+	s, ctx, err := s.workspaceControls(ctx)
 	if err != nil {
 		return b, err
 	}
@@ -114,6 +111,29 @@ func (s Store) InitializeWorkspaceContext(ctx context.Context, creationID string
 		return b, err
 	}
 	return finished, err
+}
+
+// StageWorkspaceRecoveryContext materializes only the exact sealed source
+// vector, with a fresh workspace identity and retained initialization owner.
+func (s Store) StageWorkspaceRecoveryContext(ctx context.Context, creationID string, spec workspace.RecoverySpec) (*Bench, error) {
+	if err := workspace.ValidateRecovery(creationID, spec); err != nil {
+		return nil, err
+	}
+	s, ctx, err := s.workspaceControls(ctx)
+	if err != nil {
+		return nil, err
+	}
+	m := workspace.Manager{State: s.State, Data: s.Data, Timeout: s.MirrorTimeout,
+		Within: s.workspaceWithin, Git: s.workspaceGit, Admit: s.admit, Allocate: s.allocateWorkspace}
+	return m.StageRecovery(ctx, creationID, spec)
+}
+
+func (s Store) RecoverWorkspaceContext(ctx context.Context, creationID string, spec workspace.RecoverySpec) (*Bench, error) {
+	b, err := s.StageWorkspaceRecoveryContext(ctx, creationID, spec)
+	if err != nil {
+		return b, err
+	}
+	return s.finishWorkspaceInitialization(ctx, b)
 }
 func (s Store) CheckpointWorkspaceContext(ctx context.Context, key, token string) (*Bench, error) {
 	s, ctx, err := s.workspaceControls(ctx)

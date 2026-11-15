@@ -10,6 +10,7 @@ type Workspace struct {
 	ID                   string
 	CreationID           string
 	CheckpointRepository string
+	RecoveredFrom        *WorkspaceRecovery `json:",omitempty"`
 	Phase                string
 	ExplicitQuotaBytes   uint64 `json:",omitempty"`
 	Members              []WorkspaceMember
@@ -42,3 +43,7 @@ type WorkspaceCommit struct{ Name, Commit string }
 type WorkspacePreparation struct{ Name, Digest, RunID string }
 
 type WorkspaceStage struct{ Name, Digest string }
+
+// WorkspaceRecovery records the exact remote seal used to select this new
+// workspace. It transfers source commits, never leases or host allocations.
+type WorkspaceRecovery struct{ Repository, BenchID, Commit, ManifestSHA256 string }

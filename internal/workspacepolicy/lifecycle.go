@@ -200,7 +200,7 @@ func ValidateSchema14(b *model.Bench) error {
 	}
 	w := b.Workspace
 	l := b.Lease
-	if w.Phase != "materializing" && w.Phase != "initializing" || w.Pending != nil || w.Checkpoint != nil || w.Stage != nil || len(w.Preparation) != 0 || l == nil || l.Execution != nil || len(l.RetainedRuns) != 0 || l.StopRequested || !identity.MatchString(l.Continuation) {
+	if w.RecoveredFrom != nil || w.Phase != "materializing" && w.Phase != "initializing" || w.Pending != nil || w.Checkpoint != nil || w.Stage != nil || len(w.Preparation) != 0 || l == nil || l.Execution != nil || len(l.RetainedRuns) != 0 || l.StopRequested || !identity.MatchString(l.Continuation) {
 		return errors.New("aggregate does not match historical staging schema")
 	}
 	return nil
@@ -212,8 +212,19 @@ func ValidateSchema15(b *model.Bench) error {
 	if err := Validate(b); err != nil {
 		return err
 	}
-	if b.Workspace.Phase == "ready" && len(b.Workspace.Preparation) != len(b.Workspace.Members) {
+	if b.Workspace.RecoveredFrom != nil || b.Workspace.Phase == "ready" && len(b.Workspace.Preparation) != len(b.Workspace.Members) {
 		return errors.New("aggregate does not match historical lifecycle schema")
+	}
+	return nil
+}
+
+// ValidateSchema16 excludes recovery provenance that only schema17 can own.
+func ValidateSchema16(b *model.Bench) error {
+	if err := Validate(b); err != nil {
+		return err
+	}
+	if b.Workspace.RecoveredFrom != nil {
+		return errors.New("aggregate does not match historical ownership schema")
 	}
 	return nil
 }
