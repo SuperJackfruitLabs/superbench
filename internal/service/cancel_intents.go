@@ -82,5 +82,13 @@ func (r *receipts) requestCancelV2(uid uint32, id, digest string) (string, error
 	} else if typedErr == nil {
 		return "", errInDoubt
 	}
+	if typedErr != nil {
+		if retained, e := r.retainedHelpers(uid, id); e != nil || retained {
+			if e != nil {
+				return "", e
+			}
+			return "", errInDoubt
+		}
+	}
 	return r.requestCancelLocked(uid, id, digest)
 }

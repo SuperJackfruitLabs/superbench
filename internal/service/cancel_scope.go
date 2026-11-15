@@ -44,6 +44,11 @@ func (r *receipts) operationScope(parent context.Context, i operationcontrol.Int
 		cancel()
 		return nil, nil, err
 	}
+	scoped, err = operationcontrol.WithHelperRecorder(scoped, func(h operationcontrol.Helper) error { return r.recordOperationHelper(i, h) })
+	if err != nil {
+		cancel()
+		return nil, nil, err
+	}
 	r.controllers[key] = cancel
 	return scoped, cancel, nil
 }
