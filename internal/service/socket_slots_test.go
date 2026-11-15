@@ -67,3 +67,28 @@ func TestClassificationPromotionAndCloseCannotLeakOrDoubleRelease(t *testing.T) 
 		}
 	}
 }
+
+type delayedCloseConn struct {
+	net.Conn
+	entered, release chan struct{}
+}
+
+func (c delayedCloseConn) Close() error { close(c.entered); <-c.release; return c.Conn.Close() }
+
+func TestCloseDoesNotRecycleReservationBeforeSocketIsClosed(t *testing.T) {
+	a, b := net.Pipe()
+	defer b.Close()
+	entered, release := make(chan struct{}), make(chan struct{})
+	slots := make(chan struct{}, 8)
+	slots <- struct{}{}
+	c := &peerConn{Conn: delayedCloseConn{Conn: a, entered: entered, release: release}, slot: slots}
+	done := make(chan struct{})
+	go func() { _ = c.Close(); close(done) }()
+	<-entered
+	reserved := len(slots)
+	close(release)
+	<-done
+	if reserved != 1 || len(slots) != 0 {
+		t.Fatal("connection reservation recycled before underlying close", reserved, len(slots))
+	}
+}

@@ -23,12 +23,15 @@ type peerConn struct {
 
 func (c *peerConn) Close() error {
 	c.mu.Lock()
+	defer c.mu.Unlock()
+	// Keep the reservation until the underlying socket has actually closed.
+	// Otherwise a suspended Close could admit a 73rd live private connection.
+	err := c.Conn.Close()
 	if !c.closed {
 		c.closed = true
 		<-c.slot
 	}
-	c.mu.Unlock()
-	return c.Conn.Close()
+	return err
 }
 
 type peerListener struct {
