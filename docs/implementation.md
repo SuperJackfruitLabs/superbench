@@ -204,6 +204,14 @@ PRs describe their publication history.
   Required native/Linux checks, the real shared XFS quota drill and live Git
   fencing regressions passed; see [staging evidence](workspace-staging-output.txt).
 
+Aggregate initialization now connects staging to supervised member preparation
+and remotely confirmed genesis readiness. Schema 15 retains per-member input
+proofs, running-member identity, whole pending/complete generations and all held
+stage evidence. See [aggregate preparation](aggregate-preparation.md) for the
+execution/stop/retry ordering and remaining lifecycle scope.
+Required native/Linux checks and live XFS/cgroup warm initialization passed;
+see [verification evidence](aggregate-preparation-output.txt).
+
 ## Remaining retention work
 
 Reviewed log collection and history are implemented in [retention.md](retention.md),

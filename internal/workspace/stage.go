@@ -58,6 +58,20 @@ func privateRecord(b *model.Bench) *model.Bench {
 	if b.Workspace != nil {
 		w := *b.Workspace
 		w.Members = append([]model.WorkspaceMember(nil), w.Members...)
+		w.Preparation = append([]model.WorkspacePreparation(nil), w.Preparation...)
+		cloneCheckpoint := func(cp *model.WorkspaceCheckpoint) *model.WorkspaceCheckpoint {
+			if cp == nil {
+				return nil
+			}
+			copy := *cp
+			copy.Members = append([]model.WorkspaceCommit(nil), cp.Members...)
+			return &copy
+		}
+		w.Pending, w.Checkpoint = cloneCheckpoint(w.Pending), cloneCheckpoint(w.Checkpoint)
+		if w.Stage != nil {
+			stage := *w.Stage
+			w.Stage = &stage
+		}
 		c.Workspace = &w
 	}
 	if b.Lease != nil {
@@ -71,6 +85,9 @@ func privateRecord(b *model.Bench) *model.Bench {
 	}
 	return &c
 }
+
+// Clone owns all mutable workspace and lease slices returned to lifecycle callers.
+func Clone(b *model.Bench) *model.Bench { return privateRecord(b) }
 
 func stagedPlan(b *model.Bench) Plan {
 	p := Plan{Key: b.Key, Root: b.Path, QuotaBytes: b.RequestedQuotaBytes, CheckpointRepository: b.Workspace.CheckpointRepository}
@@ -164,7 +181,7 @@ func (m Manager) Stage(ctx context.Context, creationID string, spec Spec) (*mode
 			return err
 		}
 		committed = found
-		if found != nil && found.Workspace.Phase == "initializing" {
+		if found != nil && found.Workspace.Phase != "materializing" {
 			return nil
 		}
 		if err := ctx.Err(); err != nil {

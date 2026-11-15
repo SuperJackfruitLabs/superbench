@@ -308,7 +308,7 @@ if new and mode=='pause':
         assert alive(record), 'controller-only kill unexpectedly fenced detached helper'
         assert f.status().get('Lease') and alive(record), 'read-only status performed recovery'
         with sqlite3.connect(f.state / 'bench.db') as db:
-            assert db.execute('PRAGMA user_version').fetchone()[0] == 14
+            assert db.execute('PRAGMA user_version').fetchone()[0] == 15
         previous = run([args.old_bench, 'status', '--state', f.state, '--data', f.data, 'task'])
         assert previous.returncode != 0 and 'unsupported state schema' in previous.stderr
         blocked = run(f.command('lease-repair', '--holder', 'competitor', 'task'))
@@ -319,7 +319,7 @@ if new and mode=='pause':
         f.checkpoint_release(token)
         replacement = f.cli('lease-repair', '--holder', 'after-recovery', 'task')['Lease']['Token']
         f.checkpoint_release(replacement)
-        print('PASS: SIGKILL of a paused control controller leaves a durable schema-14 intent and live known scope; status does not fence, schema-12 CLI refuses, and the next mutation recovers/fences before handoff or a later lease grant', flush=True)
+        print('PASS: SIGKILL of a paused control controller leaves a durable schema-15 intent and live known scope; status does not fence, schema-12 CLI refuses, and the next mutation recovers/fences before handoff or a later lease grant', flush=True)
 
         f = Fixture('warm-creation', args.bench)
         target = f.data / 'benches/warm/post-release-writer'
