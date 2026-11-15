@@ -30,6 +30,10 @@ func (s *Server) serveV2(w http.ResponseWriter, r *http.Request) {
 		s.replyV2(w, protocolv2.Request{}, nil, 403, "forbidden", "Unix peer is not authorized")
 		return
 	}
+	if r.URL.Path == "/v2/receipts/lookup" && s.proposedReceiptLookup {
+		s.receiptLookupV2(w, r, uid)
+		return
+	}
 	if r.URL.Path != "/v2/operations" {
 		s.replyV2(w, protocolv2.Request{}, nil, 404, "not_found", "unknown endpoint")
 		return
