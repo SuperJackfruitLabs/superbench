@@ -86,3 +86,14 @@ This is evidence for the stated private Linux producer revision only. Connection
 saturation is separately characterized by the ordinary service tests; the managed
 fixture does not claim adversarial transport fairness. Explicit stopped
 materialization repair and native macOS descendant fencing remain unfinished.
+
+Historical migration fixture verification:
+The initial complete native/Linux runs exposed fixtures that changed only the
+schema number while retaining newer operation tables. Those fixtures now remove
+only the future child/parent operation tables when constructing actual historical
+states. The original archive/reap/creation-base assertions remain. An explicit
+empty-future-table test verifies migration and read-only kind preflight still
+refuse current metadata mislabeled as old state without changing records/schema.
+The old-supervisor test now verifies its intended installed-binary stop guard.
+All six focused affected packages passed with race after these tests-only fixes;
+the retained ordinary reap assertion checks the exact current schema constant.

@@ -1,6 +1,7 @@
 package benchstate
 
 import (
+	"errors"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/operationcontrol"
 	"strings"
@@ -60,4 +61,37 @@ func TestSchema22ActiveSupervisorStillRequiresInstalledBinaryStop(t *testing.T) 
 		t.Fatal("active old supervisor adopted")
 	}
 	assertVersion(t, db, 22)
+}
+
+func TestOldSchemaCannotAdoptEmptyFutureOperationTables(t *testing.T) {
+	db := oldDatabase(t, 22, aggregate())
+	var before string
+	if err := db.QueryRow(`SELECT record FROM benches`).Scan(&before); err != nil {
+		t.Fatal(err)
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = operationcontrol.Schema(tx); err != nil {
+		t.Fatal(err)
+	}
+	if err = tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if err = migrateForTest(db, t.TempDir(), nil); !errors.Is(err, operationcontrol.ErrAuthority) {
+		t.Fatal("empty future tables were adopted", err)
+	}
+	assertVersion(t, db, 22)
+	if _, err = LoadKinds(db, t.TempDir()); !errors.Is(err, operationcontrol.ErrAuthority) {
+		t.Fatal("kind preflight adopted empty future tables", err)
+	}
+	var after string
+	if err = db.QueryRow(`SELECT record FROM benches`).Scan(&after); err != nil || before != after {
+		t.Fatal("refusal changed historical record", err)
+	}
+	var count int
+	if err = db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('workspace_operations','workspace_operation_runs')`).Scan(&count); err != nil || count != 2 {
+		t.Fatal("refusal removed future evidence", count, err)
+	}
 }

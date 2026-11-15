@@ -10,6 +10,7 @@ import (
 	"os"
 	"testing"
 
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/benchstate"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/reap"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/statestore"
@@ -66,7 +67,7 @@ func TestSchema20RetainedOrdinaryReapMigratesAndRetriesExactJournal(t *testing.T
 	}
 	if err = statestore.Within(f.manager.State, nil, func(s *statestore.Session) error {
 		return s.Update(func(tx *sql.Tx) error {
-			if _, e := tx.Exec("DROP TABLE workspace_ref_transfers"); e != nil {
+			if _, e := tx.Exec("DROP TABLE workspace_operation_runs; DROP TABLE workspace_operations; DROP TABLE workspace_ref_transfers"); e != nil {
 				return e
 			}
 			_, e := tx.Exec("PRAGMA user_version=20")
@@ -92,7 +93,7 @@ func TestSchema20RetainedOrdinaryReapMigratesAndRetriesExactJournal(t *testing.T
 	}
 	defer db.Close()
 	var version int
-	if err = db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 22 {
+	if err = db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != benchstate.SchemaVersion {
 		t.Fatal("legacy state not migrated", version, err)
 	}
 	for _, m := range b.Workspace.Members {

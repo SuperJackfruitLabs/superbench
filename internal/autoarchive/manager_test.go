@@ -279,7 +279,7 @@ func updateRecord(t *testing.T, f fixture, key string, mutate func(map[string]an
 		t.Fatal(err)
 	}
 	if version == 11 {
-		if _, err = db.Exec("PRAGMA user_version=11"); err != nil {
+		if _, err = db.Exec("DROP TABLE workspace_operation_runs; DROP TABLE workspace_operations; PRAGMA user_version=11"); err != nil {
 			t.Fatal(err)
 		}
 	}
