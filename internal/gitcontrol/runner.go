@@ -345,22 +345,33 @@ func recoveryInventory(state string) (string, []controlIntent, error) {
 // Recover fences only validated private intents while the caller holds the
 // store lock. It never clears a bench lease or guesses that an old writer ended.
 func Recover(state string) error {
+	host := execution.Host{}
+	return recoverAll(state, validateRoot, host.Fence)
+}
+
+func recoverAll(state string, validate func(string) error, fence func(*execution.Execution) error) error {
 	dir, intents, e := recoveryInventory(state)
 	if e != nil {
 		return e
+	}
+	// Operation-attributed controls require their exact cancellation authority.
+	// Preflight all entries before even validating roots or fencing legacy scopes.
+	for _, j := range intents {
+		if j.OperationID != "" {
+			return operationcontrol.ErrBusy
+		}
 	}
 	// Validate all roots before any journal can authorize a filesystem operation.
 	// Even after a reboot, a missing historical root fails closed until the
 	// operator restores a validated cgroup location; we do not duplicate the
 	// execution backend's host/boot authority to bypass this filesystem check.
 	for _, j := range intents {
-		if e = validateRoot(j.Root); e != nil {
+		if e = validate(j.Root); e != nil {
 			return e
 		}
 	}
-	host := execution.Host{}
 	for _, j := range intents {
-		if e = host.Fence(j.execution()); e != nil {
+		if e = fence(j.execution()); e != nil {
 			return fmt.Errorf("Git control recovery fence failed; intent retained: %w", e)
 		}
 		if e = removeControl(dir, j.ID); e != nil {

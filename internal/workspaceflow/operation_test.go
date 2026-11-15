@@ -13,6 +13,9 @@ import (
 
 func TestStagingPersistsExactOperationEpochBeforeOwnerHandoff(t *testing.T) {
 	store, spec, _ := fixture(t)
+	if err := store.Migrate(); err != nil {
+		t.Fatal(err)
+	}
 	i := operationcontrol.Intent{Target: operationcontrol.Target{UID: 42, RequestID: "stage", Digest: strings.Repeat("a", 64)}, Key: spec.Key, Operation: "create", Epoch: strings.Repeat("b", 32)}
 	ctx, err := operationcontrol.WithScope(context.Background(), i, func(fn func() error) error { return fn() })
 	if err != nil {

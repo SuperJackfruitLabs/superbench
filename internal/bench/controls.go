@@ -16,7 +16,7 @@ func (s Store) controlContext() context.Context {
 
 // Commit the schema barrier before a control child can outlive its controller.
 func (s Store) withControls(ctx context.Context, required bool) (Store, context.Context, error) {
-	controls, err := controlcontext.Configure(ctx, controlcontext.Config{Existing: s.controls, State: s.State, Root: s.CgroupRoot, Timeout: s.MirrorTimeout, Required: required, Injected: s.executor != nil, Migrate: s.Migrate})
+	controls, err := controlcontext.Configure(ctx, controlcontext.Config{Existing: s.controls, State: s.State, Root: s.CgroupRoot, Timeout: s.MirrorTimeout, Required: required, Injected: s.executor != nil, Migrate: s.Migrate, Current: s.RequireOperationState})
 	s.controls = controls
 	if err != nil {
 		return s, ctx, err
@@ -44,4 +44,12 @@ func (s Store) reconciliationControls(key string) (Store, error) {
 	}
 	s, _, err = s.withControls(context.Background(), required)
 	return s, err
+}
+
+// RequireOperationState validates the preinstalled schema without migration or recovery.
+func (s Store) RequireOperationState() error {
+	if err := s.validate(); err != nil {
+		return err
+	}
+	return controlcontext.RequireCurrent(s.State)
 }

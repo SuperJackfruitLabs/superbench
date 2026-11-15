@@ -2,6 +2,7 @@ package bench
 
 import (
 	"context"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/operationcontrol"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/repository"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/statestore"
@@ -61,8 +62,10 @@ func (s Store) workspaceControls(ctx context.Context) (Store, context.Context, e
 	if err := ctx.Err(); err != nil {
 		return s, ctx, err
 	}
-	if err := s.Migrate(); err != nil {
-		return s, ctx, err
+	if _, scoped := operationcontrol.FromContext(ctx); !scoped {
+		if err := s.Migrate(); err != nil {
+			return s, ctx, err
+		}
 	}
 	return s.withControls(ctx, false)
 }

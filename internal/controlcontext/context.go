@@ -18,12 +18,22 @@ type Config struct {
 	Timeout            time.Duration
 	Required, Injected bool
 	Migrate            func() error
+	Current            func() error
 }
 
 // Configure preserves native/unmanaged fallback and commits the schema barrier
 // before a managed control child could outlive its controller. Configuration
 // alone never certifies a fence.
 func Configure(ctx context.Context, c Config) (context.Context, error) {
+	_, scoped := operationcontrol.FromContext(ctx)
+	if scoped {
+		if c.Current == nil {
+			return nil, operationcontrol.ErrAuthority
+		}
+		if err := c.Current(); err != nil {
+			return nil, err
+		}
+	}
 	if c.Existing != nil {
 		return c.Existing, nil
 	}
@@ -37,11 +47,13 @@ func Configure(ctx context.Context, c Config) (context.Context, error) {
 	if !c.Required && !gitcontrol.Available(root) {
 		return ctx, nil
 	}
-	if c.Migrate == nil {
-		return nil, operationcontrol.ErrAuthority
-	}
-	if err := c.Migrate(); err != nil {
-		return nil, err
+	if !scoped {
+		if c.Migrate == nil {
+			return nil, operationcontrol.ErrAuthority
+		}
+		if err := c.Migrate(); err != nil {
+			return nil, err
+		}
 	}
 	state, err := filepath.EvalSymlinks(c.State)
 	if err != nil {

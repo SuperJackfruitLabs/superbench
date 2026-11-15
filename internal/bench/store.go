@@ -9,6 +9,7 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/gitcontrol"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/operationcontrol"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/statepath"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/statestore"
 	"os"
@@ -52,12 +53,20 @@ func (s Store) session(fn func(*statestore.Session) error) error {
 	if err := s.validate(); err != nil {
 		return err
 	}
-	return statestore.Within(s.State, gitcontrol.Recover, fn)
+	before := gitcontrol.Recover
+	if _, scoped := operationcontrol.FromContext(s.controlContext()); scoped {
+		before = nil
+	}
+	return statestore.Within(s.State, before, fn)
 }
 
 func (s Store) update(session *statestore.Session, fn func(database, *sql.Tx) error) error {
 	return session.Update(func(tx *sql.Tx) error {
-		if err := s.migrate(tx); err != nil {
+		check := s.migrate
+		if _, scoped := operationcontrol.FromContext(s.controlContext()); scoped {
+			check = func(tx *sql.Tx) error { return benchstate.CheckVersion(tx) }
+		}
+		if err := check(tx); err != nil {
 			return err
 		}
 		return benchstate.Update(tx, fn)
