@@ -32,6 +32,9 @@ func run(args []string) error {
 	if len(args) > 0 && (args[0] == "prepare-local" || args[0] == "acknowledge-local-preparation" || args[0] == "local-preparation-status") {
 		return cooperativeCLI(args[0], args[1:], os.Stdout, os.Stderr)
 	}
+	if len(args) > 0 && args[0] == "handoff" {
+		return handoffCLI(args[1:], os.Stdout, os.Stderr)
+	}
 	if len(args) > 0 && args[0] == "mirror-clones" {
 		return mirrorClonesCLI(args[1:], os.Stdout, os.Stderr)
 	}

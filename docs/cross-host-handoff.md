@@ -50,3 +50,89 @@ It checks writes by reading them back and retains terminal identity on replay.
 It has not been activated by a core migration or wired into source retirement
 and destination creation. Its SQL tests demonstrate journal behavior only;
 they do not demonstrate a stopped source, a completed import or usable commands.
+
+## Reviewed local commands
+
+The coordinator adds local administrative commands under `bench handoff`.
+These commands do not use the daemon socket or accept a lease token. Use the
+current binary for every participant. Schema29 makes older binaries refuse
+this authority; a copied/restored database is not an independent state service.
+The state incarnation and observed machine identity must both remain the ones
+in the offer. Machine identity identifies the host; it does not fence writers.
+
+On the destination, reserve the intended card key before any checkout effects:
+
+```sh
+bench handoff offer --creation-id import-card-example card_example > offer.json
+```
+
+The destination may use the same original card key as the source. Its fresh
+workspace ID and actual host/state are retained in that offer. Normal scalar
+creation, aggregate creation, recovery and same-host transfer cannot consume
+this reservation. Exact retries return the original offer; keys and terminal
+IDs are never recycled. `--quota-bytes` fixes an explicit destination budget;
+zero derives declarations from the exact sealed commits.
+
+Copy the private offer to the source. Source inspection requires an unleased,
+ready source with no pending checkpoint or active stage, its clean committed
+whole vector, remote checkpoint/pin/task-ref confirmation, and exact physical
+worktree registrations. Ignored source artifacts and administrative/index
+bytes are included in the reviewed snapshot and remain on the source.
+
+```sh
+bench handoff inspect-export --offer offer.json --transfer-id export-card-example card_example > export-plan.json
+bench handoff begin-export --plan export-plan.json --approve REVIEWED_PLAN_DIGEST card_example
+bench handoff continue-export --transfer-id export-card-example card_example > artifact.json
+```
+
+Review the concrete plan before `begin-export`. Beginning journals that exact
+approval and commits permanent source launch exclusion in the same transaction.
+Detachment starts only after this commit. A partial failure keeps the source
+excluded and retains the exact destination. Continuation verifies the complete
+mixed attached/detached vector, detaches metadata only, verifies every member
+again, and confirms the checkpoint before publishing the final artifact. The
+old same-host continuation commands cannot resume this cross-host export.
+Source bytes, indexes, registrations, history and remote original refs are not
+deleted or reset. Terminal export replay returns the same artifact even after
+the destination legitimately advances its original task branches.
+
+Copy and independently review the final artifact on its destination:
+
+```sh
+bench handoff import --artifact artifact.json --approve REVIEWED_ARTIFACT_DIGEST card_example
+bench handoff continue-import --creation-id import-card-example card_example
+```
+
+Only the exact existing actual-host offer may accept it. Import intent commits
+before mirror selection, quota allocation or materialization. The original
+remote task refs must still equal the exact sealed source vector; a divergent
+local mirror ref is also preserved and refuses admission. Correcting a remote
+ref does not authorize automatically rewriting a divergent local mirror ref.
+Reconcile that separately after review. The destination receives a fresh local
+initialization owner and a fresh whole-vector genesis while retaining the
+original branches and integration bases. Import completion shares the actual
+ready/unleased core transaction, including a later explicitly repaired
+initialization. SQL failure retains the import intent and original owner.
+
+Stopped initialization is never revived by replay. Use its explicit reviewed
+initialization repair commands; the original import identity/provenance stays
+fixed. Cancellation revokes only a fully authenticated original initialization
+owner, never a later repair or operational owner. Completed replay returns no
+later capability or root for another holder. No timeout grants a replacement
+owner, no retry generates a new transfer/creation identity, and no source
+failure restores source authority.
+
+The artifact digest binds reviewed bytes; it is not a signature, remote
+quiescence attestation or network authorization. An administrator must transfer
+and review the actual final export produced by the source procedure. Importing
+an invented artifact does not prove that another machine stopped. This feature
+does not add a distributed lease service or protect against trusted operators
+writing directly outside the protocol.
+
+No-hook initialization can run on a laptop. Configured supervised hooks retain
+the existing Linux backend requirement; a macOS host identity does not supply
+that backend. Such an import retains its exact initialization ownership rather
+than reporting managed readiness. The separate cooperative local preparation
+mode is not supervised aggregate initialization evidence. Real two-host and
+managed hook/crash verification are required in addition to the journal and
+native source/destination tests.
