@@ -62,6 +62,7 @@ func TestArchitecture(t *testing.T) {
 				"internal/runprotection":     {"internal/model"},
 				"internal/hoststorage":       {"internal/operationcontrol", "internal/model", "internal/output"},
 				"internal/stageexec":         {"internal/execution", "internal/output"},
+				"internal/operationcancel":   {"internal/benchstate", "internal/history", "internal/model", "internal/operationcontrol", "internal/reap", "internal/retention"},
 				"internal/operationcontrol":  {"internal/history", "internal/model"},
 				"internal/benchstate":        {"internal/operationcontrol", "internal/reftransfer", "internal/initrepair", "internal/workspacepolicy", "internal/model", "internal/archivepolicy", "internal/history", "internal/quotapolicy", "internal/setup"},
 				"internal/gitcontrol":        {"internal/operationcontrol", "internal/execution"},
