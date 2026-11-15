@@ -494,7 +494,27 @@ def detached_recovery(d, crash):
         refused, _ = d.request(d.payload("release", key=key, lease_token=token), (409, 422))
         assert not refused["ok"] and d.record(key)["Lease"]["Token"] == token
         assert d.request(request, 409)[0]["error"]["code"] == "operation_in_doubt"
-        print("UNCOVERED crash-history-reconciliation: fenced interrupted payload history remains unsealed and owned; release safely refuses", flush=True)
+        original = next(r for r in d.history(key) if r["ID"] == execution_id)
+        held = d.record(key)
+        plan = d.cli("inspect-history", key, remote=False)
+        assert plan["BenchID"] == held["Workspace"]["ID"] and plan["Execution"]["ID"] == execution_id
+        plan_path = d.root / "interrupted-history-plan.json"
+        plan_path.write_text(json.dumps(plan)); plan_path.chmod(0o600)
+        approved = ["--plan", str(plan_path), "--approve", plan["Digest"]]
+        observed = d.cli("reconcile-history", key, flags=approved, remote=False)
+        assert observed["Origin"] == "supervised" and observed["StartedAt"] == original["StartedAt"]
+        assert observed["Holder"] == original["Holder"] and observed["ExitCode"] is None
+        assert observed["Interruption"]["LogState"] == "present" and observed["File"] == plan["File"]
+        assert observed["Interruption"]["ApprovalDigest"] == plan["Digest"]
+        assert d.record(key) == held, "history reconciliation changed stopped workspace ownership"
+        assert d.cli("reconcile-history", key, flags=approved, remote=False) == observed
+        d.reconcile(key, token)
+        replay = d.cli("reconcile-history", key, flags=approved, remote=False)
+        assert replay["Interruption"] == observed["Interruption"] and replay["ExitCode"] is None
+        assert not replay["ReleasedAt"].startswith("0001-")
+        assert d.record(key).get("Lease") is None
+        assert d.request(request, 409)[0]["error"]["code"] == "operation_in_doubt"
+        print("PASS: reviewed local crash-history observation preserves supervised provenance and unknown outcome; exact replay survives release without reviving command receipts or ownership", flush=True)
     else:
         d.reconcile(key, token)
     d.prove("admin-recovery", 0, 1, 2)

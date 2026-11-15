@@ -25,6 +25,9 @@ type Result struct {
 }
 
 type Runner struct {
+	// Open optionally authorizes capture creation under the launch/stop gate.
+	// A stopped pending runner must not create a file after absence approval.
+	Open    func() (*output.Capture, error)
 	Backend interface {
 		Fence(*execution.Execution) error
 	}
@@ -45,7 +48,11 @@ func (r Runner) Run(ctx context.Context, plan Plan) (*Result, error) {
 		return nil, errors.New("execution stage requires a plan, fencing backend and lifecycle callbacks")
 	}
 	result := &Result{Execution: plan.Execution, ExitCode: -1}
-	capture, err := output.Open(plan.Execution.Log, plan.Execution.LogLimitBytes)
+	open := r.Open
+	if open == nil {
+		open = func() (*output.Capture, error) { return output.Open(plan.Execution.Log, plan.Execution.LogLimitBytes) }
+	}
+	capture, err := open()
 	if err != nil {
 		return result, err
 	}

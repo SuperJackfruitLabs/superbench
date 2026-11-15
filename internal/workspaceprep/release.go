@@ -29,7 +29,7 @@ func ReleaseHistory(tx *sql.Tx, b *model.Bench) error {
 		if err != nil {
 			return err
 		}
-		if r.Key != b.Key || r.File == nil || r.ExitCode == nil || !r.ReleasedAt.IsZero() {
+		if r.Key != b.Key || (r.Interruption == nil && (r.File == nil || r.ExitCode == nil)) || !r.ReleasedAt.IsZero() {
 			return errors.New("workspace history requires an owned sealed retained outcome")
 		}
 		if err = history.Released(tx, id, b.Workspace.Checkpoint.Seal); err != nil {

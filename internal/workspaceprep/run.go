@@ -216,7 +216,7 @@ func (m Manager) Run(ctx context.Context, key, token, selector string, args []st
 		return result, errors.Join(err, readErr)
 	}
 	result.Execution = stage
-	runner := stageexec.Runner{Backend: m.Backend, Start: func(ctx context.Context, cmd *exec.Cmd, e *execution.Execution) error {
+	runner := stageexec.Runner{Open: func() (*output.Capture, error) { return m.openCapture(ctx, key, token, continuation, stage) }, Backend: m.Backend, Start: func(ctx context.Context, cmd *exec.Cmd, e *execution.Execution) error {
 		return m.Gate(key, func() error {
 			return m.Update(func(rows benchstate.Database, tx *sql.Tx) error {
 				b, err := owned(rows, key, token)

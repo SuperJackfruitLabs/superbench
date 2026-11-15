@@ -109,6 +109,7 @@ func (m Manager) execute(ctx context.Context, key, token string, plan memberPlan
 		return nil
 	}
 	runner := stageexec.Runner{
+		Open:    func() (*output.Capture, error) { return m.openCapture(ctx, key, token, continuation, stage) },
 		Backend: m.Backend,
 		Start: func(ctx context.Context, cmd *exec.Cmd, e *execution.Execution) error {
 			return m.start(ctx, key, token, continuation, plan, cmd, e)

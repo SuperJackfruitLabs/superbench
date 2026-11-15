@@ -31,7 +31,7 @@ func Migrate(tx *sql.Tx, state string, pinMigratedInodes func(*model.Bench) erro
 	if version == SchemaVersion {
 		return nil
 	}
-	if version >= 1 && version <= 17 {
+	if version >= 1 && version <= 18 {
 		records, err := Load(tx)
 		if err != nil {
 			return err
@@ -44,7 +44,13 @@ func Migrate(tx *sql.Tx, state string, pinMigratedInodes func(*model.Bench) erro
 				return errors.New("stop supervised executions with the installed binary before upgrading state")
 			}
 		}
+		if err := historicalHistory(tx); err != nil {
+			return err
+		}
 		for key, b := range records {
+			if version == 18 {
+				continue // Preserve current records byte-for-byte; only authority changes.
+			}
 			if version < 5 {
 				if err = pinMigratedInodes(b); err != nil {
 					return err
@@ -70,7 +76,7 @@ func Migrate(tx *sql.Tx, state string, pinMigratedInodes func(*model.Bench) erro
 		if err = setup.Schema(tx); err != nil {
 			return err
 		}
-		_, err = tx.Exec("PRAGMA user_version=18")
+		_, err = tx.Exec("PRAGMA user_version=19")
 		return err
 	}
 	if version != 0 {
@@ -107,6 +113,22 @@ func Migrate(tx *sql.Tx, state string, pinMigratedInodes func(*model.Bench) erro
 	if err = setup.Schema(tx); err != nil {
 		return err
 	}
-	_, err = tx.Exec("PRAGMA user_version=18")
+	_, err = tx.Exec("PRAGMA user_version=19")
 	return err
+}
+
+// Older schemas cannot authorize interrupted-history observations, even if a
+// record has been injected with a structurally valid future observation.
+func historicalHistory(r Reader) error {
+	var count int
+	if err := r.QueryRow("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='run_history'").Scan(&count); err != nil || count == 0 {
+		return err
+	}
+	if err := r.QueryRow("SELECT count(*) FROM run_history WHERE json_type(record,'$.Interruption') IS NOT NULL AND json_type(record,'$.Interruption') != 'null'").Scan(&count); err != nil {
+		return err
+	}
+	if count != 0 {
+		return errors.New("interrupted history requires current state schema")
+	}
+	return nil
 }

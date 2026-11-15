@@ -127,13 +127,13 @@ func TestManagedWorkspaceRecoveryLifecycle(t *testing.T) {
 		checkCtx, done := context.WithTimeout(ctx, 15*time.Second)
 		out, oldErr := exec.CommandContext(checkCtx, previous, "status", "--state", state, "--data", data).CombinedOutput()
 		done()
-		if oldErr == nil || !strings.Contains(string(out), "unsupported state schema 18 (expected 16)") {
+		if oldErr == nil || !strings.Contains(string(out), "unsupported state schema 19 (expected 16)") {
 			t.Fatal("schema16 CLI did not refuse recovery provenance", oldErr, string(out))
 		}
 		if !reflect.DeepEqual(before, snapshotWorkspace(t, store, staged.Key)) || !reflect.DeepEqual(beforeSource, snapshotWorkspace(t, store, source.Key)) {
 			t.Fatal("schema16 status changed source or target state")
 		}
-		t.Log("PASS: schema16 CLI refuses schema18 without changing recovery or source ownership")
+		t.Log("PASS: schema16 CLI refuses schema19 without changing recovery or source ownership")
 	}
 	ready, err := store.RecoverWorkspaceContext(ctx, "managed-recovery-target", recovery)
 	if err != nil {

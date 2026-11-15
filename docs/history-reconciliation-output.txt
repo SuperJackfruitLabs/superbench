@@ -1,0 +1,71 @@
+Interrupted aggregate execution history verification — 2026-11-15
+
+Source
+  Frozen source archive SHA-256:
+    ff71ee36b665889e8f4d136c3df996927bafe73ed74d39ab8cb6e540129a3839
+  403 source files. Native checks and Linux checks/builds/drills use these
+  identical executable and test inputs. Documentation and this evidence note
+  were updated after freezing; no executable/test input changed afterward.
+  Base: merged workspace API implementation 40f60cee5008f72bdb0ab5a744f26147a0f0640f.
+
+Linux verification binary SHA-256
+  bench: 0f7b86a3ff0f81fc83ed84766a94f0498c7de2e757881af9a594992dbca65755
+  benchd: ae74eed4f4bbdbbff444fff42d0de1e6253b1a0f2545e4fe2e628f77d7d5dea3
+  bench-quota: bf5a268bca6374ab6273c721f7136ddcfdbb1f620e65175c5e4f735b2f2154e5
+  workspaceflow.test: 3fa0d10221258742429b3fd6d1cb94646b5f837cf4b07b960f18649c6d7ae612
+
+Required checks
+  Go 1.26.4 native macOS sh scripts/check.sh: EXIT 0
+  Go 1.26.4 Linux sh scripts/check.sh: durable EXIT 0
+  Formatting, four installer tests, vet, all race suites and three command builds.
+  Additional Linux verification builds: durable EXIT 0
+  Runtime shell syntax and Python AST checks: PASS
+
+Managed runtime
+  scripts/test-workspace-api.sh: durable EXIT 0
+  scripts/test-workspace-staging.sh: durable EXIT 0 (six aggregate/compatibility groups)
+  scripts/test-git-control-hooks.py: durable EXIT 0 (eight groups)
+  Disposable private mount namespaces, owned 512 MiB XFS images, cgroups,
+  state/remotes and real Unix peer credentials. No installed service changed.
+
+  PASS actual daemon SIGKILL leaves its detached descendant alive until explicit
+       administrative fence; scope removal and revoked continuation are verified.
+  PASS unsealed interrupted history blocks release before explicit approval.
+  PASS concrete local plan/approve observation preserves supervised origin,
+       start time, holder and unknown exit; stopped workspace/lease unchanged.
+  PASS exact repeated observation and post-release replay preserve unknown
+       outcome and do not recreate ownership or replay the interrupted command.
+  PASS explicit checkpoint/release succeeds after reviewed present observation.
+  PASS actual schema18 binary status and mutation refuse schema19 and preserve
+       exact state file bytes/modes, interrupted metadata and receipt evidence.
+  PASS existing public API lifecycle, managed quotas/preparation/execution/
+       recovery/archive and Git control-hook fencing regressions.
+
+Native/focused regression scope
+  PASS present and absent interrupted observations, including no empty replacement.
+  PASS setup and payload paused after durable execution intent: stop/absence
+       approval wins before capture open; resuming the current runner creates
+       no late log, child, successful proof or continuation.
+  PASS bounded nofollow private owned single-link capture; live flock, changed
+       bytes/size/inode/mode/path, symlink/FIFO and oversized evidence refuse.
+  PASS stale workspace/history/scope/PID, altered or future approval and ambiguous
+       JSON refuse; output stays bounded and contains no capabilities/arguments.
+  PASS file lock held through transaction, failed observation save and final
+       release failure roll back atomically; exact retry succeeds without
+       releasing earlier retained history or changing once receipts on failure.
+  PASS unknown outcome cannot become preparation success; interruption evidence
+       cannot be stripped, rebound or converted into a normal successful seal.
+  PASS schema18 migration preserves raw records/receipts; active supervisors and
+       future authority injected into historical schemas refuse before writes.
+
+Limits and remaining work
+  Absent-capture metadata remains retained. Absence is a point-in-time observation;
+  a delayed old schema18 controller may leave an empty preserved artifact before
+  its launch refuses schema19. No permanent absence or terminated old controller
+  is claimed. Current-version capture creation is fenced by the launch/stop gate.
+  The actual managed crash case covers an existing capture; the pre-open absence
+  ordering is established by controlled setup/payload regression tests.
+  Existing public-drill temporal/conformance gaps in workspace-api-output.txt
+  remain separate. No deployed consumer or Developer Experience board pilot is
+  claimed. Stopped initialization repair, original task-ref ownership transfer,
+  laptop preparation, broader collection and suite integration remain Phase 1 work.

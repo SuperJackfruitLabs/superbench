@@ -30,7 +30,7 @@ func workspaceCLI(args []string, stdout, stderr io.Writer) error {
 
 func workspaceCLIContext(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	if len(args) == 0 {
-		return errors.New("usage: bench workspace <create|recover|lease|setup|run|checkpoint|release|stop|stop_admin|archive|status|host_status|plan-reap|reap> [flags] [key]; flags precede key")
+		return errors.New("usage: bench workspace <create|recover|lease|setup|run|checkpoint|release|stop|stop_admin|archive|status|host_status|plan-reap|reap|inspect-history|reconcile-history> [flags] [key]; flags precede key")
 	}
 	op := args[0]
 	if op == "host-status" {
@@ -39,7 +39,8 @@ func workspaceCLIContext(ctx context.Context, args []string, stdout, stderr io.W
 	if op == "stop-admin" {
 		op = "stop_admin"
 	}
-	if !protocolv2.Known(op) && op != "plan-reap" && op != "reap" {
+	localAdmin := op == "plan-reap" || op == "reap" || op == "inspect-history" || op == "reconcile-history"
+	if !protocolv2.Known(op) && !localAdmin {
 		return fmt.Errorf("unknown workspace operation %q", op)
 	}
 	config, err := os.UserConfigDir()
@@ -69,7 +70,7 @@ func workspaceCLIContext(ctx context.Context, args []string, stdout, stderr io.W
 	checkpoint := f.Bool("checkpoint", true, "checkpoint and release a successful payload")
 	offline := f.Bool("offline", false, "offline frozen setup")
 	grace := f.Duration("archive-grace", 168*time.Hour, "local archive grace; zero explicitly waives retention")
-	plan := f.String("plan", "", "concrete reviewed aggregate reap manifest file")
+	plan := f.String("plan", "", "concrete reviewed local administration manifest file")
 	approve := f.String("approve", "", "exact reviewed plan Digest")
 	if err := f.Parse(args[1:]); err != nil {
 		return err
@@ -81,15 +82,18 @@ func workspaceCLIContext(ctx context.Context, args []string, stdout, stderr io.W
 	visited := map[string]bool{}
 	f.Visit(func(v *flag.Flag) { visited[v.Name] = true })
 	store := bench.Store{State: *state, Data: *data, CgroupRoot: *cgroup, MirrorTimeout: *timeout}
-	if op == "plan-reap" || op == "reap" {
+	if localAdmin {
 		allowed := map[string]bool{"state": true, "data": true, "cgroup-root": true, "mirror-timeout": true}
-		if op == "reap" {
+		if op == "reap" || op == "reconcile-history" {
 			allowed["plan"], allowed["approve"] = true, true
 		}
 		for name := range visited {
 			if !allowed[name] {
 				return fmt.Errorf("flag --%s is not valid for local workspace %s", name, op)
 			}
+		}
+		if op == "inspect-history" || op == "reconcile-history" {
+			return workspaceHistory(ctx, store, op, key, *plan, *approve, stdout)
 		}
 		return workspaceReap(ctx, store, op, key, *plan, *approve, stdout)
 	}

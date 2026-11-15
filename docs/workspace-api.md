@@ -141,9 +141,10 @@ replay, distinct-ref recovery, concrete reviewed reap, mixed inventory and recei
 capacity reconciliation. See [verification evidence](workspace-api-output.txt)
 for source hashes, exact scope and remaining obligations.
 
-Supervisor crash recovery also needs a separate history-repair path. If a daemon
-is killed before it seals an aggregate payload's log, administrative stop can
-fence the retained execution and revoke continuation, but release must refuse
-while that run lacks sealed evidence. Do not fabricate a successful outcome or
-discard the record to release ownership. Completing that reconciliation remains
-Phase 1 work alongside stopped-initialization repair.
+If a daemon is killed before it seals an aggregate payload's log, administrative
+stop fences the retained execution and revokes continuation; release refuses the
+missing outcome. Local reviewed [history reconciliation](history-reconciliation.md)
+can then record an explicit unknown outcome from the exact stopped execution and
+observed capture or absence. It preserves replay protection and never fabricates
+successful setup. See its [verification evidence](history-reconciliation-output.txt).
+Repairing stopped initialization remains separate Phase 1 work.
