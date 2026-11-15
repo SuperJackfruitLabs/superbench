@@ -33,11 +33,16 @@ func LoadKinds(r Reader, state string) (Database, error) {
 		return nil, err
 	}
 	if version < SchemaVersion {
-		if err := historicalHistory(r); err != nil {
+		if version < 19 {
+			if err := historicalHistory(r); err != nil {
+				return nil, err
+			}
+		}
+		if err := historicalRepairs(r); err != nil {
 			return nil, err
 		}
 		for _, b := range records {
-			if b.Workspace != nil && (version < 14 || version == 14 && workspacepolicy.ValidateSchema14(b) != nil || version == 15 && workspacepolicy.ValidateSchema15(b) != nil || version == 16 && workspacepolicy.ValidateSchema16(b) != nil || version == 17 && workspacepolicy.ValidateSchema17(b) != nil) {
+			if b.Workspace != nil && (version < 14 || version == 14 && workspacepolicy.ValidateSchema14(b) != nil || version == 15 && workspacepolicy.ValidateSchema15(b) != nil || version == 16 && workspacepolicy.ValidateSchema16(b) != nil || version == 17 && workspacepolicy.ValidateSchema17(b) != nil || version >= 18 && workspacepolicy.ValidateSchema19(b) != nil) {
 				return nil, errors.New("workspace record requires current state schema")
 			}
 		}

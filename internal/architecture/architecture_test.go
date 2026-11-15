@@ -50,12 +50,13 @@ func TestArchitecture(t *testing.T) {
 			rel, _ := filepath.Rel(root, filepath.Dir(path))
 			rel = filepath.ToSlash(rel)
 			edges := map[string][]string{
-				"internal/bench":            {"internal/workspacearchive", "internal/stageexec", "internal/workspaceprep", "internal/workspace", "internal/benchstate", "internal/statestore", "internal/statepath", "internal/gitcontrol", "internal/quotapolicy", "internal/cachepolicy", "internal/archivepolicy", "internal/model", "internal/creation", "internal/repository", "internal/output", "internal/execution", "internal/setup", "internal/hoststorage", "internal/reap", "internal/history", "internal/retention"},
+				"internal/bench":            {"internal/workspacerepair", "internal/workspacearchive", "internal/stageexec", "internal/workspaceprep", "internal/workspace", "internal/benchstate", "internal/statestore", "internal/statepath", "internal/gitcontrol", "internal/quotapolicy", "internal/cachepolicy", "internal/archivepolicy", "internal/model", "internal/creation", "internal/repository", "internal/output", "internal/execution", "internal/setup", "internal/hoststorage", "internal/reap", "internal/history", "internal/retention"},
+				"internal/workspacerepair":  {"internal/benchstate", "internal/execution", "internal/gitcontrol", "internal/history", "internal/initrepair", "internal/model", "internal/reap", "internal/retention", "internal/statepath", "internal/workspace", "internal/workspaceprep"},
 				"internal/workspacearchive": {"internal/workspacepolicy", "internal/workspace", "internal/benchstate", "internal/statepath", "internal/checkpointset", "internal/archivepolicy", "internal/model", "internal/reap", "internal/repository", "internal/setup"},
 				"internal/workspaceprep":    {"internal/retention", "internal/reap", "internal/benchstate", "internal/cachepolicy", "internal/execution", "internal/history", "internal/model", "internal/output", "internal/setup", "internal/stageexec", "internal/statepath", "internal/workspace"},
 				"internal/hoststorage":      {"internal/model", "internal/output"},
 				"internal/stageexec":        {"internal/execution", "internal/output"},
-				"internal/benchstate":       {"internal/workspacepolicy", "internal/model", "internal/archivepolicy", "internal/history", "internal/quotapolicy", "internal/setup"},
+				"internal/benchstate":       {"internal/initrepair", "internal/workspacepolicy", "internal/model", "internal/archivepolicy", "internal/history", "internal/quotapolicy", "internal/setup"},
 				"internal/gitcontrol":       {"internal/execution"},
 				"internal/archivepolicy":    {"internal/gitcontrol", "internal/model", "internal/reap", "internal/repository", "internal/setup"},
 				"internal/setup":            {"internal/gitcontrol", "internal/cachepolicy", "internal/quotapolicy"},
@@ -75,7 +76,7 @@ func TestArchitecture(t *testing.T) {
 				"internal/workspaceops":     {"internal/bench", "internal/execution", "internal/model", "internal/protocolv2", "internal/workspace", "internal/archivepolicy"},
 				"internal/workspaceapi":     {"internal/bench", "internal/model", "internal/protocolv2", "internal/workspaceops"},
 				"internal/service":          {"internal/protocolv2", "internal/workspaceops", "internal/workspaceapi", "internal/autoarchive", "internal/bench", "internal/protocol", "internal/maintenance"},
-				"cmd/bench":                 {"internal/workspaceprep", "internal/protocolv2", "internal/workspaceops", "internal/workspaceapi", "internal/workspacearchive", "internal/autoarchive", "internal/bench", "internal/client", "internal/protocol", "internal/reap", "internal/retention", "internal/history", "internal/maintenance"},
+				"cmd/bench":                 {"internal/workspacerepair", "internal/workspaceprep", "internal/protocolv2", "internal/workspaceops", "internal/workspaceapi", "internal/workspacearchive", "internal/autoarchive", "internal/bench", "internal/client", "internal/protocol", "internal/reap", "internal/retention", "internal/history", "internal/maintenance"},
 				"cmd/benchd":                {"internal/bench", "internal/service"},
 				"cmd/bench-quota":           {"internal/hoststorage"},
 			}

@@ -48,7 +48,7 @@ A core checkpoint does not constitute completion of a phase or the product.
 | Phase | Required outcome | Current evidence |
 |---|---|---|
 | 0 | Host disk alert, reviewed cleanup dry-run, code-stage branch/checkpoint rules | Not implemented by this repository; inspect estate and board settings before changes |
-| 1 | Standalone CLI and host service; durable state/leases; checkpoints/recovery; quotas, shared mirrors/stores; verified archive/reap | CLI, journals, SQLite, fenced Linux execution and host storage tested; installer, archive/reap, reviewed log/history collection and approved automatic log retention verified; explicit/automatic setup and creation/recovery warm-up verified on Linux; aggregate lifecycle now exposed through v2 API and CLI with managed verification; stopped-initialization repair, laptop preparation, original task-ref transfer, broader collection and integration pending |
+| 1 | Standalone CLI and host service; durable state/leases; checkpoints/recovery; quotas, shared mirrors/stores; verified archive/reap | CLI, journals, SQLite, fenced Linux execution and host storage tested; installer, archive/reap, reviewed log/history collection and approved automatic log retention verified; explicit/automatic setup and creation/recovery warm-up verified on Linux; aggregate lifecycle exposed through v2 API and CLI and reviewed stopped-initialization repair verified on Linux; laptop preparation, original task-ref transfer, broader collection and integration pending |
 | 2 | Suite adapters, card panel, locality scoring, witness events; read-only web, file/diff/log/timeline views, terminal attach and MCP | Pending; charter/treaty contracts precede consumers; visual mockups before UI |
 | 3 | Remote editor launch/browser IDE; second-host recovery drill; per-bench isolation; Salaam layout and execution-host integration | Pending |
 
@@ -248,9 +248,12 @@ now records unknown post-fence outcomes without reviving execution, fabricating
 setup success or changing command receipts. Native/Linux checks and the managed
 daemon-crash, old-binary refusal and lifecycle regressions passed; see
 [history repair evidence](history-reconciliation-output.txt). Stopped initialization
-requires its own explicitly approved repair epoch: original create/recover replay
-must never obtain or execute a fresh repair grant. Pending checkpoint vectors,
-once receipts and retained unknown history must survive that future transition.
+now has a separate explicitly approved repair epoch: original create/recover
+replay cannot obtain or execute its fresh grant. Pending checkpoint vectors,
+once receipts and retained unknown history survive takeover; see
+[initialization repair](initialization-repair.md). Native/Linux required checks, the managed recovery drill and existing API,
+aggregate lifecycle and Git-control regressions passed; see
+[verification evidence](initialization-repair-output.txt).
 
 ## Remaining retention work
 
@@ -273,9 +276,8 @@ Do not implement collection by simply deleting completed receipt rows.
 The original proposal remains the acceptance source; the checkpoints above do
 not replace its scope. Before calling Phase 1 complete, explicitly verify the
 standalone laptop preparation path (supervised hooks currently require Linux),
-the complete multi-repository CLI/service lifecycle including
-stopped-initialization repair, automatic completion/archive
-lifecycle and broader collection, and the
+the remaining complete multi-repository CLI/service lifecycle, original task-ref
+transfer, automatic completion/archive lifecycle and broader collection, and the
 AgentPod acquisition/prompt/checkpoint pilot on an opt-in board. The review of
 charter/treaty boundaries must precede suite consumers. Source-level progress or
 passing single-host drills alone is not evidence that those outcomes are done.

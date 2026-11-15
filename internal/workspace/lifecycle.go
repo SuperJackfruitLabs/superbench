@@ -23,16 +23,18 @@ import (
 // remote publication. Stopped must independently prove the held writer fenced;
 // Released records release of every retained stage in the final transaction.
 type Lifecycle struct {
-	State, Data    string
-	Timeout        time.Duration
-	Within         func(func(Update) error) error
-	Git            func(context.Context, string, ...string) (string, error)
-	Admit          func() error
-	Allocate       func(*model.Bench) error
-	Stopped        func(*model.Bench) error
-	Prepared       func(*model.Bench) error
-	Released       func(*sql.Tx, *model.Bench) error
-	NoteCheckpoint func(context.Context, *model.Bench)
+	// Only the reviewed local repair flow may continue this initialization epoch.
+	InitializationRepairID string
+	State, Data            string
+	Timeout                time.Duration
+	Within                 func(func(Update) error) error
+	Git                    func(context.Context, string, ...string) (string, error)
+	Admit                  func() error
+	Allocate               func(*model.Bench) error
+	Stopped                func(*model.Bench) error
+	Prepared               func(*model.Bench) error
+	Released               func(*sql.Tx, *model.Bench) error
+	NoteCheckpoint         func(context.Context, *model.Bench)
 }
 
 func (l Lifecycle) bounded(ctx context.Context) (context.Context, context.CancelFunc, error) {
@@ -206,6 +208,9 @@ func (l Lifecycle) inspectMember(ctx context.Context, member model.WorkspaceMemb
 func (l Lifecycle) owner(b *model.Bench, token string) error {
 	if err := workspacepolicy.Validate(b); err != nil {
 		return err
+	}
+	if b.Workspace.Phase != "ready" && b.Workspace.InitializationRepair != nil && l.InitializationRepairID != b.Workspace.InitializationRepair.ID {
+		return ErrInitializationRepair
 	}
 	if b.Lease == nil || token == "" || b.Lease.Token != token || b.Workspace.Phase != "prepared" && b.Workspace.Phase != "ready" {
 		return errors.New("workspace checkpoint requires its prepared held owner")

@@ -147,4 +147,5 @@ missing outcome. Local reviewed [history reconciliation](history-reconciliation.
 can then record an explicit unknown outcome from the exact stopped execution and
 observed capture or absence. It preserves replay protection and never fabricates
 successful setup. See its [verification evidence](history-reconciliation-output.txt).
-Repairing stopped initialization remains separate Phase 1 work.
+Local reviewed [initialization repair](initialization-repair.md) uses a separate
+approved epoch; historical service receipts never acquire its fresh capability.

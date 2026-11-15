@@ -1,0 +1,120 @@
+Initialization repair verification — 2026-11-15
+
+Scope: local grouped initialization repair in disposable fixtures. No installed
+service, production deployment, public treaty operation or suite consumer claim.
+
+Source and artifact identity
+----------------------------
+Initial full source archive SHA256:
+3a22a847497f4940fc1c7147499580fc6c20b46c414f1e77fe5aa65376aa975f
+430 regular source files; Go 1.26.4.
+Corrected runtime source archive SHA256:
+cfc25af8059922bcca9f56e7b4619a9205a20c163fffc0d5f2b958c7986b8744
+Only initialization-repair documentation and the new Python drill changed.
+Every Go source, module, embedded fixture and existing regression script matched
+its original frozen digest. Final report/link edits are documentation only.
+
+Frozen Linux binary SHA256:
+bench 481edf00c8f90e74d38924d685a22ad32c12b93e06a07103d157981defc0d443
+benchd b89b3cfb7f6078b87c65c81bc503f43cb36ea8d3d9565b9de05176a8cc9777b3
+bench-quota 17fb1b76a7fa356a76164195b27567600516ca8ca1a50a511d76987e81e1f41c
+workspaceflow.test ee1fc6d1d62ca537fa3a23864c76f18f8707441aabe50979c5860d99517aa6ee
+
+Required checks
+---------------
+Native macOS arm64: sh scripts/check.sh EXIT 0.
+Four installer tests, vet, 37 passing Go packages under race detection, three builds.
+Exact final workspacerepair race suite/vet EXIT 0 (61.514s race suite).
+Its cases cover 64-run retirement, transactional history/journal rollback,
+concurrent claims, changed evidence, admission refusal, cancellation, partial
+preparation, once uncertainty, pending generation and capability replay boundaries.
+Linux amd64 frozen source: sh scripts/check.sh EXIT 0; separate frozen builds EXIT 0.
+Native fake-process tests do not establish managed descendant fencing.
+
+Managed recovery drill
+----------------------
+Owned private mount namespace, 512MiB XFS/project quota image and cgroup subtree;
+actual two-repository hooks, daemon SIGKILL and surviving detached writer.
+The first drill exited 1 after a successful claim because a fixture directly
+indexed an omitted false StopRequested JSON field. It did not reveal a production
+failure. Corrected the assertion to accept omitted false; audited other optional
+fields. Reran the complete affected drill with the same frozen binaries.
+PASS: schema19 CLI refuses schema20 without changing stopped initialization state
+PASS: stopped partial initialization requires reviewed unknown history and explicit once approval; fresh claims preserve A and persistent uncertainty, then continue reaches sealed ready without old receipt revival
+PASS: prepared pending initialization repairs the exact published generation without rerunning hooks; completed historical create receipt never exports the fresh grant
+PASS: matching durable creation without an HTTP receipt refuses redispatch without deleting receipt evidence
+DONE: managed initialization repair drill passed; no suite consumer or production rollout is claimed
+
+Runtime stage markers
+---------------------
+/var/tmp/superbench-verification/superbench-initialization-source-v2.tar.gz: OK
+repair-check exit 0
+api-check exit 0
+managed-check exit 0
+git-control-check exit 0
+INITIALIZATION_ALL_RUNTIME_CHECKS_EXIT_0
+
+Existing public API regression
+-----------------------------
+The runtime substitutes owned identities and returned capabilities into pinned
+templates. Its UNCOVERED labels remain explicit obligations outside that one
+driver; passing this suite alone is not proof of every public lifecycle invariant.
+PASS: fresh selected setup cannot release missing proofs; stale unselected inputs retain the owner until full preparation
+PASS: later-member initialization failure preserves the first member and receipt; same owned initialization repairs without repeating that member
+PASS: every remote A push hook, including the first immutable pin, observes the durable whole pending vector; second-member failure cannot release and retries the same generation
+PASS: stopped supervisor retains ownership; explicit admin fence stops setsid descendants and revoked continuation cannot revive
+PASS: reviewed local crash-history observation preserves supervised provenance and unknown outcome; exact replay survives release without reviving command receipts or ownership
+PASS: crashed supervisor retains ownership; explicit admin fence stops setsid descendants and revoked continuation cannot revive
+PASS: actual v2 CLI preserves member cwd/exit7/token reuse; distinct recovery gets fresh hooks/project; local reviewed reap and reaped-seal recovery preserve source refs
+PASS: mixed status is complete and private; real reader/operator UID gates and canonical request binding prevent capability adoption
+PASS: bounded receipt exhaustion blocks growth while stop/admin/checkpoint/release/archive and explicitly approved local reap remain usable
+UNCOVERED warm-creation: all sources journaled before checkout; one initialization owner
+COVERED partial-initialization
+UNCOVERED exact-recovery: exact seal/digest and all pins before registration
+UNCOVERED new-owner: refresh only remote tracking
+COVERED execution-release
+COVERED execution-retained
+COVERED setup-completion
+COVERED pending-publication
+COVERED admin-recovery
+UNCOVERED archive-review: durable freeze intent before modes
+UNCOVERED reap-retry: remaining approved entries only; quota retirement retry
+UNCOVERED mixed-status: oversize global response fails without truncation
+COVERED receipt-replay
+COVERED capacity-reconciliation
+UNCOVERED complete-public-lifecycle: canonical cases are typed templates; runtime substitutes only owned trial identities and actual returned capabilities
+DONE: public workspace API drill passed; uncovered obligations above remain separate
+
+Existing aggregate managed regression
+-------------------------------------
+Six groups passed: total quota, preparation, execution, recovery, archive and
+schema-18 refusal. The older schema-18 test's retained log label says schema19;
+its executable assertion checks current schema20. The new drill independently
+exercises actual schema19-to-schema20 old-binary refusal.
+--- PASS: TestManagedWorkspaceArchiveLifecycle (4.83s)
+--- PASS: TestManagedWorkspaceExecutionLifecycle (7.74s)
+--- PASS: TestManagedWorkspaceRecoveryLifecycle (6.92s)
+--- PASS: TestManagedWorkspaceHistorySchema18Refusal (0.08s)
+--- PASS: TestManagedWorkspaceAggregateQuota (0.81s)
+--- PASS: TestManagedWorkspacePreparationLifecycle (3.10s)
+PASS
+
+Existing Git control regression
+-------------------------------
+PASS: retained old CLI reproduces both pre-push and reference-transaction detached writers creating untracked files after lease release, outside the execution cgroup
+PASS: fixed control checkpoint/release launches neither client hook nor descendant, preserves repository hook/followTags configuration, leaves checkout clean and publishes no unrelated annotated tag
+PASS: explicit user Git commands still execute both configured hooks; detached setsid descendants stay in the execution cgroup and are fenced before clean checkpoint/release
+PASS: server pre-receive and reference-transaction rejection still block checkpoint and retain the same lease; removing the server rejection permits explicit recovery
+PASS: retained schema-12 CLI also releases a Git-clean checkout while an external pass-through clean filter leaves an unfenced delayed writer alive
+PASS: managed control Git contains an external pass-through clean filter and fences its detached writer before checkpoint/release while preserving tracked bytes and filter configuration
+PASS: SIGKILL of a paused control controller leaves a durable schema-20 intent and live known scope; status does not fence, schema-12 CLI refuses, and the next mutation recovers/fences before handoff or a later lease grant
+PASS: a warm shared-mirror worktree creation suppresses configured post-checkout hooks without changing the repository hook configuration
+DONE: Git control-hook isolation and user-command cgroup fencing passed
+
+Limits
+------
+Native laptop supervision/preparation, original task-ref ownership transfer,
+broader cache/journal/receipt collection, suite adapters and the opt-in pilot
+remain separate work. Grouped v2 consumer acceptance is not established.
+No unknown outcome was converted to a successful hook result. No service receipt
+was removed or rebound. No unreviewed cleanup or production tag was performed.

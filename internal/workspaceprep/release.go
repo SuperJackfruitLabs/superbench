@@ -21,10 +21,18 @@ func ReleaseHistory(tx *sql.Tx, b *model.Bench) error {
 		}
 	}
 	ids := append([]string(nil), b.Lease.RetainedRuns...)
+	if b.Workspace.Phase != "ready" && b.Workspace.InitializationRepair != nil {
+		ids = append(ids, b.Workspace.InitializationRepair.RetiredRuns...)
+	}
 	if b.Lease.Execution != nil {
 		ids = append(ids, b.Lease.Execution.ID)
 	}
+	seen := map[string]bool{}
 	for _, id := range ids {
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
 		r, err := history.Get(tx, id)
 		if err != nil {
 			return err

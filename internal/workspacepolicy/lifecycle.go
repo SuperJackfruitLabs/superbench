@@ -231,7 +231,7 @@ func ValidateSchema16(b *model.Bench) error {
 
 // ValidateSchema17 excludes aggregate archive observations and lifecycle intent.
 func ValidateSchema17(b *model.Bench) error {
-	if err := Validate(b); err != nil {
+	if err := ValidateSchema19(b); err != nil {
 		return err
 	}
 	w := b.Workspace

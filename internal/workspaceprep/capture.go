@@ -23,7 +23,7 @@ func (m Manager) openCapture(ctx context.Context, key, token, continuation strin
 			if err = ctx.Err(); err != nil {
 				return err
 			}
-			if err = preparable(b); err != nil {
+			if err = m.preparable(b); err != nil {
 				return err
 			}
 			if continuation == "" || b.Lease.Continuation != continuation || !sameExecution(b.Lease.Execution, e) || b.Lease.Execution.Phase != "starting" {

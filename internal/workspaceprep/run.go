@@ -28,11 +28,11 @@ type RunResult struct {
 	LogTruncated bool
 }
 
-func operational(b *model.Bench) error {
+func (m Manager) operational(b *model.Bench) error {
 	if b.Workspace.Phase != "ready" {
 		return errors.New("workspace payload requires a ready workspace lease")
 	}
-	return preparable(b)
+	return m.preparable(b)
 }
 func payloadArgs(args []string) error {
 	if len(args) == 0 || len(args) > 128 || args[0] == "" {
@@ -113,7 +113,7 @@ func (m Manager) Run(ctx context.Context, key, token, selector string, args []st
 	if _, err := owned(benchstate.Database{key: b}, key, token); err != nil {
 		return nil, err
 	}
-	if err := operational(b); err != nil {
+	if err := m.operational(b); err != nil {
 		return nil, err
 	}
 	defer func() {
@@ -150,7 +150,7 @@ func (m Manager) Run(ctx context.Context, key, token, selector string, args []st
 			if err != nil {
 				return err
 			}
-			if err := operational(b); err != nil {
+			if err := m.operational(b); err != nil {
 				return err
 			}
 			if err := ctx.Err(); err != nil {
@@ -223,7 +223,7 @@ func (m Manager) Run(ctx context.Context, key, token, selector string, args []st
 				if err != nil {
 					return err
 				}
-				if err := operational(b); err != nil {
+				if err := m.operational(b); err != nil {
 					return err
 				}
 				if b.Lease.Continuation != continuation || b.Lease.Execution == nil || b.Lease.Execution.ID != e.ID || b.Lease.Execution.Phase != "starting" || b.Workspace.Stage != nil {

@@ -88,6 +88,9 @@ func (s Store) InitializeWorkspaceContext(ctx context.Context, creationID string
 }
 
 func (s Store) finishWorkspaceInitialization(ctx context.Context, b *Bench) (result *Bench, operationErr error) {
+	if b.Workspace.InitializationRepair != nil {
+		return nil, workspace.ErrInitializationRepair
+	}
 	if b.Workspace.Phase == "ready" || b.Workspace.Archive != nil {
 		return b, nil
 	}

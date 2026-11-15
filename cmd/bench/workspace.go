@@ -30,7 +30,7 @@ func workspaceCLI(args []string, stdout, stderr io.Writer) error {
 
 func workspaceCLIContext(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	if len(args) == 0 {
-		return errors.New("usage: bench workspace <create|recover|lease|setup|run|checkpoint|release|stop|stop_admin|archive|status|host_status|plan-reap|reap|inspect-history|reconcile-history> [flags] [key]; flags precede key")
+		return errors.New("usage: bench workspace <create|recover|lease|setup|run|checkpoint|release|stop|stop_admin|archive|status|host_status|plan-reap|reap|inspect-history|reconcile-history|inspect-initialization|claim-initialization|continue-initialization> [flags] [key]; flags precede key")
 	}
 	op := args[0]
 	if op == "host-status" {
@@ -39,7 +39,8 @@ func workspaceCLIContext(ctx context.Context, args []string, stdout, stderr io.W
 	if op == "stop-admin" {
 		op = "stop_admin"
 	}
-	localAdmin := op == "plan-reap" || op == "reap" || op == "inspect-history" || op == "reconcile-history"
+	repair := op == "inspect-initialization" || op == "claim-initialization" || op == "continue-initialization"
+	localAdmin := repair || op == "plan-reap" || op == "reap" || op == "inspect-history" || op == "reconcile-history"
 	if !protocolv2.Known(op) && !localAdmin {
 		return fmt.Errorf("unknown workspace operation %q", op)
 	}
@@ -63,7 +64,7 @@ func workspaceCLIContext(ctx context.Context, args []string, stdout, stderr io.W
 	source := f.String("source", "", "file containing the exact recovery source JSON object")
 	coordinator := f.String("checkpoint-repository", "", "logical checkpoint coordinator member")
 	holder := f.String("holder", "", "workspace-wide lease holder")
-	token := f.String("token", os.Getenv("BENCH_LEASE_TOKEN"), "holder token; prefer BENCH_LEASE_TOKEN")
+	token := f.String("token", "", "holder token; ordinary operations accept BENCH_LEASE_TOKEN")
 	member := f.String("repository-name", "", "selected member; omitted run uses root, setup uses all members")
 	quota := f.Uint64("quota-bytes", 0, "one total workspace budget, bounded by host policy")
 	initialize := f.Bool("initialize", true, "warm initialization is mandatory")
@@ -72,6 +73,8 @@ func workspaceCLIContext(ctx context.Context, args []string, stdout, stderr io.W
 	grace := f.Duration("archive-grace", 168*time.Hour, "local archive grace; zero explicitly waives retention")
 	plan := f.String("plan", "", "concrete reviewed local administration manifest file")
 	approve := f.String("approve", "", "exact reviewed plan Digest")
+	repairID := f.String("repair-id", "", "explicit local initialization repair identity")
+	rerunOnce := f.String("rerun-once", "", "review uncertain once hooks for these comma-separated members")
 	if err := f.Parse(args[1:]); err != nil {
 		return err
 	}
@@ -87,18 +90,46 @@ func workspaceCLIContext(ctx context.Context, args []string, stdout, stderr io.W
 		if op == "reap" || op == "reconcile-history" {
 			allowed["plan"], allowed["approve"] = true, true
 		}
+		if op == "inspect-initialization" {
+			allowed["rerun-once"] = true
+		}
+		if op == "claim-initialization" {
+			allowed["plan"], allowed["approve"], allowed["repair-id"] = true, true, true
+		}
+		if op == "continue-initialization" {
+			allowed["repair-id"], allowed["token"] = true, true
+		}
 		for name := range visited {
 			if !allowed[name] {
 				return fmt.Errorf("flag --%s is not valid for local workspace %s", name, op)
 			}
+		}
+		if repair {
+			for _, name := range []string{"state", "data", "cgroup-root", "plan", "approve", "repair-id", "token", "rerun-once"} {
+				if visited[name] && f.Lookup(name).Value.String() == "" {
+					return fmt.Errorf("flag --%s must not be empty", name)
+				}
+			}
+			if op == "continue-initialization" && !visited["token"] {
+				return errors.New("initialization repair continuation requires explicit --token")
+			}
+			return workspaceInitialization(ctx, store, op, key, *plan, *approve, *repairID, *token, *rerunOnce, stdout)
 		}
 		if op == "inspect-history" || op == "reconcile-history" {
 			return workspaceHistory(ctx, store, op, key, *plan, *approve, stdout)
 		}
 		return workspaceReap(ctx, store, op, key, *plan, *approve, stdout)
 	}
+	if visited["repair-id"] || visited["rerun-once"] {
+		return errors.New("initialization repair flags are local administration only")
+	}
 	if visited["plan"] || visited["approve"] || visited["archive-grace"] && (op != "archive" || *socket != "") {
 		return errors.New("reviewed plans and archive grace are local administration only")
+	}
+	// Flag usage prints defaults. Load ambient capabilities only after parsing
+	// and local administration validation, and preserve explicit empty tokens.
+	if !visited["token"] {
+		*token = os.Getenv("BENCH_LEASE_TOKEN")
 	}
 	fields := map[string]any{"version": protocolv2.Version, "operation": op}
 	if key != "" {

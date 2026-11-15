@@ -27,6 +27,7 @@ type Backend interface {
 
 type Manager struct {
 	State, Data, CgroupRoot string
+	RepairID                string
 	Update                  workspace.Update
 	Read                    func(func(benchstate.Database) error) error
 	Gate                    func(string, func() error) error
@@ -59,7 +60,10 @@ func owned(rows benchstate.Database, key, token string) (*model.Bench, error) {
 	return b, nil
 }
 
-func preparable(b *model.Bench) error {
+func (m Manager) preparable(b *model.Bench) error {
+	if marker := b.Workspace.InitializationRepair; b.Workspace.Phase != "ready" && marker != nil && (m.RepairID == "" || m.RepairID != marker.ID) {
+		return errors.New("initialization requires its explicit repair continuation")
+	}
 	if b.Lease.StopRequested || b.Lease.Continuation == "" || b.Workspace.Pending != nil {
 		return errors.New("workspace preparation is stopped or pending checkpoint")
 	}
