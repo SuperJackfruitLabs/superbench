@@ -3,6 +3,7 @@ package quotaoperationjournal
 import (
 	"context"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotaoperation"
+	"os"
 )
 
 // Store is an operation-scoped immutable handle derived only from Control.
@@ -10,6 +11,7 @@ type Store struct {
 	control  *Control
 	identity quotaoperation.Identity
 	verify   func(quotaoperation.Identity) error
+	syncFile func(*os.File) error // private durability fault seam; nil uses File.Sync
 }
 
 func (s *Store) backend(ctx context.Context) (journalStore, error) {
@@ -29,11 +31,13 @@ func (s *Store) backend(ctx context.Context) (journalStore, error) {
 		return journalStore{}, err
 	}
 	identity := s.identity
-	return journalStore{Directory: s.control.config.Directory, owner: s.control.owner, Identity: &identity, Check: check}, nil
+	return journalStore{Directory: s.control.config.Directory, owner: s.control.owner, Identity: &identity, Check: check, syncFile: s.syncFile}, nil
 }
 
 // Apply reserves before effects and retains the same operations.lock through
 // fixed effects and final checks. Failure never implies completion or denial.
+// An exact retry may call effect again: it must be idempotent for the retained
+// immutable identity. A reservation is never an effect-completion receipt.
 func (s *Store) Apply(ctx context.Context, effect func() error) error {
 	if effect == nil {
 		return ErrAuthority

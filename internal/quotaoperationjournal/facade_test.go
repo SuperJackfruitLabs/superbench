@@ -168,3 +168,136 @@ func TestOperationFreezesRealIdentity(t *testing.T) {
 		t.Fatalf("identity changed:%+v %v", proof, err)
 	}
 }
+
+func TestFacadeDuplicateOperationIDNeverRunsForeignIdentity(t *testing.T) {
+	for _, field := range []string{"epoch", "state", "binary"} {
+		t.Run(field, func(t *testing.T) {
+			original := initializedFixture(t)
+			if err := original.Apply(context.Background(), func() error { return nil }); err != nil {
+				t.Fatal(err)
+			}
+			foreign := original.identity
+			switch field {
+			case "epoch":
+				foreign.Epoch = strings.Repeat("f", 32)
+			case "state":
+				foreign.StateIdentity = strings.Repeat("f", 64)
+			case "binary":
+				foreign.BinarySHA256 = strings.Repeat("f", 64)
+			}
+			if !foreign.Valid() || foreign == original.identity || foreign.OperationID != original.identity.OperationID {
+				t.Fatal("invalid clash fixture")
+			}
+			candidate, err := original.control.Operation(context.Background(), foreign, func(got quotaoperation.Identity) error {
+				if got != foreign {
+					return ErrAuthority
+				}
+				return nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			effects := 0
+			if err = candidate.Apply(context.Background(), func() error { effects++; return nil }); !errors.Is(err, ErrAuthority) || effects != 0 {
+				t.Fatalf("foreign canonical identity reached effect: %v effects%d", err, effects)
+			}
+			backend, err := original.backend(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = backend.withinExisting(context.Background(), func(j *Journal) error {
+				found, denied, e := j.Lookup(original.identity)
+				if e != nil || !found || denied {
+					t.Fatalf("original reservation changed: %v found%v denied%v", e, found, denied)
+				}
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestFacadeRetrySyncsBothPinnedFilesBeforeEffect(t *testing.T) {
+	for _, fault := range []string{"none", "journal.db", "journal.db-journal"} {
+		t.Run(fault, func(t *testing.T) {
+			s := initializedFixture(t)
+			if err := s.Apply(context.Background(), func() error { return nil }); err != nil {
+				t.Fatal(err)
+			}
+			var synced []string
+			syncErr := errors.New("original reservation sync failed")
+			retry := *s
+			retry.syncFile = func(f *os.File) error {
+				name := filepath.Base(f.Name())
+				synced = append(synced, name)
+				if name == fault {
+					return syncErr
+				}
+				return f.Sync()
+			}
+			effects := 0
+			err := retry.Apply(context.Background(), func() error {
+				effects++
+				if len(synced) != 2 || synced[0] != "journal.db" || synced[1] != "journal.db-journal" {
+					t.Errorf("retry effect preceded durable reservation: %v", synced)
+				}
+				return nil
+			})
+			if fault == "none" {
+				if err != nil || effects != 1 || len(synced) != 2 {
+					t.Fatalf("durable exact retry refused: %v effects%d syncs%v", err, effects, synced)
+				}
+			} else {
+				want := 1
+				if fault == "journal.db-journal" {
+					want = 2
+				}
+				if !errors.Is(err, syncErr) || effects != 0 || len(synced) != want {
+					t.Fatalf("sync failure admitted retry: %v effects%d syncs%v", err, effects, synced)
+				}
+			}
+			backend, err := s.backend(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = backend.withinExisting(context.Background(), func(j *Journal) error {
+				found, denied, e := j.Lookup(s.identity)
+				if e != nil || !found || denied {
+					t.Fatalf("retry changed original reservation: %v found%v denied%v", e, found, denied)
+				}
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestFacadeRetryRechecksAuthorityAfterResync(t *testing.T) {
+	s := initializedFixture(t)
+	if err := s.Apply(context.Background(), func() error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	retry := *s
+	valid := true
+	verify := retry.verify
+	authorityErr := errors.New("original helper revoked during resync")
+	retry.verify = func(i quotaoperation.Identity) error {
+		if !valid {
+			return authorityErr
+		}
+		return verify(i)
+	}
+	retry.syncFile = func(f *os.File) error {
+		err := f.Sync()
+		if filepath.Base(f.Name()) == "journal.db-journal" {
+			valid = false
+		}
+		return err
+	}
+	effects := 0
+	if err := retry.Apply(context.Background(), func() error { effects++; return nil }); !errors.Is(err, authorityErr) || effects != 0 {
+		t.Fatalf("resync bypassed original authority: %v effects%d", err, effects)
+	}
+}

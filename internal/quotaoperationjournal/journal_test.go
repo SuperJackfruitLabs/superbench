@@ -2,16 +2,131 @@ package quotaoperationjournal
 
 import (
 	"context"
+	"database/sql"
+	"database/sql/driver"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotaoperation"
 )
+
+var readbackDriverID atomic.Uint64
+
+// This test-only driver delegates to the real SQLite driver and changes only
+// the row just inserted in the same real transaction. No trigger/schema guard
+// can substitute for Reserve's exact post-insert readback in this fixture.
+type corruptInsertDriver struct {
+	base    driver.Driver
+	foreign []byte
+	denied  bool
+	changed *bool
+}
+type corruptInsertConn struct {
+	driver.Conn
+	fault *corruptInsertDriver
+}
+
+func (d *corruptInsertDriver) Open(name string) (driver.Conn, error) {
+	c, err := d.base.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	return &corruptInsertConn{Conn: c, fault: d}, nil
+}
+func (c *corruptInsertConn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
+	executor, ok := c.Conn.(driver.ExecerContext)
+	if !ok {
+		return nil, errors.New("actual SQLite fixture lacks ExecerContext")
+	}
+	result, err := executor.ExecContext(ctx, query, args)
+	if err != nil || !strings.HasPrefix(query, "INSERT INTO identities(") {
+		return result, err
+	}
+	update := "UPDATE identities SET identity=? WHERE id=?"
+	value := any(c.fault.foreign)
+	if c.fault.denied {
+		update = "UPDATE identities SET denied=? WHERE id=?"
+		value = int64(1)
+	}
+	changed, err := executor.ExecContext(ctx, update, []driver.NamedValue{{Ordinal: 1, Value: value}, {Ordinal: 2, Value: args[0].Value}})
+	if err != nil {
+		return nil, err
+	}
+	n, err := changed.RowsAffected()
+	if err != nil || n != 1 {
+		return nil, errors.New("post-insert fault did not change exactly one row")
+	}
+	*c.fault.changed = true
+	return result, nil
+}
+
+func TestReservationReadsBackActualInsertedIdentityAndDenial(t *testing.T) {
+	for _, kind := range []string{"identity", "denied"} {
+		t.Run(kind, func(t *testing.T) {
+			s, i := fixture(t)
+			create(t, s)
+			effects := 0
+			corrupted := false
+			err := s.withinExisting(context.Background(), func(j *Journal) error {
+				foreign := i
+				foreign.Epoch = strings.Repeat("f", 32)
+				raw, err := rawIdentity(foreign)
+				if err != nil {
+					return err
+				}
+				name := fmt.Sprintf("quota-readback-%d", readbackDriverID.Add(1))
+				sql.Register(name, &corruptInsertDriver{base: j.db.Driver(), foreign: raw, denied: kind == "denied", changed: &corrupted})
+				u := url.URL{Scheme: "file", Path: filepath.Join(s.Directory, "operations", "indexed-v2", "journal.db")}
+				q := u.Query()
+				q.Set("mode", "rw")
+				for _, pragma := range []string{"busy_timeout(5000)", "synchronous(FULL)", "journal_mode(PERSIST)"} {
+					q.Add("_pragma", pragma)
+				}
+				u.RawQuery = q.Encode()
+				proxy, err := sql.Open(name, u.String())
+				if err != nil {
+					return err
+				}
+				proxy.SetMaxOpenConns(1)
+				original := j.db
+				j.db = proxy
+				defer func() { j.db = original; _ = proxy.Close() }()
+				if err = j.ready(); err != nil {
+					return fmt.Errorf("valid SQLite baseline: %w", err)
+				}
+				found, _, err := j.Lookup(i)
+				if err != nil || found {
+					return fmt.Errorf("fresh identity baseline: found%v error%v", found, err)
+				}
+				err = j.Reserve(i)
+				if err == nil {
+					effects++
+				}
+				if !errors.Is(err, ErrAuthority) || !corrupted || effects != 0 {
+					t.Errorf("post-insert corruption reached effect: %v corrupted%v effects%d", err, corrupted, effects)
+				}
+				var count int
+				if err = proxy.QueryRow(`SELECT count(*) FROM identities WHERE id=?`, i.OperationID).Scan(&count); err != nil {
+					return err
+				}
+				if count != 0 {
+					t.Errorf("refused transaction retained corrupted identity: %d", count)
+				}
+				return nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
 
 func fixture(t *testing.T) (journalStore, quotaoperation.Identity) {
 	t.Helper()
