@@ -4,13 +4,14 @@ package payloadexec
 
 import (
 	"errors"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/registeredinspection"
 	"os"
 	"runtime"
 	"strconv"
 	"syscall"
 )
 
-var ErrBoundary = errors.New("managed payload execution boundary refused")
+var ErrBoundary = registeredinspection.ErrBoundary
 
 func verifyStdio(p Policy) error {
 	for fd := 0; fd <= 2; fd++ {

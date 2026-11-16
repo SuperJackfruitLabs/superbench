@@ -4,10 +4,10 @@ package payloadexec
 
 import (
 	"errors"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/registeredinspection"
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 )
 
 type boundary struct {
@@ -106,34 +106,10 @@ func openBoundary(p Policy, r Request, l Layout) (_ *boundary, err error) {
 }
 
 func privateDirectory(parent *os.File, name string, p Policy, expected Node) (*os.File, error) {
-	if name == "" || name == "." || name == ".." || strings.Contains(name, "/") {
-		return nil, ErrBoundary
-	}
-	fd, err := syscall.Openat(int(parent.Fd()), name, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
-	if err != nil {
-		return nil, errors.Join(ErrBoundary, err)
-	}
-	file := os.NewFile(uintptr(fd), name)
-	info, err := file.Stat()
-	if err != nil {
-		_ = file.Close()
-		return nil, errors.Join(ErrBoundary, err)
-	}
-	st := info.Sys().(*syscall.Stat_t)
-	if !info.IsDir() || st.Uid != p.PayloadUID || st.Gid != p.PayloadGID || info.Mode().Perm()&0027 != 0 || info.Mode()&(os.ModeSetuid|os.ModeSetgid|os.ModeSticky) != 0 || uint64(st.Dev) != expected.Device || expected.Inode != 0 && st.Ino != expected.Inode {
-		_ = file.Close()
-		return nil, ErrBoundary
-	}
-	return file, nil
+	return registeredinspection.PrivateDirectory(parent, name, p, expected)
 }
-
 func matchesNode(file *os.File, expected Node) bool {
-	info, err := file.Stat()
-	if err != nil {
-		return false
-	}
-	st := info.Sys().(*syscall.Stat_t)
-	return uint64(st.Dev) == expected.Device && st.Ino == expected.Inode
+	return registeredinspection.MatchesNode(file, expected)
 }
 
 func (b *boundary) check() error {
