@@ -18,15 +18,16 @@ import (
 type Lease = model.Lease
 type Bench = model.Bench
 type Store struct {
-	State, Data        string
-	CgroupRoot         string
-	MirrorTimeout      time.Duration
-	controls           context.Context
-	reapAfterDelete    func() error
-	collectAfterDelete func() error
-	executor           executionBackend
-	spaceProbe         func(string) (Space, error)
-	quotaApply         func(HostConfig, string, string, uint64) (hoststorage.Assignment, error)
+	State, Data          string
+	CgroupRoot           string
+	MirrorTimeout        time.Duration
+	controls             context.Context
+	proposedFreshPayload bool
+	reapAfterDelete      func() error
+	collectAfterDelete   func() error
+	executor             executionBackend
+	spaceProbe           func(string) (Space, error)
+	quotaApply           func(HostConfig, string, string, uint64) (hoststorage.Assignment, error)
 }
 type database = benchstate.Database
 

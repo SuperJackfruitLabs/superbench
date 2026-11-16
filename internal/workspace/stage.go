@@ -33,6 +33,7 @@ type Manager struct {
 	Git         func(context.Context, string, ...string) (string, error)
 	Admit       func() error
 	Allocate    func(*model.Bench) error
+	Fresh       func(context.Context, *model.Bench) error
 }
 
 // ValidateStage checks request shape without filesystem or repository effects.
@@ -293,7 +294,18 @@ func (m Manager) stage(ctx context.Context, request stagingRequest) (*model.Benc
 				return err
 			}
 		}
-		if err := m.Allocate(allocated); err != nil {
+		if m.Fresh != nil {
+			// A completed or interrupted fresh allocation is never adopted.
+			if committed.ProjectID != 0 {
+				return errors.New("fresh workspace already has an allocation; explicit reconciliation required")
+			}
+			if err := m.Fresh(ctx, allocated); err != nil {
+				return err
+			}
+			if allocated.ProjectID < 10000 || allocated.QuotaBytes == 0 || allocated.QuotaInodes == 0 {
+				return errors.New("fresh workspace returned no verified allocation")
+			}
+		} else if err := m.Allocate(allocated); err != nil {
 			return err
 		}
 		if committed.ProjectID != 0 && (allocated.ProjectID != committed.ProjectID || allocated.QuotaBytes != committed.QuotaBytes || allocated.QuotaInodes != committed.QuotaInodes) {
@@ -343,7 +355,11 @@ func (m Manager) stage(ctx context.Context, request stagingRequest) (*model.Benc
 		}
 		committed = privateRecord(allocated)
 		plan := stagedPlan(committed)
-		if err := (Materializer{Git: m.Git, Gate: gate, Timeout: timeout}).Materialize(ctx, plan); err != nil {
+		if m.Fresh == nil {
+			if err := (Materializer{Git: m.Git, Gate: gate, Timeout: timeout}).Materialize(ctx, plan); err != nil {
+				return err
+			}
+		} else if err := gate(ctx, plan); err != nil {
 			return err
 		}
 		finished := privateRecord(committed)
