@@ -45,6 +45,9 @@ func TestInstalledIndexedPolicyRefusesMissingHistory(t *testing.T) {
 		t.Fatal("requires original PID namespace", err)
 	}
 	base := t.TempDir()
+	if err = os.Chmod(base, 0700); err != nil {
+		t.Fatal(err)
+	}
 	privateEtc := filepath.Join(base, "etc")
 	if err = os.MkdirAll(filepath.Join(privateEtc, "superbench"), 0755); err != nil {
 		t.Fatal(err)
