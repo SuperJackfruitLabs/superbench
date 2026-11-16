@@ -35,7 +35,10 @@ TESTS = (
     ('execution', 'TestHostStartPreservesActualChildCredentials', (
         'ACTUAL_SCOPED_CHILD_CREDENTIALS_PRESERVED',)),
     ('bench-quota', 'TestInstalledIndexedPolicyRefusesMissingHistory', (
-        'INSTALLED_INDEXED_POLICY_MISSING_HISTORY_NO_FALLBACK',)),
+        'INSTALLED_INDEXED_POLICY_MISSING_HISTORY_NO_FALLBACK',
+        'INSTALLED_RETIREMENT_INPUT_VALIDATED_BEFORE_CONTROL_OPEN')),
+    ('quotaoperationcontrol', 'TestInstalledIndexedPolicyDescriptorContinuity', (
+        'INDEXED_POLICY_FIXED_FD_LEAF_ANCESTOR_FIFO_REFUSALS_PASS',)),
 )
 LIMITS = {'cpu.max': '800000 100000', 'memory.max': str(2 << 30),
           'memory.swap.max': '0', 'pids.max': '512'}
@@ -185,7 +188,8 @@ def inside(binary, selector):
     if selector == 'TestHostStartPreservesActualChildCredentials':
         environment['SUPERBENCH_EXECUTION_CREDENTIAL_FIXTURE'] = '1'
         environment['SUPERBENCH_EXECUTION_CGROUP_ROOT'] = os.environ.get('SUPERBENCH_EXECUTION_CGROUP_ROOT', '')
-    if selector == 'TestInstalledIndexedPolicyRefusesMissingHistory':
+    if selector in ('TestInstalledIndexedPolicyRefusesMissingHistory',
+                    'TestInstalledIndexedPolicyDescriptorContinuity'):
         environment['SUPERBENCH_INDEXED_POLICY_FIXTURE'] = '1'
     os.execve(binary, [binary, '-test.run=^' + selector + '$', '-test.v', '-test.timeout=240s'], environment)
 
