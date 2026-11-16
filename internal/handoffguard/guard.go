@@ -28,6 +28,11 @@ func Record(db handoffjournal.Reader, b *model.Bench) error {
 		return nil
 	}
 	w := b.Workspace
+	if t := w.Transfer; t != nil && t.CrossHost == nil {
+		if err := handoffjournal.Unreserved(db, t.TargetKey); err != nil {
+			return err
+		}
+	}
 	if t := w.Transfer; t != nil && t.CrossHost != nil {
 		e, err := handoffjournal.ExportByID(db, t.ID)
 		if err != nil {
