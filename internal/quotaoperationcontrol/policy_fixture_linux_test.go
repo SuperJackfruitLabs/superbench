@@ -62,7 +62,13 @@ func TestInstalledIndexedPolicyDescriptorContinuity(t *testing.T) {
 	if err = syscall.Mount(etc, "/etc", "", syscall.MS_BIND, ""); err != nil {
 		t.Fatal(err)
 	}
+	var pins []*policyPin
 	defer func() {
+		// Release the fixture's retained mount descriptors before unmounting its
+		// private /etc. Testing cleanups run after ordinary deferred functions.
+		for _, pin := range pins {
+			pin.close()
+		}
 		if err := syscall.Unmount("/etc", 0); err != nil {
 			t.Error(err)
 		}
@@ -73,7 +79,7 @@ func TestInstalledIndexedPolicyDescriptorContinuity(t *testing.T) {
 		if e != nil || got.Root != p.Root {
 			t.Fatalf("fixed policy baseline: %+v %v", got, e)
 		}
-		t.Cleanup(pin.close)
+		pins = append(pins, pin)
 		if e = pin.check(context.Background()); e != nil {
 			t.Fatal(e)
 		}
