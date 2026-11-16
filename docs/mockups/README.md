@@ -22,3 +22,8 @@ reads, output filtering, unavailable states and retention behavior. Watching a
 terminal must not grant write access. Taking over must follow verified stopping
 or fencing and lease acquisition. These are implementation work, not functions
 of this mockup.
+
+The subsequent [disabled reader candidate](../../web/README.md) uses a pinned
+proposed observation corpus for its actual JavaScript viewmodel. It adds no live
+reader/authentication boundary and does not establish browser rendering proof for
+this design. Its inventory/history subset leaves the full Phase 2 work explicit.

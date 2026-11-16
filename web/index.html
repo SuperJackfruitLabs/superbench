@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; img-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <title>SuperBench • Reader candidate</title>
+    <link rel="stylesheet" href="reader.css" />
+    <script type="module" src="reader.mjs"></script>
+  </head>
+  <body>
+    <header>
+      <span class="brand">SuperBench</span
+      ><span class="badge">Proposed • Fixture only</span>
+    </header>
+    <main>
+      <section class="intro">
+        <h1>Your benches, between sessions.</h1>
+        <p>Recorded workspace evidence, independent of an agent's chat.</p>
+      </section>
+      <aside class="notice">
+        <strong>Live reader is disabled.</strong> This candidate uses pinned
+        proposed contract fixtures. No daemon, account, file or process is
+        connected. Network authentication and scoped content reads are not
+        accepted or implemented here.
+      </aside>
+      <p id="observed" class="muted">Loading illustrative observation…</p>
+      <div class="layout">
+        <section aria-label="Bench inventory" id="cards"></section>
+        <section
+          aria-label="Confirmed checkpoint evidence"
+          id="details"
+          tabindex="0"
+        ></section>
+      </div>
+      <section class="remaining" aria-label="Remaining reader functions">
+        <h2>More of the workspace</h2>
+        <p>
+          Files, saved diffs, logs and terminal attachment need their producer
+          and authorization implementations. They are unavailable in this
+          candidate.
+        </p>
+        <div class="actions">
+          <button disabled>Files</button><button disabled>Saved diff</button
+          ><button disabled>Captured logs</button
+          ><button disabled>Attach terminal</button>
+        </div>
+      </section>
+      <p class="muted">
+        Unleased is an observation, not permission to write. A new writer still
+        needs SuperBench ownership. Snapshot hashes and log EOF are not fencing
+        evidence.
+      </p>
+    </main>
+  </body>
+</html>

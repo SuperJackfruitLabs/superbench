@@ -1,0 +1,28 @@
+{
+  "status": "PROPOSED contract; fixture-only consumer; no runtime authority proof",
+  "repository": "https://forge.superjackfruit.com/SuperJackfruitLabs/treaty",
+  "revision": "31f5a332702de1179e187616f58d01b096d0f4ab",
+  "files": {
+    "schemas/superbench/observation-request.v1.json": {
+      "file": "observation-request.v1.json",
+      "sha256": "5c1fb99a3c010b9d477163b9ec7b5ebf1d22a9d94aba421fb25b47da901525ea"
+    },
+    "schemas/superbench/observation-response.v1.json": {
+      "file": "observation-response.v1.json",
+      "sha256": "5b8a21b52b7842a7b8b3225232764dacf534d974de7a9d05f9beb9a6705824c9"
+    },
+    "fixtures/superbench-api/observations.json": {
+      "file": "observations.json",
+      "sha256": "d055e0fa016d1272f048071f96bd34a801ab45f9720580def1956f024c334032"
+    }
+  },
+  "codec_sources": {
+    "decode-source.txt": "94cb937539d39385ebd563747d02b363d0688b044397bdbe26bf8b9edfbd275f",
+    "validation-source.txt": "02e7888ad5a190025213a2c6ef1dcc8c9f7eb395fb05b7a897d2505b6c830766"
+  },
+  "generated": {
+    "decode.mjs": "07dddfeae1fc4f467fcd14d52d3796a1697534fe2c276fb6306e84d653e8c3d2",
+    "validate.mjs": "017bc3c60dcabc49ca269ab94338f63b52224567c60d1b34d70aa1b49edb6775"
+  },
+  "adaptation": "Type erasure plus browser WebCrypto/base64 portability only. Shared corpus tests actual generated codec. No live adapter."
+}
