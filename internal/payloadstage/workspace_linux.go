@@ -11,7 +11,6 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/payloadlaunch"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/serviceidentity"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/stageexec"
-	"io"
 	"os/exec"
 	"path/filepath"
 	"reflect"
@@ -20,21 +19,17 @@ import (
 
 type transport struct {
 	*payloadlaunch.Bridge
-	command        *exec.Cmd
-	environment    []string
-	stdin          io.Reader
-	stdout, stderr io.Writer
-	check          func() error
+	guard payloadlaunch.CommandGuard
+	check func() error
 }
 
 func preparedTransport(bridge *payloadlaunch.Bridge, cmd *exec.Cmd, check func() error) *transport {
-	return &transport{Bridge: bridge, command: cmd, environment: append([]string(nil), cmd.Env...), stdin: cmd.Stdin, stdout: cmd.Stdout, stderr: cmd.Stderr, check: check}
+	return &transport{Bridge: bridge, guard: payloadlaunch.GuardCommand(cmd), check: check}
 }
 
 func (t *transport) Check() error {
-	cmd := t.command
-	if cmd == nil || cmd.Path != "/usr/bin/sudo" || !reflect.DeepEqual(cmd.Args, []string{"sudo", "-n", "--", payloadlaunch.Helper}) || cmd.Dir != "/" || len(cmd.ExtraFiles) != 0 || cmd.SysProcAttr != nil || !reflect.DeepEqual(cmd.Env, t.environment) || cmd.Stdin != t.stdin || cmd.Stdout != t.stdout || cmd.Stderr != t.stderr {
-		return ErrRegistration
+	if err := t.guard.Check(); err != nil {
+		return errors.Join(ErrRegistration, err)
 	}
 	return t.check()
 }

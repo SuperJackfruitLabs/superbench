@@ -77,6 +77,7 @@ func TestArchitecture(t *testing.T) {
 				"internal/payloadlaunch":        {"internal/payloadexec", "internal/execution"},
 				"internal/stageexec":            {"internal/execution", "internal/output"},
 				"internal/payloadstage":         {"internal/model", "internal/serviceidentity", "internal/stageexec", "internal/execution", "internal/payloadexec", "internal/payloadlaunch"},
+				"internal/payloadgit":           {"internal/model", "internal/serviceidentity", "internal/gitcontrol", "internal/execution", "internal/payloadexec", "internal/payloadlaunch"},
 				"internal/quotahelper":          {"internal/quotapolicy", "internal/quotaoperation", "internal/operationcontrol"},
 				"internal/operationcancel":      {"internal/statepath", "internal/statestore", "internal/gitcontrol", "internal/quotahelper", "internal/benchstate", "internal/history", "internal/model", "internal/operationcontrol", "internal/reap", "internal/retention"},
 				"internal/operationcontrol":     {"internal/quotaoperation", "internal/history", "internal/model"},
