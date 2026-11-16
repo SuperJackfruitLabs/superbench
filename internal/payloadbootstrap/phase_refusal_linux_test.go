@@ -18,7 +18,7 @@ func TestMaterializeRequiresBegunPhase(t *testing.T) {
 	if err := (intent{Phase: "begun"}).requireMaterializePhase(); err != nil {
 		t.Fatalf("begun phase refused: %v", err)
 	}
-	for _, phase := range []string{"", "allocating", "staging", "materialized_unfenced", "staged", "transferring", "completed", "unknown"} {
+	for _, phase := range []string{"", "reserved", "allocating", "staging", "materialized_unfenced", "staged", "transferring", "completed", "unknown"} {
 		t.Run(phase, func(t *testing.T) {
 			if err := (intent{Phase: phase}).requireMaterializePhase(); !errors.Is(err, ErrBootstrap) {
 				t.Fatalf("nonbegun Materialize phase accepted: phase=%q err=%v", phase, err)

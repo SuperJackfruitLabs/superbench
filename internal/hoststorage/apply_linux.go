@@ -20,22 +20,23 @@ func (p Policy) Apply(kind, key string) (Assignment, error) {
 	return p.ApplyRequested(kind, key, 0)
 }
 func (p Policy) ApplyRequested(kind, key string, requested uint64) (Assignment, error) {
-	return p.applyRequested(kind, key, requested, nil)
+	return p.applyRequested(kind, key, requested, nil, nil)
 }
 
 // ApplyFreshRequested reserves only a previously unknown bench allocation. The
-// trusted helper callback runs under the allocation lock after quota confirmation
-// and before ownership is released. It must journal its exact fresh root before
+// reservation callback runs under the allocation lock before the assignment is
+// saved; its failure must leave no allocation effects. The initialization callback
+// runs after quota confirmation and before ownership is released. It must journal its exact fresh root before
 // exposing it. A failed callback retains the allocation; no retry adopts it.
 // Callers must hold their real operation journal barrier before entering here.
-func (p Policy) ApplyFreshRequested(key string, requested uint64, initialize func(Assignment) error) (Assignment, error) {
-	if initialize == nil {
+func (p Policy) ApplyFreshRequested(key string, requested uint64, reserve func() error, initialize func(Assignment) error) (Assignment, error) {
+	if reserve == nil || initialize == nil {
 		return Assignment{}, ErrFreshAllocation
 	}
-	return p.applyRequested("bench", key, requested, initialize)
+	return p.applyRequested("bench", key, requested, reserve, initialize)
 }
 
-func (p Policy) applyRequested(kind, key string, requested uint64, initialize func(Assignment) error) (Assignment, error) {
+func (p Policy) applyRequested(kind, key string, requested uint64, reserve func() error, initialize func(Assignment) error) (Assignment, error) {
 	var zero Assignment
 	if os.Geteuid() != 0 {
 		return zero, errors.New("quota helper requires root")
@@ -172,16 +173,16 @@ func (p Policy) applyRequested(kind, key string, requested uint64, initialize fu
 		}
 	}
 
-	return p.applyLedger(l, kind, key, name, path, requested, size, inodes, fixed, fs, initialize)
+	return p.applyLedger(l, kind, key, name, path, requested, size, inodes, fixed, fs, reserve, initialize)
 }
 
 // applyLedger runs only after the caller holds the validated allocation lock.
-func (p Policy) applyLedger(l ledger, kind, key, name, path string, requested, size, inodes uint64, fixed uint32, fs syscall.Statfs_t, initialize func(Assignment) error) (Assignment, error) {
+func (p Policy) applyLedger(l ledger, kind, key, name, path string, requested, size, inodes uint64, fixed uint32, fs syscall.Statfs_t, reserve func() error, initialize func(Assignment) error) (Assignment, error) {
 	var zero Assignment
 	var e error
 
 	a, known := l.Assignments[name]
-	if initialize != nil && known {
+	if initialize != nil && (known || reserve == nil) {
 		return zero, ErrFreshAllocation
 	}
 	if kind == "bench" {
@@ -259,6 +260,11 @@ func (p Policy) applyLedger(l ledger, kind, key, name, path string, requested, s
 			l.Next++
 		}
 		a = Assignment{Path: path, ProjectID: id, Bytes: size, Inodes: inodes}
+		if reserve != nil {
+			if e = reserve(); e != nil {
+				return zero, e
+			}
+		}
 		l.Assignments[name] = a
 		if initialize != nil {
 			l.FormatVersion = 3

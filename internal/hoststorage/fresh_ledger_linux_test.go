@@ -22,13 +22,34 @@ func TestFreshReservationPersistsBeforeEffectsAndBlocksEveryRetry(t *testing.T) 
 	p.bindLedger(&l)
 	name, key := "bench:card", "card"
 	path := filepath.Join(p.Root, "benches", key)
-	calls := 0
+	calls, reservations := 0, 0
+	reservationError := errors.New("provenance publication failed")
 	init := func(Assignment) error { calls++; return nil }
 	fs := syscall.Statfs_t{Files: 1 << 30, Blocks: 1 << 30, Bsize: 4096}
 	apply := func(rows ledger, callback func(Assignment) error) error {
-		_, err := p.applyLedger(rows, "bench", key, name, path, 0, p.BenchBytes, p.BenchInodes, 0, fs, callback)
+		var reserve func() error
+		if callback != nil {
+			reserve = func() error {
+				reservations++
+				if _, err := os.Lstat(filepath.Join(p.Ledger, "assignments.json")); !errors.Is(err, os.ErrNotExist) {
+					t.Fatal("assignment preceded provenance", err)
+				}
+				if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
+					t.Fatal("filesystem effect preceded provenance", err)
+				}
+				return reservationError
+			}
+		}
+		_, err := p.applyLedger(rows, "bench", key, name, path, 0, p.BenchBytes, p.BenchInodes, 0, fs, reserve, callback)
 		return err
 	}
+	if err := apply(l, init); !errors.Is(err, reservationError) || len(l.Assignments) != 0 || calls != 0 {
+		t.Fatalf("failed provenance publication allocated: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(p.Ledger, "assignments.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("failed provenance saved assignment", err)
+	}
+	reservationError = nil
 	if err := apply(l, init); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("expected pre-xfs mkdir failure, got %v", err)
 	}
@@ -75,7 +96,7 @@ func TestFreshReservationPersistsBeforeEffectsAndBlocksEveryRetry(t *testing.T) 
 		}
 	})
 	after, err := os.ReadFile(filepath.Join(p.Ledger, "assignments.json"))
-	if err != nil || string(after) != string(raw) || calls != 0 {
+	if err != nil || string(after) != string(raw) || calls != 0 || reservations != 2 {
 		t.Fatalf("refusal changed ledger or initialized: %v calls=%d", err, calls)
 	}
 	// Retirement and rebinding must keep both the marker and format-3 fence.
