@@ -19,6 +19,10 @@ func readBootstrapSpec(input *os.File) ([]byte, error) {
 }
 
 func readBootstrapSpecUntil(input *os.File, deadline time.Time) ([]byte, error) {
+	return readBootstrapInputUntil(input, deadline, payloadbootstrap.MaxSpec)
+}
+
+func readBootstrapInputUntil(input *os.File, deadline time.Time, limit int) ([]byte, error) {
 	fd := int(input.Fd())
 	if fd < 0 || fd >= 1024 {
 		return nil, errBootstrapCommand
@@ -30,7 +34,7 @@ func readBootstrapSpecUntil(input *os.File, deadline time.Time) ([]byte, error) 
 	if !info.Mode().IsRegular() && info.Mode()&os.ModeNamedPipe == 0 {
 		return nil, errBootstrapCommand
 	}
-	if info.Mode().IsRegular() && info.Size() > payloadbootstrap.MaxSpec {
+	if info.Mode().IsRegular() && info.Size() > int64(limit) {
 		return nil, errBootstrapCommand
 	}
 	if err = syscall.SetNonblock(fd, true); err != nil {
@@ -44,7 +48,7 @@ func readBootstrapSpecUntil(input *os.File, deadline time.Time) ([]byte, error) 
 		}
 		n, e := syscall.Read(fd, buf)
 		if n > 0 {
-			if len(raw)+n > payloadbootstrap.MaxSpec {
+			if len(raw)+n > limit {
 				return nil, errBootstrapCommand
 			}
 			raw = append(raw, buf[:n]...)

@@ -27,7 +27,7 @@ func run(args []string) error {
 	if *policy != "/etc/superbench/storage.json" && (os.Getuid() != 0 || os.Geteuid() != 0 || os.Getenv("SUDO_UID") != "") {
 		return fmt.Errorf("policy override requires a direct root caller")
 	}
-	if f.NArg() > 0 && (f.Arg(0) == "initialize-indexed" || f.Arg(0) == "bootstrap-payload" || f.Arg(0) == "inspect-bootstrap-payload") {
+	if f.NArg() > 0 && (f.Arg(0) == "initialize-indexed" || f.Arg(0) == "bootstrap-payload" || f.Arg(0) == "inspect-bootstrap-payload" || f.Arg(0) == "plan-retire-bootstrap" || f.Arg(0) == "retire-bootstrap") {
 		return runBootstrapCommand(f.Args(), *policy != "/etc/superbench/storage.json", os.Stdin, os.Stdout)
 	}
 	if f.NArg() > 0 && isOperationCommand(f.Arg(0)) {

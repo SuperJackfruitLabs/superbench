@@ -77,7 +77,7 @@ func TestArchitecture(t *testing.T) {
 				"internal/hoststorage":                 {"internal/allocationledger", "internal/quotaoperationjournal", "internal/storagecustody", "internal/quotapolicy", "internal/storageproof", "internal/hostlayout", "internal/hostpolicy", "internal/quotahelper", "internal/model", "internal/output"},
 				"internal/payloadcache":                {"internal/cachepolicy", "internal/payloadpolicy"},
 				"internal/workspacebootstrap":          {"internal/hoststorage", "internal/model", "internal/operationcontrol", "internal/payloadbootstrap", "internal/quotahelper", "internal/serviceidentity", "internal/workspacecopy", "internal/workspacepolicy"},
-				"internal/payloadbootstrap":            {"internal/execution", "internal/gitcontrol", "internal/hoststorage", "internal/payloadexec", "internal/quotahelper", "internal/quotaoperation", "internal/quotaoperationjournal", "internal/serviceidentity", "internal/storagecustody", "internal/repository", "internal/workspaceplan"},
+				"internal/payloadbootstrap":            {"internal/freshretirement", "internal/quotaoperationcontrol", "internal/execution", "internal/gitcontrol", "internal/hoststorage", "internal/payloadexec", "internal/quotahelper", "internal/quotaoperation", "internal/quotaoperationjournal", "internal/serviceidentity", "internal/storagecustody", "internal/repository", "internal/workspaceplan"},
 				"internal/payloadpolicy":               {}, // Pure fixed-policy codec; no execution authority.
 				"internal/serviceidentity":             {"internal/payloadpolicy"},
 				"internal/payloadwire":                 {"internal/gitpolicy", "internal/registeredinspection"},

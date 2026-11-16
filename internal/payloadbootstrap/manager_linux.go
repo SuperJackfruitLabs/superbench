@@ -15,6 +15,7 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/payloadexec"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotahelper"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotaoperation"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotaoperationcontrol"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotaoperationjournal"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/serviceidentity"
 )
@@ -24,12 +25,13 @@ import (
 // The zero value cannot bootstrap or inspect. Commands use the fixed helper;
 // there is no service route that enables fresh payload materialization.
 type Manager struct {
-	policy    payloadexec.Policy
-	storage   hoststorage.Policy
-	registry  serviceidentity.HelperRegistry
-	operation quotaoperation.Identity
-	store     *quotaoperationjournal.Store
-	digest    string
+	policy          payloadexec.Policy
+	storage         hoststorage.Policy
+	registry        serviceidentity.HelperRegistry
+	operation       quotaoperation.Identity
+	store           *quotaoperationjournal.Store
+	digest          string
+	maintenanceGate func(context.Context, hoststorage.Policy) error
 }
 
 func Open(ctx context.Context, control *quotaoperationjournal.Control, i quotaoperation.Identity) (*Manager, error) {
@@ -55,7 +57,7 @@ func Open(ctx context.Context, control *quotaoperationjournal.Control, i quotaop
 	if storage.Root != private.DataRoot || storage.OwnerUID != int(private.DaemonUID) || storage.OwnerGID != int(private.DaemonGID) {
 		return nil, ErrBootstrap
 	}
-	m := &Manager{policy: private, storage: storage, registry: registry, operation: i}
+	m := &Manager{policy: private, storage: storage, registry: registry, operation: i, maintenanceGate: quotaoperationcontrol.CheckMaintenance}
 	raw, err := private.Bytes()
 	if err != nil {
 		return nil, err

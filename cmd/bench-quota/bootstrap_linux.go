@@ -29,8 +29,10 @@ func runBootstrapCommand(args []string, override bool, input *os.File, output io
 		_, _, err := quotaoperationcontrol.InitializeFresh(ctx)
 		return err
 	}
+	planning := args[0] == "plan-retire-bootstrap"
+	retiring := args[0] == "retire-bootstrap"
 	inspection := args[0] == "inspect-bootstrap-payload"
-	if inspection && (os.Getuid() != 0 || os.Geteuid() != 0 || os.Getenv("SUDO_UID") != "") {
+	if (inspection || planning || retiring) && (os.Getuid() != 0 || os.Geteuid() != 0 || os.Getenv("SUDO_UID") != "") {
 		return errBootstrapCommand
 	}
 	key, identity, err := parseBootstrapCommand(args)
@@ -40,11 +42,21 @@ func runBootstrapCommand(args []string, override bool, input *os.File, output io
 	if input == nil {
 		return errBootstrapCommand
 	}
-	raw, err := readBootstrapSpec(input)
+	limit := payloadbootstrap.MaxSpec
+	if retiring {
+		limit = payloadbootstrap.MaxRetirement
+	}
+	raw, err := readBootstrapInputUntil(input, time.Now().Add(10*time.Second), limit)
 	if err != nil {
 		return err
 	}
-	spec, err := payloadbootstrap.ParseSpec(raw)
+	var spec payloadbootstrap.Spec
+	var plan payloadbootstrap.RetirementPlan
+	if retiring {
+		spec, plan, err = payloadbootstrap.ParseRetirement(raw)
+	} else {
+		spec, err = payloadbootstrap.ParseSpec(raw)
+	}
 	if err != nil {
 		return err
 	}
@@ -58,6 +70,20 @@ func runBootstrapCommand(args []string, override bool, input *os.File, output io
 	manager, err := payloadbootstrap.Open(ctx, control, identity)
 	if err != nil {
 		return err
+	}
+	if planning {
+		result, err := manager.PlanRetirement(ctx, spec)
+		if err != nil {
+			return err
+		}
+		return operationOutput(output, result)
+	}
+	if retiring {
+		result, err := manager.RetireAbsent(ctx, spec, plan)
+		if err != nil {
+			return err
+		}
+		return operationOutput(output, result)
 	}
 	if inspection {
 		result, err := manager.Inspect(ctx, spec)
@@ -75,7 +101,7 @@ func runBootstrapCommand(args []string, override bool, input *os.File, output io
 
 func parseBootstrapCommand(args []string) (string, quotaoperation.Identity, error) {
 	var zero quotaoperation.Identity
-	if len(args) != 7 || (args[0] != "bootstrap-payload" && args[0] != "inspect-bootstrap-payload") {
+	if len(args) != 7 || (args[0] != "bootstrap-payload" && args[0] != "inspect-bootstrap-payload" && args[0] != "plan-retire-bootstrap" && args[0] != "retire-bootstrap") {
 		return "", zero, errBootstrapCommand
 	}
 	i := quotaoperation.Identity{OperationID: args[2], Epoch: args[3], StateIdentity: args[4], Authority: args[5], BinarySHA256: args[6]}

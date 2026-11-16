@@ -51,33 +51,36 @@ func TestBootstrapCommandBindsExactOriginalIdentityBeforePolicyRead(t *testing.T
 func TestBootstrapInspectionDirectRootGuardPrecedesInputAndPolicy(t *testing.T) {
 	t.Setenv("SUDO_UID", "123")
 	h := strings.Repeat("a", 64)
-	args := []string{"inspect-bootstrap-payload", "card", h, strings.Repeat("b", 32), h, h, h}
-	spec := payloadbootstrap.Spec{Version: payloadbootstrap.Version, Key: "card", ID: strings.Repeat("a", 32),
-		CheckpointRepository: "api",
-		Members:              []payloadbootstrap.Member{{Name: "api", Repository: "https://example.invalid/api.git", Branch: "task/api", Source: strings.Repeat("a", 40), ObjectFormat: "sha1"}}}
-	raw, err := spec.Bytes()
-	if err != nil {
-		t.Fatal(err)
+	for _, command := range []string{"inspect-bootstrap-payload", "plan-retire-bootstrap", "retire-bootstrap"} {
+		args := []string{command, "card", h, strings.Repeat("b", 32), h, h, h}
+		spec := payloadbootstrap.Spec{Version: payloadbootstrap.Version, Key: "card", ID: strings.Repeat("a", 32),
+			CheckpointRepository: "api",
+			Members:              []payloadbootstrap.Member{{Name: "api", Repository: "https://example.invalid/api.git", Branch: "task/api", Source: strings.Repeat("a", 40), ObjectFormat: "sha1"}}}
+		raw, err := spec.Bytes()
+		if err != nil {
+			t.Fatal(err)
+		}
+		path := t.TempDir() + "/spec"
+		if err := os.WriteFile(path, raw, 0600); err != nil {
+			t.Fatal(err)
+		}
+		f, err := os.Open(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer f.Close()
+		var out bytes.Buffer
+		if err := runBootstrapCommand(args, false, f, &out); !errors.Is(err, errBootstrapCommand) || out.Len() != 0 {
+			t.Fatalf("sudo inspection reached installed authority: %v %q", err, out.Bytes())
+		}
+		if offset, err := f.Seek(0, 1); err != nil || offset != 0 {
+			t.Fatalf("sudo inspection read input: %d %v", offset, err)
+		}
+		if err := run(args); !errors.Is(err, errBootstrapCommand) {
+			t.Fatalf("inspection command missed guarded dispatch: %v", err)
+		}
 	}
-	path := t.TempDir() + "/spec"
-	if err := os.WriteFile(path, raw, 0600); err != nil {
-		t.Fatal(err)
-	}
-	f, err := os.Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer f.Close()
-	var out bytes.Buffer
-	if err := runBootstrapCommand(args, false, f, &out); !errors.Is(err, errBootstrapCommand) || out.Len() != 0 {
-		t.Fatalf("sudo inspection reached installed authority: %v %q", err, out.Bytes())
-	}
-	if offset, err := f.Seek(0, 1); err != nil || offset != 0 {
-		t.Fatalf("sudo inspection read input: %d %v", offset, err)
-	}
-	if err := run(args); !errors.Is(err, errBootstrapCommand) {
-		t.Fatalf("inspection command missed guarded dispatch: %v", err)
-	}
+
 }
 
 func TestBootstrapInputPreservesBytesAndRejectsOversizeBeforeAuthority(t *testing.T) {
