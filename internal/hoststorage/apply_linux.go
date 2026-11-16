@@ -20,6 +20,22 @@ func (p Policy) Apply(kind, key string) (Assignment, error) {
 	return p.ApplyRequested(kind, key, 0)
 }
 func (p Policy) ApplyRequested(kind, key string, requested uint64) (Assignment, error) {
+	return p.applyRequested(kind, key, requested, nil)
+}
+
+// ApplyFreshRequested reserves only a previously unknown bench allocation. The
+// trusted helper callback runs under the allocation lock after quota confirmation
+// and before ownership is released. It must journal its exact fresh root before
+// exposing it. A failed callback retains the allocation; no retry adopts it.
+// Callers must hold their real operation journal barrier before entering here.
+func (p Policy) ApplyFreshRequested(key string, requested uint64, initialize func(Assignment) error) (Assignment, error) {
+	if initialize == nil {
+		return Assignment{}, ErrFreshAllocation
+	}
+	return p.applyRequested("bench", key, requested, initialize)
+}
+
+func (p Policy) applyRequested(kind, key string, requested uint64, initialize func(Assignment) error) (Assignment, error) {
 	var zero Assignment
 	if os.Geteuid() != 0 {
 		return zero, errors.New("quota helper requires root")
@@ -143,20 +159,39 @@ func (p Policy) ApplyRequested(kind, key string, requested uint64) (Assignment, 
 	if e = p.checkLedger(l); e != nil {
 		return zero, e
 	}
-	if l.filesystem() != volumeID {
+	if l.Filesystem() != volumeID {
 		return zero, errors.New("filesystem UUID differs from the allocation ledger; explicit recovery required")
 	}
 	if e = p.anchor(); e != nil {
 		return zero, e
 	}
-	if l.FormatVersion != 2 || p.upgradingInodes {
+	if l.FormatVersion < 2 || p.upgradingInodes {
 		p.bindLedger(&l)
 		if e = save(p.Ledger, filepath.Join(p.Ledger, "assignments.json"), l); e != nil {
 			return zero, e
 		}
 	}
 
+	return p.applyLedger(l, kind, key, name, path, requested, size, inodes, fixed, fs, initialize)
+}
+
+// applyLedger runs only after the caller holds the validated allocation lock.
+func (p Policy) applyLedger(l ledger, kind, key, name, path string, requested, size, inodes uint64, fixed uint32, fs syscall.Statfs_t, initialize func(Assignment) error) (Assignment, error) {
+	var zero Assignment
+	var e error
+
 	a, known := l.Assignments[name]
+	if initialize != nil && known {
+		return zero, ErrFreshAllocation
+	}
+	if kind == "bench" {
+		if _, fresh := l.Fresh[name]; fresh {
+			return zero, ErrRegisteredAllocation
+		}
+		if err := p.refuseRegisteredAllocation(key); err != nil {
+			return zero, err
+		}
+	}
 	reserved := p.StoreInodes + p.MirrorInodes + p.ReserveInodes
 	for key, assignment := range l.Assignments {
 		if strings.HasPrefix(key, "bench:") && assignment.Bytes != 0 {
@@ -225,6 +260,13 @@ func (p Policy) ApplyRequested(kind, key string, requested uint64) (Assignment, 
 		}
 		a = Assignment{Path: path, ProjectID: id, Bytes: size, Inodes: inodes}
 		l.Assignments[name] = a
+		if initialize != nil {
+			l.FormatVersion = 3
+			if l.Fresh == nil {
+				l.Fresh = map[string]uint32{}
+			}
+			l.Fresh[name] = a.ProjectID
+		}
 		// Persist allocation before filesystem effects. A retry uses the same ID.
 		if e = save(p.Ledger, filepath.Join(p.Ledger, "assignments.json"), l); e != nil {
 			return zero, e
@@ -281,6 +323,12 @@ func (p Policy) ApplyRequested(kind, key string, requested uint64) (Assignment, 
 		if !found || hard != expectedLimit {
 			return zero, errors.New("unable to confirm project byte/inode hard limit")
 		}
+	}
+	if initialize != nil {
+		if e = initialize(a); e != nil {
+			return zero, e
+		}
+		return a, nil
 	}
 	if e = os.Chown(path, p.OwnerUID, p.OwnerGID); e != nil {
 		return zero, e

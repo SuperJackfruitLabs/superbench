@@ -17,7 +17,7 @@ func (p Policy) inspectStorageRecords(key string, raw, anchor []byte, allowAbsen
 	if err := strictStorageJSON(raw, &l); err != nil {
 		return Assignment{}, "", err
 	}
-	if l.FormatVersion != 2 {
+	if l.FormatVersion != 2 && l.FormatVersion != 3 {
 		return Assignment{}, "", errors.New("read-only verification requires an existing bound v2 ledger")
 	}
 	if err := p.checkLedger(l); err != nil {
@@ -43,7 +43,7 @@ func (p Policy) inspectStorageRecords(key string, raw, anchor []byte, allowAbsen
 		Binding              *policyBinding
 		Key                  string
 		Assignment           Assignment
-	}{l.FormatVersion, l.Root, l.FilesystemUUID, l.Binding, key, a}
+	}{2, l.Root, l.FilesystemUUID, l.Binding, key, a}
 	canonical, _ := json.Marshal(selected)
 	return a, storageDigest(canonical), nil
 }

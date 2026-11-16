@@ -19,7 +19,14 @@ func TestOperationAuthorityPinsExistingHeaderWithoutAdoptingAssignmentChanges(t 
 	if err != nil || before != after {
 		t.Fatal("unrelated valid allocation invalidated helper authority", after, err)
 	}
-	for _, fault := range []string{"policy", "journal", "anchor", "legacy", "corrupt"} {
+	l.FormatVersion = 3
+	l.Fresh = map[string]uint32{"bench:target": 10001}
+	updated, _ = json.Marshal(l)
+	_, after, err = p.operationAuthorityRecords(updated, anchor)
+	if err != nil || before != after {
+		t.Fatalf("fresh-format transition invalidated original authority: %v", err)
+	}
+	for _, fault := range []string{"policy", "journal", "anchor", "legacy", "corrupt", "fresh-marker"} {
 		t.Run(fault, func(t *testing.T) {
 			q, rows, owner := storageRecords(t)
 			switch fault {
@@ -34,6 +41,8 @@ func TestOperationAuthorityPinsExistingHeaderWithoutAdoptingAssignmentChanges(t 
 				rows.VolumeID = rows.FilesystemUUID
 				rows.FilesystemUUID = ""
 				rows.Binding = nil
+			case "fresh-marker":
+				rows.FormatVersion, rows.Fresh = 3, map[string]uint32{"bench:source": 10099}
 			case "corrupt":
 				rows.Assignments["bench:source"] = Assignment{Path: "/wrong", ProjectID: 10000, Bytes: 1024, Inodes: q.BenchInodes}
 			}

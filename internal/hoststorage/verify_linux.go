@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/storagecustody"
 	"io"
 	"os"
 	"path/filepath"
@@ -160,36 +161,11 @@ func (p Policy) inspectStorage(ctx context.Context, key string, locked bool, ori
 }
 
 func openStorageFile(path string) (*os.File, error) {
-	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
-	if err != nil {
-		return nil, err
-	}
-	info, err := f.Stat()
-	if err != nil {
-		f.Close()
-		return nil, err
-	}
-	if !info.Mode().IsRegular() || info.Mode().Perm()&0022 != 0 || info.Sys().(*syscall.Stat_t).Uid != 0 {
-		f.Close()
-		return nil, errors.New("storage authority must be a protected root-owned regular file")
-	}
-	return f, nil
+	return storagecustody.OpenProtected(path)
 }
 
 func readStorageFile(path string, max int64) ([]byte, error) {
-	f, err := openStorageFile(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	raw, err := io.ReadAll(io.LimitReader(f, max+1))
-	if err != nil {
-		return nil, err
-	}
-	if int64(len(raw)) > max {
-		return nil, errors.New("storage authority exceeds size limit")
-	}
-	return raw, nil
+	return storagecustody.ReadProtected(path, max)
 }
 
 func managedStorageMount(ctx context.Context, root string, device uint64) (string, string, error) {

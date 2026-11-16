@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/storagecustody"
 	"io"
 	"os"
 	"path/filepath"
@@ -25,25 +26,7 @@ func strictStorageJSON(raw []byte, v any) error { return storageproof.StrictJSON
 func storageDigest(raw []byte) string           { return storageproof.Digest(raw) }
 
 func physicalStorageRoot(root string) (uint64, uint64, error) {
-	if !filepath.IsAbs(root) || filepath.Clean(root) != root || root == "/" {
-		return 0, 0, errors.New("storage root must be an existing physical absolute directory")
-	}
-	physical, err := filepath.EvalSymlinks(root)
-	if err != nil {
-		return 0, 0, err
-	}
-	if physical != root {
-		return 0, 0, errors.New("storage root contains a symlink")
-	}
-	info, err := os.Lstat(root)
-	if err != nil {
-		return 0, 0, err
-	}
-	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-		return 0, 0, errors.New("storage root is not a directory")
-	}
-	st := info.Sys().(*syscall.Stat_t)
-	return uint64(st.Dev), st.Ino, nil
+	return storagecustody.PhysicalRoot(root)
 }
 
 // InspectStorage never allocates, creates a missing root, repairs an anchor or

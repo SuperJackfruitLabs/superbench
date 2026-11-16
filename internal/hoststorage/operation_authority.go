@@ -10,7 +10,7 @@ func (p Policy) operationAuthorityRecords(raw, anchor []byte) (string, string, e
 	if err := strictStorageJSON(raw, &l); err != nil {
 		return "", "", err
 	}
-	if l.FormatVersion != 2 {
+	if l.FormatVersion != 2 && l.FormatVersion != 3 {
 		return "", "", errors.New("operation authority requires existing bound v2 ledger")
 	}
 	if err := p.checkLedger(l); err != nil {
@@ -27,7 +27,7 @@ func (p Policy) operationAuthorityRecords(raw, anchor []byte) (string, string, e
 		FormatVersion        int
 		Root, FilesystemUUID string
 		Binding              *policyBinding
-	}{l.FormatVersion, l.Root, l.FilesystemUUID, l.Binding}
+	}{2, l.Root, l.FilesystemUUID, l.Binding}
 	canonical, _ := json.Marshal(header)
 	return l.FilesystemUUID, storageDigest(canonical), nil
 }

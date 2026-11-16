@@ -2,15 +2,12 @@
 package hoststorage
 
 import (
-	"encoding/json"
 	"errors"
-	"fmt"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/allocationledger"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotahelper"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/storagecustody"
-	"os"
 	"path/filepath"
 	"regexp"
-	"syscall"
 )
 
 type Policy struct {
@@ -34,15 +31,7 @@ type Policy struct {
 type Assignment = quotahelper.Assignment
 type CapacityError = quotahelper.CapacityError
 
-type ledger struct {
-	FormatVersion  int            `json:",omitempty"`
-	FilesystemUUID string         `json:",omitempty"`
-	VolumeID       string         `json:",omitempty"`
-	Binding        *policyBinding `json:",omitempty"`
-	Root           string
-	Next           uint32
-	Assignments    map[string]Assignment
-}
+type ledger = allocationledger.Ledger
 
 var Key = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$`)
 var volumePattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
@@ -91,170 +80,17 @@ func Load(path string) (Policy, error) {
 }
 
 func rootOwnedDirectory(path string, private bool) error {
-	if e := trustedAncestors(path); e != nil {
-		return e
-	}
-	stat, e := os.Lstat(path)
-	if e != nil {
-		return e
-	}
-	if !stat.IsDir() || stat.Mode()&os.ModeSymlink != 0 || stat.Sys().(*syscall.Stat_t).Uid != 0 || stat.Mode().Perm()&0022 != 0 {
-		return fmt.Errorf("%s must be a root-owned directory without group/world write", path)
-	}
-	actual, e := filepath.EvalSymlinks(path)
-	if e != nil {
-		return e
-	}
-	if actual != path {
-		return errors.New("quota policy directory traverses a symlink")
-	}
-	if private && stat.Mode().Perm()&0077 != 0 {
-		return errors.New("privileged ledger directory must be private")
-	}
-	return nil
+	return storagecustody.RootOwnedDirectory(path, private)
 }
-func save(dir, path string, v any) error {
-	raw, e := json.MarshalIndent(v, "", "  ")
-	if e != nil {
-		return e
-	}
-	f, e := os.CreateTemp(dir, "ledger-*")
-	if e != nil {
-		return e
-	}
-	defer os.Remove(f.Name())
-	if _, e = f.Write(raw); e != nil {
-		f.Close()
-		return e
-	}
-	if e = f.Sync(); e != nil {
-		f.Close()
-		return e
-	}
-	if e = f.Close(); e != nil {
-		return e
-	}
-	if e = os.Rename(f.Name(), path); e != nil {
-		return e
-	}
-	d, e := os.Open(dir)
-	if e != nil {
-		return e
-	}
-	defer d.Close()
-	return d.Sync()
-}
+func save(dir, path string, v any) error { return allocationledger.Save(dir, path, v) }
 
 // Root-owned children beneath a root-owned sticky directory are protected too;
 // other writable ancestors would let a caller swap a checked policy/ledger path.
 func trustedAncestors(path string) error { return storagecustody.TrustedAncestors(path) }
-
 func (p Policy) checkLedger(l ledger) error {
-	if e := p.ledgerHeader(l); e != nil {
-		return e
-	}
-	if l.Root != p.Root || l.Assignments == nil || l.Next < 10000 {
-		return errors.New("privileged ledger conflicts with policy")
-	}
-	seen := map[uint32]bool{}
-	for name, a := range l.Assignments {
-		var path string
-		var bytes, inodes uint64
-		switch name {
-		case "store":
-			path = filepath.Join(p.Root, "store")
-			bytes = p.StoreBytes
-			inodes = p.StoreInodes
-			if a.ProjectID != 100 {
-				return errors.New("invalid store project")
-			}
-		case "mirrors":
-			path = filepath.Join(p.Root, "mirrors")
-			bytes = p.MirrorBytes
-			inodes = p.MirrorInodes
-			if a.ProjectID != 101 {
-				return errors.New("invalid mirror project")
-			}
-		default:
-			if len(name) < 7 || name[:6] != "bench:" || !Key.MatchString(name[6:]) || a.ProjectID < 10000 || a.ProjectID >= l.Next {
-				return errors.New("invalid bench allocation")
-			}
-			path = filepath.Join(p.Root, "benches", name[6:])
-			bytes = p.BenchBytes
-			if l.FormatVersion == 2 && a.Bytes != 0 {
-				if a.Bytes < 1024 || a.Bytes%1024 != 0 || a.Bytes > p.BenchBytes {
-					return errors.New("bench allocation exceeds pinned quota ceiling")
-				}
-				bytes = a.Bytes
-			}
-			inodes = p.BenchInodes
-			if a.Bytes == 0 {
-				bytes = 0
-				inodes = 0
-			} // A zero-byte bench assignment is a permanent retired ID.
-		}
-		if seen[a.ProjectID] || a.Path != path || a.Bytes != bytes || (!p.upgradingInodes || a.Bytes == 0) && a.Inodes != inodes {
-			return errors.New("ledger allocation conflicts with policy; explicit migration required")
-		}
-		seen[a.ProjectID] = true
-	}
-	return nil
+	return l.Validate(p.Root, p.binding(), p.upgradingInodes)
 }
 
-type ownerRecord struct{ Root, Ledger string }
+type ownerRecord = storagecustody.OwnerRecord
 
-func (p Policy) anchor() error {
-	path := filepath.Join(p.Root, ".superbench-quota-owner.json")
-	expected := ownerRecord{Root: p.Root, Ledger: p.Ledger}
-	stage, e := os.CreateTemp(p.Root, ".quota-owner-")
-	if e != nil {
-		return e
-	}
-	defer os.Remove(stage.Name())
-	raw, e := json.Marshal(expected)
-	if e != nil {
-		stage.Close()
-		return e
-	}
-	if _, e = stage.Write(raw); e != nil {
-		stage.Close()
-		return e
-	}
-	if e = stage.Sync(); e != nil {
-		stage.Close()
-		return e
-	}
-	if e = stage.Close(); e != nil {
-		return e
-	}
-	// Publish complete contents without replacing an anchor from a competing ledger.
-	if e = os.Link(stage.Name(), path); os.IsExist(e) {
-		stat, e := os.Lstat(path)
-		if e != nil {
-			return e
-		}
-		if !stat.Mode().IsRegular() || stat.Sys().(*syscall.Stat_t).Uid != 0 || stat.Mode().Perm()&0022 != 0 {
-			return errors.New("invalid filesystem ownership anchor")
-		}
-		raw, e := os.ReadFile(path)
-		if e != nil {
-			return e
-		}
-		var actual ownerRecord
-		if e = json.Unmarshal(raw, &actual); e != nil {
-			return e
-		}
-		if actual != expected {
-			return errors.New("filesystem already belongs to another quota ledger")
-		}
-		return nil
-	} else if e != nil {
-		return e
-	}
-	dir, e := os.Open(p.Root)
-	if e != nil {
-		return e
-	}
-	defer dir.Close()
-	return dir.Sync()
-}
+func (p Policy) anchor() error { return storagecustody.Anchor(p.Root, p.Ledger) }

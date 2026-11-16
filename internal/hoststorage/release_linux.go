@@ -50,7 +50,7 @@ func (p Policy) Release(key string, project uint32) (Assignment, error) {
 		return zero, e
 	}
 	fields := strings.Fields(identity)
-	if len(fields) != 2 || fields[1] != "/" || strings.ToLower(fields[0]) != l.filesystem() {
+	if len(fields) != 2 || fields[1] != "/" || strings.ToLower(fields[0]) != l.Filesystem() {
 		return zero, errors.New("filesystem changed during release")
 	}
 	a, ok := l.Assignments["bench:"+key]

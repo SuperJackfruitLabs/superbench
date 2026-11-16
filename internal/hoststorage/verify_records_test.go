@@ -24,6 +24,7 @@ func TestStorageLedgerSelectedBindingSurvivesUnrelatedAllocations(t *testing.T) 
 	}
 	l.Next++
 	l.Assignments["bench:target"] = Assignment{Path: "/bench/benches/target", ProjectID: 10001, Bytes: 1024, Inodes: p.BenchInodes}
+	l.FormatVersion, l.Fresh = 3, map[string]uint32{"bench:target": 10001}
 	updated, _ := json.Marshal(l)
 	again, sameDigest, err := p.verifyStorageRecords("source", updated, anchor)
 	if err != nil || a != again || digest != sameDigest {
