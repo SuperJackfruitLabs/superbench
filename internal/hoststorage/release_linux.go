@@ -21,6 +21,9 @@ func (p Policy) Release(key string, project uint32) (Assignment, error) {
 	if !Key.MatchString(key) || project < 10000 {
 		return zero, errors.New("invalid bench assignment")
 	}
+	if e := p.checkLegacyRelease(key, project); e != nil {
+		return zero, e
+	}
 	// Reuse enforcement, filesystem/UUID/anchor and trusted-directory validation.
 	if _, e := p.Apply("shared", "store"); e != nil {
 		return zero, e
@@ -44,6 +47,9 @@ func (p Policy) Release(key string, project uint32) (Assignment, error) {
 	}
 	if e = p.checkLedger(l); e != nil {
 		return zero, e
+	}
+	if l.FreshBench(key) {
+		return zero, ErrRegisteredAllocation
 	}
 	identity, e := xfs("/usr/bin/findmnt", "--noheadings", "--output", "UUID,FSROOT", "--target", p.Root)
 	if e != nil {
