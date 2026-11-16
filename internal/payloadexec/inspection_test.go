@@ -9,7 +9,7 @@ import (
 )
 
 func inspectionRequest() InspectionRequest {
-	return InspectionRequest{InspectionVersion, "example", "0123456789abcdef0123456789abcdef", strings.Repeat("a", 64)}
+	return InspectionRequest{Version: InspectionVersion, Key: "example", LayoutID: "0123456789abcdef0123456789abcdef", PolicyDigest: strings.Repeat("a", 64)}
 }
 
 func TestInspectionIsDistinctCanonicalScopeFreeAction(t *testing.T) {

@@ -5,6 +5,7 @@ package payloadexec
 import (
 	"encoding/binary"
 	"errors"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/gitpolicy"
 	"io"
 	"os"
 	"syscall"
@@ -37,7 +38,7 @@ func framePipe(t *testing.T, raw []byte) *os.File {
 func TestGitFramePreservesExactSubsequentStdin(t *testing.T) {
 	r := launchRequest()
 	r.Kind = "git"
-	r.Arguments = []string{"git", "index-pack", "--stdin", "--strict"}
+	r.Arguments = gitpolicy.Arguments("index-pack", "--stdin", "--strict")
 	pack := []byte{'P', 'A', 'C', 'K', 0, '\n', 255, 0}
 	input := framePipe(t, append(frameBytes(t, r), pack...))
 	got, err := readFrame(input, time.Second)
