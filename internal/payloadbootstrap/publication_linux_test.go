@@ -126,3 +126,50 @@ func TestPublicationRefusesUnsafeExistingDirectoryWithoutRepair(t *testing.T) {
 		})
 	}
 }
+
+func TestPublicationRefusesReplacedStateRootWithoutTouchingEitherTree(t *testing.T) {
+	p, state := publicationFixture(t)
+	dir, err := publicationDirectory(state, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dir.Close()
+	if err = checkPublicationDirectory(state, dir, p); err != nil {
+		t.Fatalf("original publication custody refused: %v", err)
+	}
+	retained := p.StateRoot + "-retained"
+	if err = os.Rename(p.StateRoot, retained); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(retained) })
+	if err = os.Mkdir(p.StateRoot, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Mkdir(filepath.Join(p.StateRoot, "payload-layouts"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	paths := map[string]string{
+		filepath.Join(retained, "payload-layouts", "sentinel"):    "original retained",
+		filepath.Join(p.StateRoot, "payload-layouts", "sentinel"): "replacement retained",
+	}
+	before := make(map[string]os.FileInfo)
+	for path, text := range paths {
+		if err = os.WriteFile(path, []byte(text), 0600); err != nil {
+			t.Fatal(err)
+		}
+		before[path], err = os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err = checkPublicationDirectory(state, dir, p); !errors.Is(err, ErrBootstrap) {
+		t.Fatalf("replacement state root accepted: %v", err)
+	}
+	for path, text := range paths {
+		raw, e := os.ReadFile(path)
+		after, statErr := os.Stat(path)
+		if e != nil || statErr != nil || string(raw) != text || !sameMetadata(before[path], after) {
+			t.Fatalf("publication observer changed retained tree: %s: %q %v %v", path, raw, e, statErr)
+		}
+	}
+}
