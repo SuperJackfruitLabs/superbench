@@ -18,6 +18,10 @@ func main() {
 	// Exec may have irreversibly dropped credentials before returning. Never
 	// retry, restore privileges, print private inputs, or continue this process.
 	err := payloadexec.Exec()
+	if err == nil {
+		// Only the read-only inspection variant returns successfully.
+		return
+	}
 	fmt.Fprintf(os.Stderr, "managed payload refused: %s\n", payloadexec.RefusalCode(err))
 	os.Exit(1)
 }
