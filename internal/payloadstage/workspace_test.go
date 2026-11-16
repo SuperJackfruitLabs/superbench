@@ -22,3 +22,23 @@ func TestMissingCoreExecutionCannotAdoptExistingFilesystemLayout(t *testing.T) {
 		}
 	}
 }
+
+func TestScalarLegacyLayoutRefusesBeforeInstalledAuthority(t *testing.T) {
+	b := &model.Bench{Key: "card", RegistrationID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Path: "/data/benches/card", Lease: &model.Lease{Execution: &model.Execution{Phase: "starting"}}}
+	prepare, err := Scalar(serviceidentity.Authority{}, b)
+	if prepare != nil || !errors.Is(err, ErrRegistration) {
+		t.Fatalf("legacy layout gained transport: %v %v", prepare, err)
+	}
+	b.PayloadLayoutVersion = "superbench.payload-layout.v1"
+	b.AllocationRoot = b.Path
+	b.Path += "/worktree"
+	prepare, err = Scalar(serviceidentity.Authority{}, b)
+	if prepare != nil || !errors.Is(err, serviceidentity.ErrAuthority) {
+		t.Fatalf("uninstalled scalar transport: %v %v", prepare, err)
+	}
+	b.Lease.StopRequested = true
+	prepare, err = Scalar(serviceidentity.Authority{}, b)
+	if prepare != nil || !errors.Is(err, ErrRegistration) {
+		t.Fatalf("stopped scalar gained transport: %v %v", prepare, err)
+	}
+}

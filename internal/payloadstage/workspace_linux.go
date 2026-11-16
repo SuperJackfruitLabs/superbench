@@ -51,11 +51,24 @@ func workspace(authority serviceidentity.Authority, b *model.Bench, member strin
 			return nil, err
 		}
 		expectedRoot := filepath.Join(policy.DataRoot, "benches", b.Key)
-		if cmd == nil || e == nil || !reflect.DeepEqual(*e, *b.Lease.Execution) || e.Root != policy.CgroupRoot || e.Log != filepath.Join(policy.StateRoot, "run-"+e.ID+".log") || b.Path != expectedRoot {
+		scalar := b.Workspace == nil
+		expectedPath := expectedRoot
+		layoutID := b.RegistrationID
+		if scalar {
+			expectedPath = filepath.Join(expectedRoot, "worktree")
+			if b.AllocationRoot != expectedRoot {
+				return nil, ErrRegistration
+			}
+		} else {
+			layoutID = b.Workspace.ID
+		}
+		if cmd == nil || e == nil || !reflect.DeepEqual(*e, *b.Lease.Execution) || e.Root != policy.CgroupRoot || e.Log != filepath.Join(policy.StateRoot, "run-"+e.ID+".log") || b.Path != expectedPath {
 			return nil, ErrRegistration
 		}
 		expectedDir := expectedRoot
-		if !root {
+		if scalar {
+			expectedDir = expectedPath
+		} else if !root {
 			expectedDir = filepath.Join(expectedRoot, member)
 		}
 		if cmd.Dir != expectedDir {
@@ -69,7 +82,7 @@ func workspace(authority serviceidentity.Authority, b *model.Bench, member strin
 				return nil, ErrCache
 			}
 		}
-		request := payloadexec.Request{Version: payloadexec.Version, Key: b.Key, LayoutID: b.Workspace.ID, Member: member, Root: root, Kind: "payload", Scope: payloadexec.Scope{ID: e.ID, HostID: e.HostID, BootID: e.BootID}, Arguments: append([]string(nil), cmd.Args...)}
+		request := payloadexec.Request{Version: payloadexec.Version, Key: b.Key, LayoutID: layoutID, Member: member, Root: root, Kind: "payload", Scope: payloadexec.Scope{ID: e.ID, HostID: e.HostID, BootID: e.BootID}, Arguments: append([]string(nil), cmd.Args...)}
 		registry, err := serviceidentity.ForPolicy(policy)
 		if err != nil {
 			return nil, err
@@ -79,11 +92,18 @@ func workspace(authority serviceidentity.Authority, b *model.Bench, member strin
 		if err != nil {
 			return nil, errors.Join(ErrRegistration, err)
 		}
-		if layout.Scalar || len(layout.Members) != len(b.Workspace.Members) {
+		if layout.Scalar != scalar {
 			return nil, ErrRegistration
 		}
-		found := root
-		for i, m := range b.Workspace.Members {
+		if !scalar && len(layout.Members) != len(b.Workspace.Members) {
+			return nil, ErrRegistration
+		}
+		found := root || scalar
+		var members []model.WorkspaceMember
+		if !scalar {
+			members = b.Workspace.Members
+		}
+		for i, m := range members {
 			if layout.Members[i].Name != m.Name || m.Path != filepath.Join(expectedRoot, m.Name) {
 				return nil, ErrRegistration
 			}

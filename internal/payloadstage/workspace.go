@@ -39,3 +39,20 @@ func Workspace(authority serviceidentity.Authority, bench *model.Bench, member s
 	}
 	return workspace(authority, &copy, member, root), nil
 }
+
+// Scalar requires the fresh private layout marker. An installed service must
+// never reinterpret a legacy same-UID checkout as a registered payload tree.
+func Scalar(authority serviceidentity.Authority, bench *model.Bench) (stageexec.PrepareTransport, error) {
+	if bench == nil || bench.Workspace != nil || bench.PayloadLayoutVersion == "" || model.ValidateScalarLayout(bench) != nil || bench.Lease == nil || bench.Lease.Execution == nil || bench.Lease.Execution.Phase != "starting" || bench.Lease.StopRequested || bench.ArchivedAt != "" {
+		return nil, ErrRegistration
+	}
+	copy := *bench
+	lease := *bench.Lease
+	scope := *lease.Execution
+	lease.Execution = &scope
+	copy.Lease = &lease
+	if _, err := authority.Policy(); err != nil {
+		return nil, err
+	}
+	return workspace(authority, &copy, "", false), nil
+}
