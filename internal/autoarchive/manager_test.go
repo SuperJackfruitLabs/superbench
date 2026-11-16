@@ -279,7 +279,7 @@ func updateRecord(t *testing.T, f fixture, key string, mutate func(map[string]an
 		t.Fatal(err)
 	}
 	if version == 11 {
-		if _, err = db.Exec("DROP TABLE workspace_operation_cancellations; DROP TABLE workspace_operation_runs; DROP TABLE workspace_operations; PRAGMA user_version=11"); err != nil {
+		if _, err = db.Exec("DROP TABLE IF EXISTS workspace_handoff_imports; DROP TABLE IF EXISTS workspace_handoff_exports; DROP TABLE IF EXISTS workspace_handoff_offers; DROP TABLE IF EXISTS workspace_handoff_identity; DROP TABLE initialization_repair_operations; DROP TABLE workspace_operation_cancellations; DROP TABLE workspace_operation_runs; DROP TABLE workspace_operations; PRAGMA user_version=11"); err != nil {
 			t.Fatal(err)
 		}
 	}
