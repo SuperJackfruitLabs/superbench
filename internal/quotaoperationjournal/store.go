@@ -20,17 +20,21 @@ type Store struct {
 	Directory string
 	// Identity pins this lock callback to exactly one original typed invocation.
 	// Journal methods cannot substitute another operation, epoch or authority.
-	Identity quotaoperation.Identity
-	Check    func(quotaoperation.Identity) error
-	owner    uint32
+	Identity          quotaoperation.Identity
+	Check             func(quotaoperation.Identity) error
+	owner             uint32
+	finishFresh       func() error
+	anchored          bool
+	anchoredCheck     func(quotaoperation.Identity) error
+	anchoredDirectory string
 }
 
-// Create refuses any legacy evidence or interrupted indexed creation. Migration
+// create refuses any legacy evidence or interrupted indexed creation. Migration
 // requires a separate validator and is intentionally not an implicit fallback.
-func (s Store) Create(ctx context.Context, fn func(*Journal) error) error {
+func (s Store) create(ctx context.Context, fn func(*Journal) error) error {
 	return s.within(ctx, true, fn)
 }
-func (s Store) Within(ctx context.Context, fn func(*Journal) error) error {
+func (s Store) withinExisting(ctx context.Context, fn func(*Journal) error) error {
 	return s.within(ctx, false, fn)
 }
 
@@ -239,6 +243,14 @@ func (s Store) within(ctx context.Context, create bool, fn func(*Journal) error)
 	}
 	if err = validateSchema(db); err != nil {
 		return err
+	}
+	if err = j.ready(); err != nil {
+		return err
+	}
+	if create && s.finishFresh != nil {
+		if err = s.finishFresh(); err != nil {
+			return err
+		}
 	}
 	return j.ready()
 }

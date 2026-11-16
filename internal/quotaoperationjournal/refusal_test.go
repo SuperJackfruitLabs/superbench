@@ -45,10 +45,10 @@ func (v evidence) unchanged(t *testing.T) {
 }
 func normal(t *testing.T, s Store) {
 	t.Helper()
-	if e := s.Create(context.Background(), func(j *Journal) error { return j.Reserve(s.Identity) }); e != nil {
+	if e := s.create(context.Background(), func(j *Journal) error { return j.Reserve(s.Identity) }); e != nil {
 		t.Fatal("valid baseline creation", e)
 	}
-	if e := s.Within(context.Background(), func(j *Journal) error {
+	if e := s.withinExisting(context.Background(), func(j *Journal) error {
 		found, denied, e := j.Lookup(s.Identity)
 		if e != nil {
 			return e
@@ -64,7 +64,7 @@ func normal(t *testing.T, s Store) {
 func rejectWithin(t *testing.T, s Store, want error) {
 	t.Helper()
 	called := false
-	err := s.Within(context.Background(), func(*Journal) error { called = true; return nil })
+	err := s.withinExisting(context.Background(), func(*Journal) error { called = true; return nil })
 	if called {
 		t.Fatal("refusal reached callback/effect boundary")
 	}
@@ -116,7 +116,7 @@ func TestInterruptedCreationAndUnknownMetadataRefuseWithoutRemoval(t *testing.T)
 				retained = capture(t, path)
 			}
 			called := false
-			e := s.Create(context.Background(), func(*Journal) error { called = true; return nil })
+			e := s.create(context.Background(), func(*Journal) error { called = true; return nil })
 			if called || !errors.Is(e, ErrAuthority) {
 				t.Fatal("existing namespace was adopted or refused for unrelated error", called, e)
 			}
@@ -141,7 +141,7 @@ func TestPrivilegedOpenRefusesChangedFilesAndSchema(t *testing.T) {
 			switch fault {
 			case "future", "trigger":
 				injected := false
-				e := s.Within(context.Background(), func(j *Journal) error {
+				e := s.withinExisting(context.Background(), func(j *Journal) error {
 					statement := `PRAGMA user_version=999`
 					if fault == "trigger" {
 						statement = `CREATE TRIGGER ignored BEFORE INSERT ON identities BEGIN SELECT RAISE(IGNORE); END`
@@ -186,7 +186,7 @@ func TestPrivilegedOpenRefusesChangedFilesAndSchema(t *testing.T) {
 			}
 			retained := capture(t, db)
 			called := false
-			e := s.Within(context.Background(), func(*Journal) error { called = true; return nil })
+			e := s.withinExisting(context.Background(), func(*Journal) error { called = true; return nil })
 			if called {
 				t.Fatal("unsafe journal reached callback/effect boundary")
 			}

@@ -19,6 +19,16 @@ func fixture(t *testing.T) (Store, quotaoperation.Identity) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err = os.Chmod(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Lstat(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !info.IsDir() || info.Mode().Perm() != 0700 {
+		t.Fatalf("fixture parent is not private: %v", info.Mode())
+	}
 	dir := filepath.Join(root, "ledger")
 	if err := os.Mkdir(dir, 0700); err != nil {
 		t.Fatal(err)
@@ -34,7 +44,7 @@ func fixture(t *testing.T) (Store, quotaoperation.Identity) {
 }
 func create(t *testing.T, s Store) {
 	t.Helper()
-	if err := s.Create(context.Background(), func(*Journal) error { return nil }); err != nil {
+	if err := s.create(context.Background(), func(*Journal) error { return nil }); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -42,7 +52,7 @@ func create(t *testing.T, s Store) {
 func TestPermanentHistoryDoesNotExhaustNewIdentities(t *testing.T) {
 	s, i := fixture(t)
 	create(t, s)
-	err := s.Within(context.Background(), func(j *Journal) error {
+	err := s.withinExisting(context.Background(), func(j *Journal) error {
 		// Seed valid permanent history in one real durable transaction. The public
 		// admission below must remain indexed after the old lifetime ceiling.
 		tx, e := j.db.Begin()
@@ -77,7 +87,7 @@ func TestPermanentHistoryDoesNotExhaustNewIdentities(t *testing.T) {
 			}
 			return nil
 		}
-		if err = historical.Within(context.Background(), func(j *Journal) error {
+		if err = historical.withinExisting(context.Background(), func(j *Journal) error {
 			found, denied, e := j.Lookup(old)
 			if e != nil {
 				return e
@@ -95,7 +105,7 @@ func TestPermanentHistoryDoesNotExhaustNewIdentities(t *testing.T) {
 func TestPendingNeverAuthorizesOrOverwritesAnIdentity(t *testing.T) {
 	s, i := fixture(t)
 	create(t, s)
-	err := s.Within(context.Background(), func(j *Journal) error {
+	err := s.withinExisting(context.Background(), func(j *Journal) error {
 		name := "pending-" + i.OperationID + "-" + i.Epoch + "-123"
 		if e := j.RetainPending(name, i); e != nil {
 			return e
@@ -135,7 +145,7 @@ func TestPendingNeverAuthorizesOrOverwritesAnIdentity(t *testing.T) {
 func TestFullPendingBudgetStillPermitsKnownDenial(t *testing.T) {
 	s, i := fixture(t)
 	create(t, s)
-	err := s.Within(context.Background(), func(j *Journal) error {
+	err := s.withinExisting(context.Background(), func(j *Journal) error {
 		if e := j.Reserve(i); e != nil {
 			return e
 		}
@@ -167,7 +177,7 @@ func TestFullPendingBudgetStillPermitsKnownDenial(t *testing.T) {
 func TestJournalCannotEscapeLockCallback(t *testing.T) {
 	s, i := fixture(t)
 	var saved *Journal
-	if e := s.Create(context.Background(), func(j *Journal) error { saved = j; return nil }); e != nil {
+	if e := s.create(context.Background(), func(j *Journal) error { saved = j; return nil }); e != nil {
 		t.Fatal(e)
 	}
 	if e := saved.Reserve(i); !errors.Is(e, ErrAuthority) {
@@ -187,7 +197,7 @@ func TestAuthorityAndNamespaceAreRecheckedBeforeAdmission(t *testing.T) {
 				}
 				return nil
 			}
-			err := s.Within(context.Background(), func(j *Journal) error {
+			err := s.withinExisting(context.Background(), func(j *Journal) error {
 				switch kind {
 				case "policy":
 					valid = false
@@ -219,10 +229,10 @@ func TestAuthorityAndNamespaceAreRecheckedBeforeAdmission(t *testing.T) {
 func TestSameOperationsLockBoundsWaiting(t *testing.T) {
 	s, _ := fixture(t)
 	create(t, s)
-	if e := s.Within(context.Background(), func(*Journal) error {
+	if e := s.withinExisting(context.Background(), func(*Journal) error {
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 		defer cancel()
-		e := s.Within(ctx, func(*Journal) error { t.Error("second worker bypassed ledger lock"); return nil })
+		e := s.withinExisting(ctx, func(*Journal) error { t.Error("second worker bypassed ledger lock"); return nil })
 		if !errors.Is(e, context.DeadlineExceeded) {
 			return fmt.Errorf("lock wait: %w", e)
 		}
@@ -235,13 +245,13 @@ func TestSameOperationsLockBoundsWaiting(t *testing.T) {
 func TestMissingNamedLockNeverCreatesASecondLockDomain(t *testing.T) {
 	s, i := fixture(t)
 	create(t, s)
-	err := s.Within(context.Background(), func(j *Journal) error {
+	err := s.withinExisting(context.Background(), func(j *Journal) error {
 		// This callback still holds the original inode's flock after unlink.
 		path := filepath.Join(s.Directory, "operations.lock")
 		if e := os.Remove(path); e != nil {
 			return e
 		}
-		e := s.Within(context.Background(), func(*Journal) error { t.Error("replacement lock domain adopted"); return nil })
+		e := s.withinExisting(context.Background(), func(*Journal) error { t.Error("replacement lock domain adopted"); return nil })
 		if !errors.Is(e, os.ErrNotExist) {
 			t.Errorf("missing lock was recreated: %v", e)
 		}
@@ -261,7 +271,7 @@ func TestMissingNamedLockNeverCreatesASecondLockDomain(t *testing.T) {
 func TestCallbackCannotSubstituteIdentityUnderAnotherAuthorityCheck(t *testing.T) {
 	s, i := fixture(t)
 	create(t, s)
-	if e := s.Within(context.Background(), func(j *Journal) error {
+	if e := s.withinExisting(context.Background(), func(j *Journal) error {
 		other := i
 		other.OperationID = strings.Repeat("f", 64)
 		if e := j.Reserve(other); !errors.Is(e, ErrAuthority) {
