@@ -2,8 +2,7 @@
 //
 // Not a classic Pages project: wrangler no longer creates those. The custom domains are declared
 // here, so `wrangler deploy` attaches them; no dashboard step. Deployed by
-// scripts/deploy-sites.sh once the deploy workflow exists; until superbench.dev is in the
-// Cloudflare account, nothing deploys this.
+// scripts/deploy-sites.sh from .github/workflows/sites.yml on merge to main.
 {
   "name": "superbench-site",
   "compatibility_date": "2026-10-01",

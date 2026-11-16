@@ -16,8 +16,9 @@ Astro 7 needs Node 22.23.4 or newer.
 
 A Cloudflare Worker with static assets named `superbench-site`, configured by
 `landing/wrangler.jsonc`. The custom domains (the apex and `www`) are declared there, so a deploy
-attaches them. Nothing deploys it yet: the deploy workflow, which runs from the GitHub mirror with
-the organisation's Cloudflare token, is added once `superbench.dev` is in the Cloudflare account.
+attaches them. `scripts/deploy-sites.sh` builds, checks and deploys it. `.github/workflows/sites.yml`
+runs that script from the GitHub mirror, with the organisation's Cloudflare token, on every merge to
+main that touches the site. It can also be run by hand.
 Forgejo CI builds the site on pull requests that touch `landing/`.
 `assets.not_found_handling: "404-page"` serves `dist/404.html` with a real 404.
 
