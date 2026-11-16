@@ -9,7 +9,10 @@
 - Checkpoints require clean committed work and remote confirmation. Never force-push,
   auto-commit unknown files, or reset/delete work to make recovery succeed.
 - No suite consumer contracts are implemented here. Shared contracts need treaty and
-  charter review before integration. No production deployment or tags.
+  charter review before integration. The product has no production deployment and no
+  tags. Its landing site (`landing/`, superbench.dev) is the exception: it deploys from
+  the GitHub mirror like every other product's, and may say only what the claims ledger
+  allows (`landing/scripts/check-copy.mjs`).
 - Run `sh scripts/check.sh` before publishing. External runtime imports are the pinned SQLite driver in storage adapters and
   x/sys/unix in the macOS peer-credential adapter and the pinned TOML parser only
   in internal/setup/config.go. Protocol/client/service layers

@@ -1,0 +1,24 @@
+# SuperBench
+
+> One task, one bench: a bench is one task's git worktree, kept warm, fenced and checkpointed between agents' turns. Experimental, not released yet.
+
+SuperBench is a command-line tool (`bench`) and a local daemon that create a git worktree for each task, lease it to one holder at a time, checkpoint it and release it. A checkpoint pushes the bench's existing HEAD to its branch without force and confirms the remote has exactly that commit; it never creates a commit, and a dirty or untracked tree is refused. Leases are cooperative: they stop other `bench` acquisitions, not direct edits or other processes running as the same user, and they never expire on their own. On a managed Linux host with a dedicated XFS mount, each bench gets its own byte and inode caps; elsewhere a quota is recorded, not enforced. Benches start from shared git mirrors and shared or checkout-local caches; the shared package store has the same managed-host limits. A released, clean, remote-confirmed bench can be archived read-only, and deletion waits for a grace period and a person's approval of the exact file list, through local administrative commands. On Linux, supervised runs are fenced in their own cgroup; that is process-tree fencing, not user or mount isolation, so SuperBench is for trusted repositories only. The CLI and daemon talk over a Unix socket with kernel peer-credential checks, and the source opens no TCP listener (read from the source, not asserted by a test). It depends on no other suite product. It is an experimental single-host prototype under the MIT licence.
+
+## Not done yet
+
+- Running a task's payload as a separate user (in progress; today there is no user or mount isolation)
+- More than one host (moving a bench between hosts is a reviewed administrative step)
+- A release: no tags, binaries or installer
+- Automatic lease expiry, remote authentication, a web interface and suite integration
+
+## Links
+
+- [Home](https://superbench.dev)
+- [Source repository](https://github.com/SuperJackfruitLabs/superbench)
+- [README](https://github.com/SuperJackfruitLabs/superbench#readme): what it does today, and what it does not
+- [Release feed](https://github.com/SuperJackfruitLabs/superbench/releases.atom): subscribe to hear about the first release
+
+## Optional
+
+- [Super Jackfruit Labs](https://superjackfruit.com): the company behind SuperBench
+- [Super Jackfruit Labs llms.txt](https://superjackfruit.com/llms.txt): all products in the family

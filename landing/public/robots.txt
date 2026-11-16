@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://superbench.dev/sitemap-index.xml
