@@ -9,8 +9,6 @@ import (
 	"unicode/utf8"
 )
 
-const LayoutVersion = "superbench.payload-layout.v1"
-
 // Thirty-two names of at most 80 ASCII bytes and five pairs of uint64 device /
 // inode identifiers per member fit below this private metadata envelope bound.
 const MaxLayout = 64 << 10

@@ -3,47 +3,20 @@
 package payloadexec
 
 import (
-	"errors"
-	"path/filepath"
 	"strings"
 	"unicode/utf8"
+
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/payloadpolicy"
 )
 
-var ErrPolicy = errors.New("invalid managed payload policy")
+// Compatibility names preserve the existing helper policy API and error identity.
+var ErrPolicy = payloadpolicy.ErrPolicy
 
-// Policy is supplied by the operator through the helper's fixed policy file.
-// Requests cannot select credentials or replace this policy.
-type Policy struct {
-	DaemonUID, DaemonGID, PayloadUID, PayloadGID uint32
-	DataRoot, StateRoot, CgroupRoot              string
-}
+type Policy = payloadpolicy.Policy
 
-func (p Policy) Validate() error {
-	for _, id := range []uint32{p.DaemonUID, p.DaemonGID, p.PayloadUID, p.PayloadGID} {
-		if id == 0 || id == ^uint32(0) {
-			return ErrPolicy
-		}
-	}
-	if p.DaemonUID == p.PayloadUID || p.DaemonGID == p.PayloadGID {
-		return ErrPolicy
-	}
-	for _, path := range []string{p.DataRoot, p.StateRoot, p.CgroupRoot} {
-		if !directory(path) {
-			return ErrPolicy
-		}
-	}
-	for _, pair := range [][2]string{{p.DataRoot, p.StateRoot}, {p.StateRoot, p.DataRoot}} {
-		rel, err := filepath.Rel(pair[0], pair[1])
-		if err != nil || rel == "." || rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-			return ErrPolicy
-		}
-	}
-	return nil
-}
+const LayoutVersion = payloadpolicy.LayoutVersion
 
-func directory(path string) bool {
-	return len(path) <= 4096 && utf8.ValidString(path) && !strings.ContainsRune(path, 0) && filepath.IsAbs(path) && filepath.Clean(path) == path && path != "/"
-}
+func directory(path string) bool { return payloadpolicy.Directory(path) }
 
 // Environment never inherits daemon credentials, loader hooks, shell startup
 // programs, sudo metadata or daemon Git configuration. HOME and TMPDIR must come
