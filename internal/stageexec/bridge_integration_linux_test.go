@@ -95,20 +95,27 @@ type brokenBridgeSink struct{}
 func (brokenBridgeSink) Write([]byte) (int, error) { return 0, bridgePumpFault }
 
 func TestRealBridgeRunnerFencesSetsidPipeHolderBeforeDrainAndSeal(t *testing.T) {
-	runRealBridge(t, true, false, false)
+	runRealBridge(t, true, false, false, 0)
 }
 func TestRealBridgeRunnerPumpFailureRevokesAndNeverSeals(t *testing.T) {
-	runRealBridge(t, false, true, false)
+	runRealBridge(t, false, true, false, 0)
 }
 
 func TestRealBridgeRunnerCancellationStillDrainsAndSeals(t *testing.T) {
-	runRealBridge(t, false, false, true)
+	runRealBridge(t, false, false, true, 0)
 }
 
 // Only this test binary substitutes the fixed sudo command AFTER asserting its
 // exact invocation. This proves real Bridge/Runner composition, not sudo/root
 // credential drop, installed registration authority or kernel cgroup fencing.
-func runRealBridge(t *testing.T, withHolder, failPump, cancelRun bool) {
+func TestRealBridgeOpaqueResultSeparatedAfterFence(t *testing.T) {
+	runRealBridge(t, true, false, false, 128)
+}
+func TestRealBridgeOpaqueResultOverflowCannotPublish(t *testing.T) {
+	runRealBridge(t, false, false, false, 4)
+}
+
+func runRealBridge(t *testing.T, withHolder, failPump, cancelRun bool, resultLimit uint64) {
 	t.Helper()
 	dir := t.TempDir()
 	scope := &execution.Execution{ID: strings.Repeat("1", 32), Root: dir, HostID: strings.Repeat("2", 64), BootID: "00000000-0000-0000-0000-000000000001", Phase: "starting", Log: filepath.Join(dir, "run.log"), LogLimitBytes: 4096}
@@ -202,11 +209,15 @@ func runRealBridge(t *testing.T, withHolder, failPump, cancelRun bool) {
 	}
 	runner.Cancel = func() { cancelled.Store(true); cancelCount.Add(1) }
 	runner.Seal = func(*output.Capture, *int, bool) error { sealed.Store(true); sealCount.Add(1); return nil }
-	result, err := runner.Run(ctx, stageexec.Plan{Execution: scope, Dir: dir, Args: []string{"payload", "known-argument"}, Environment: []string{"LANG=C"}})
+	result, err := runner.Run(ctx, stageexec.Plan{Execution: scope, Dir: dir, Args: []string{"payload", "known-argument"}, Environment: []string{"LANG=C"}, ResultLimitBytes: resultLimit})
 	if watchdog.Err() != nil {
 		t.Fatalf("leader waited for held output instead of reaching fence: %v", watchdog.Err())
 	}
-	if failPump {
+	if resultLimit != 0 && resultLimit < uint64(len("real-bridge-output\n")) {
+		if !errors.Is(err, stageexec.ErrResultOverflow) || result == nil || result.Output != nil || sealed.Load() || !cancelled.Load() {
+			t.Fatalf("overflow published/sealed result: %+v %v sealed=%v cancelled=%v", result, err, sealed.Load(), cancelled.Load())
+		}
+	} else if failPump {
 		if !errors.Is(err, bridgePumpFault) || sealed.Load() || !cancelled.Load() {
 			t.Fatalf("real pump fault did not retain/revoke unsealed owner: %v sealed=%v cancelled=%v", err, sealed.Load(), cancelled.Load())
 		}
@@ -220,7 +231,14 @@ func runRealBridge(t *testing.T, withHolder, failPump, cancelRun bool) {
 			t.Fatalf("real bridge composition failed: %v %+v sealed=%v", err, result, sealed.Load())
 		}
 		raw, readErr := os.ReadFile(scope.Log)
-		if readErr != nil || string(raw) != "real-bridge-output\n" {
+		wantLog := "real-bridge-output\n"
+		if resultLimit != 0 {
+			wantLog = ""
+			if string(result.Output) != "real-bridge-output\n" {
+				t.Fatalf("lost separate result: %q", result.Output)
+			}
+		}
+		if readErr != nil || string(raw) != wantLog {
 			t.Fatalf("capture writer close lost actual bytes: %q %v", raw, readErr)
 		}
 	}

@@ -22,12 +22,18 @@ type Plan struct {
 	Execution         *execution.Execution
 	Dir               string
 	Args, Environment []string
+	// ResultLimitBytes explicitly separates bounded stdout from the execution log.
+	// Zero preserves the existing combined stdout/stderr capture.
+	ResultLimitBytes uint64
 }
 
 type Result struct {
 	Execution    *execution.Execution
 	ExitCode     int
 	LogTruncated bool
+	// Output is private opaque stdout, populated only on stopped, sealed success.
+	// It is not checkpoint, release or settlement evidence.
+	Output []byte
 }
 
 type Runner struct {
@@ -61,6 +67,14 @@ func (r Runner) Run(ctx context.Context, plan Plan) (*Result, error) {
 	if plan.Execution == nil || len(plan.Args) == 0 || r.Backend == nil || (r.Start == nil && r.StartPrepared == nil) || r.Prepare != nil && r.StartPrepared == nil || r.Stop == nil || r.Cancel == nil || r.Seal == nil {
 		return nil, errors.New("execution stage requires a plan, fencing backend and lifecycle callbacks")
 	}
+	if plan.ResultLimitBytes > MaxResultBytes {
+		return nil, ErrResultLimit
+	}
+	// A plain exec.Cmd.Wait can wait on descendant-held stdout before Stop.
+	// Only the prepared transport separates leader exit from bounded IO drain.
+	if plan.ResultLimitBytes != 0 && r.Prepare == nil {
+		return nil, ErrResultTransport
+	}
 	result := &Result{Execution: plan.Execution, ExitCode: -1}
 	open := r.Open
 	if open == nil {
@@ -75,6 +89,11 @@ func (r Runner) Run(ctx context.Context, plan Plan) (*Result, error) {
 	cmd.Dir = plan.Dir
 	cmd.Stdout = capture.Writer
 	cmd.Stderr = capture.Writer
+	var captured *resultBuffer
+	if plan.ResultLimitBytes != 0 {
+		captured = &resultBuffer{limit: plan.ResultLimitBytes}
+		cmd.Stdout = captured
+	}
 	cmd.Env = plan.Environment
 	var transport Transport
 	if r.Prepare != nil {
@@ -180,8 +199,17 @@ func (r Runner) Run(ctx context.Context, plan Plan) (*Result, error) {
 	if err := r.Seal(capture, &result.ExitCode, result.LogTruncated); err != nil {
 		return result, fmt.Errorf("log history save failed; stopped lease retained: %w", err)
 	}
+	if captured != nil && captured.overflow {
+		waitErr = errors.Join(waitErr, ErrResultOverflow)
+	}
 	if waitErr != nil {
 		return result, fmt.Errorf("command failed; stopped lease retained: %w", waitErr)
+	}
+	if captured != nil {
+		if err := ctx.Err(); err != nil {
+			return result, err
+		}
+		result.Output = captured.copy()
 	}
 	return result, nil
 }
