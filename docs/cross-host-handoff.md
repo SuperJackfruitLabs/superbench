@@ -1,9 +1,10 @@
 # Cross-host original-ref handoff implementation
 
-The existing reviewed original-ref transfer works within one state/data pair.
-Cross-host handoff is under implementation and is not an available CLI command.
-The private artifact codec is the first part. It grants no writer capability,
-does not attest that a source stopped, and does not enable suite consumers.
+Reviewed local administrative commands now export original task refs from one
+host/state pair and import them into an explicitly reserved destination. Source
+launch exclusion, metadata-only detachment and destination initialization use
+versioned core state and durable journals. The private artifact grants no writer
+capability, does not attest that a source stopped, and does not enable suite consumers.
 
 An artifact binds the source workspace and its immutable transfer approval to
 one destination host, state identity, workspace identity, key and creation ID.
@@ -21,7 +22,7 @@ uninitialized identities fail closed. This identifies a machine for destination
 binding. In particular, observing a macOS identity does not add managed process
 fencing, and a label or hostname cannot substitute for the observation.
 
-The remaining coordinator must establish these conditions before import:
+The coordinator establishes these conditions before import:
 
 1. The destination creates and persists an offer using its actual local host and
    state identities. A user-selected label or reflected body is not that evidence.
@@ -42,14 +43,16 @@ New durable cross-host authority needs versioned state that old binaries refuse;
 a parser and a new file beside the database cannot provide that guarantee.
 An unreachable source still requires independent fencing and its own reviewed
 recovery procedure. This flow creates no network lease service or alternative
-issuer. Actual cross-host Git/runtime and crash/replay tests remain required.
+issuer. Real two-host Git/runtime verification and managed cross-host crash/fencing
+verification remain outstanding; local journal and lifecycle tests are separate evidence.
 
 The private journal implementation retains a state incarnation, unique
 destination offers, one export per source and imports bound to the exact offer.
 It checks writes by reading them back and retains terminal identity on replay.
-It has not been activated by a core migration or wired into source retirement
-and destination creation. Its SQL tests demonstrate journal behavior only;
-they do not demonstrate a stopped source, a completed import or usable commands.
+Schema29 binds these journals to core source exclusion and destination creation.
+SQL tests establish journal behavior; real Git/SQLite lifecycle tests separately
+exercise export, import, partial failures and retries on one machine. Neither
+kind of test establishes remote source fencing or a completed two-host runtime trial.
 
 ## Reviewed local commands
 
@@ -96,7 +99,9 @@ Source bytes, indexes, registrations, history and remote original refs are not
 deleted or reset. Terminal export replay returns the same artifact even after
 the destination legitimately advances its original task branches.
 
-Copy and independently review the final artifact on its destination:
+Copy and independently review the final artifact on its destination. The
+administrator must verify the source retirement independently before approving
+import; an artifact digest establishes integrity, not remote fencing:
 
 ```sh
 bench handoff import --artifact artifact.json --approve REVIEWED_ARTIFACT_DIGEST card_example
