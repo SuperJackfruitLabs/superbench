@@ -8,6 +8,7 @@ import pwd
 import shutil
 import stat
 import subprocess
+import sys
 import tempfile
 
 
@@ -16,22 +17,32 @@ def main():
     parser.add_argument('--user', default='nobody')
     parser.add_argument('--gocache')
     parser.add_argument('--gomodcache')
+    parser.add_argument('--privileged-only', action='store_true',
+                        help='run required root refusal and installed-identity fixtures on the dedicated runner')
     args = parser.parse_args()
-    if os.geteuid() != 0:
-        raise SystemExit('CI conductor requires root; the ordinary suite must not run as root')
-    account = pwd.getpwnam(args.user)
+    root = os.geteuid() == 0
+    if args.privileged_only and not root:
+        raise SystemExit('privileged CI requires an actual root process on its dedicated runner')
+    if not root and (os.getuid() != os.geteuid() or os.getgid() != os.getegid()
+                     or os.getegid() == 0 or 0 in os.getgroups()):
+        raise SystemExit('ordinary CI requires actual unprivileged UID and groups')
+    source = Path(__file__).resolve().parent.parent
+    if args.privileged_only:
+        subprocess.run([sys.executable, str(source / 'scripts/check-identity-ci.py'),
+                        '--preflight'], check=True, timeout=30)
+    account = pwd.getpwnam(args.user) if root else pwd.getpwuid(os.geteuid())
     if account.pw_uid == 0 or account.pw_gid == 0:
         raise SystemExit('ordinary CI requires a distinct non-root user and group')
     if shutil.disk_usage('/var/tmp').free < 2 << 30:
         raise SystemExit('at least 2 GiB free is required before CI compilation')
-    source = Path(__file__).resolve().parent.parent
     go = shutil.which('go')
     if go is None:
         raise SystemExit('the workflow must provide its pinned Go toolchain')
     node = shutil.which('node')
     if node is None:
         raise SystemExit('the workflow must provide its pinned development Node toolchain')
-    for name in ('superbench-check-bin', 'superbench-check-quota', 'superbench-check-daemon'):
+    for name in ('superbench-check-bin', 'superbench-check-quota', 'superbench-check-daemon',
+                 'superbench-check-payload'):
         if os.path.lexists('/tmp/' + name):
             raise SystemExit('CI binary output already exists; use an isolated job tmp directory')
     fixture = Path(tempfile.mkdtemp(prefix='superbench-ci-', dir='/var/tmp'))
@@ -39,13 +50,15 @@ def main():
     fixture.chmod(0o755)
     work, control = fixture / 'ordinary', fixture / 'control'
     work.mkdir(mode=0o700)
-    os.chown(work, account.pw_uid, account.pw_gid)
+    if root:
+        os.chown(work, account.pw_uid, account.pw_gid)
     control.mkdir(mode=0o700)
 
     def owned(name):
         path = work / name
         path.mkdir(mode=0o700)
-        os.chown(path, account.pw_uid, account.pw_gid)
+        if root:
+            os.chown(path, account.pw_uid, account.pw_gid)
         return path
 
     def cache(name, supplied):
@@ -62,6 +75,8 @@ def main():
     build_cache, module_cache = cache('build-cache', args.gocache), cache('modules', args.gomodcache)
 
     def drop():
+        if not root:
+            return
         os.setgroups([])
         os.setgid(account.pw_gid)
         os.setuid(account.pw_uid)
@@ -82,7 +97,11 @@ def main():
     print('ordinary suite UID:', account.pw_uid, 'fixture:', fixture, flush=True)
     subprocess.run(['id'], cwd=checkout, env=env, preexec_fn=drop, check=True)
     subprocess.run([go, 'version'], cwd=checkout, env=env, preexec_fn=drop, check=True)
-    subprocess.run(['sh', 'scripts/check.sh'], cwd=checkout, env=env, preexec_fn=drop, check=True)
+    if not args.privileged_only:
+        subprocess.run(['sh', 'scripts/check.sh'], cwd=checkout, env=env, preexec_fn=drop, check=True)
+    if not root:
+        print('PASS: ordinary unprivileged suite; root refusal and installed identity require the separate privileged job', flush=True)
+        return
     candidate = work / 'root-reap.test'
     subprocess.run([go, 'test', '-c', '-o', str(candidate), './internal/reapsecurity'],
                    cwd=checkout, env=env, preexec_fn=drop, check=True)
@@ -119,7 +138,13 @@ def main():
         raise SystemExit('the root refusal fixture retained unexpected temporary entries')
     print(log.decode('utf-8'), end='')
     print('root refusal binary SHA256:', hashlib.sha256(raw).hexdigest())
-    print('PASS: ordinary unprivileged suite and explicit root refusal; fixture retained:', fixture)
+    print('PASS: explicit effective-root refusal; fixture retained:', fixture)
+    if args.privileged_only:
+        subprocess.run([sys.executable, str(source / 'scripts/check-identity-ci.py'),
+                        '--source', str(checkout), '--user', args.user, '--go', go,
+                        '--gocache', str(build_cache), '--gomodcache', str(module_cache)], check=True)
+    else:
+        print('PASS: ordinary unprivileged suite; installed identity requires the separate privileged job', flush=True)
 
 
 if __name__ == '__main__':

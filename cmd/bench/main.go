@@ -246,11 +246,11 @@ func run(args []string) error {
 	}
 	if err != nil {
 		if (args[0] == "run" || args[0] == "setup" || args[0] == "lease" || args[0] == "archive" || args[0] == "create" || args[0] == "recover") && out != nil {
-			if e := json.NewEncoder(os.Stdout).Encode(out); e != nil {
+			if e := json.NewEncoder(os.Stdout).Encode(scalarOutput(out)); e != nil {
 				return e
 			}
 		}
 		return err
 	}
-	return json.NewEncoder(os.Stdout).Encode(out)
+	return json.NewEncoder(os.Stdout).Encode(scalarOutput(out))
 }

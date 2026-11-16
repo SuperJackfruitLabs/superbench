@@ -233,7 +233,7 @@ func TestStageRefusesConflictsAndUnregisteredWorkWithoutEffects(t *testing.T) {
 			if kind == "scalar" {
 				if err := f.manager.Within(func(update Update) error {
 					return update(func(rows benchstate.Database, _ *sql.Tx) error {
-						rows["card"] = &model.Bench{Key: "card", Repo: "/srv/repo", Path: "/srv/path", Mirror: "/srv/mirror"}
+						rows["card"] = &model.Bench{RegistrationID: "11111111111111111111111111111111", Key: "card", Repo: "/srv/repo", Path: "/srv/path", Mirror: "/srv/mirror"}
 						return nil
 					})
 				}); err != nil {

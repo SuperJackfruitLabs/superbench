@@ -9,13 +9,14 @@ dedicated mounted XFS filesystem with project quota enforcement.
 
 ## Review the payload
 
-Build the three Linux executables from the reviewed revision, using Go 1.26.4:
+Build the Linux executables from the reviewed revision, using Go 1.26.4:
 
 ```sh
 mkdir -p /absolute/build/bin
 go build -o /absolute/build/bin/bench ./cmd/bench
 go build -o /absolute/build/bin/benchd ./cmd/benchd
 go build -o /absolute/build/bin/bench-quota ./cmd/bench-quota
+CGO_ENABLED=0 go build -o /absolute/build/bin/bench-payload ./cmd/bench-payload
 python3 deploy/linux/install.py --bin-dir /absolute/build/bin \
   --root /absolute/private/staging --managed
 ```
@@ -27,6 +28,10 @@ root-owned sticky temporary directory is permitted). On macOS, `/tmp` itself is
 a symlink; use its physical `/private/tmp` path when inspecting a Linux image.
 The binaries must be 64-bit Linux ELF files. Build on the host or explicitly
 cross-compile for its architecture; the installer does not download executables.
+Managed packaging requires the dedicated `bench-payload` executable, built with
+`CGO_ENABLED=0` for the same architecture. Its ELF program headers must contain
+neither a dynamic interpreter nor a shared-library dependency. Unmanaged packaging
+does not install that privileged executable or its sudo grant.
 
 Inspect the service, environment, sysusers/tmpfiles rules, wrapper and, for a
 managed host, sudo policy. Existing identical files are accepted. A different
@@ -64,8 +69,13 @@ sudo -u superbench /usr/local/bin/bench configure-host \
 ```
 
 Only managed installation supplies `/etc/sudoers.d/superbench`. It permits the
-single fixed helper executable; that helper validates its root-owned policy and
-accepts logical allocations only. No generic shell/XFS sudo is granted. A sudo
+fixed quota helper executable; that helper validates its root-owned policy and
+accepts logical allocations only. It also permits the dedicated payload helper
+with **no command-line arguments**, using sudoers' explicit empty argument string.
+That helper requires independently installed matching private payload policy and
+public service registry; packaging does not create those documents or activate
+the production execution path. These packaging checks alone do not prove payload
+isolation. No generic shell/XFS sudo is granted. A sudo
 caller cannot select another policy. The service intentionally retains the sudo
 path; do not add `NoNewPrivileges`, dynamic-user restrictions or a capability
 filter that prevents that helper from doing its work without retesting managed

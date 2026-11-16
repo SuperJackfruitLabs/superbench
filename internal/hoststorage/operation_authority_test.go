@@ -19,12 +19,14 @@ func TestOperationAuthorityPinsExistingHeaderWithoutAdoptingAssignmentChanges(t 
 	if err != nil || before != after {
 		t.Fatal("unrelated valid allocation invalidated helper authority", after, err)
 	}
-	for _, fault := range []string{"policy", "anchor", "legacy", "corrupt"} {
+	for _, fault := range []string{"policy", "journal", "anchor", "legacy", "corrupt"} {
 		t.Run(fault, func(t *testing.T) {
 			q, rows, owner := storageRecords(t)
 			switch fault {
 			case "policy":
 				q.BenchBytes /= 2
+			case "journal":
+				q.OperationJournal = "indexed-v2"
 			case "anchor":
 				owner = []byte(`{}`)
 			case "legacy":

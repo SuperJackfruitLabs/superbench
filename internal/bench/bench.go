@@ -77,7 +77,7 @@ func (s Store) createRegistered(ctx context.Context, key string, o Options, reco
 			return nil
 		}
 		if pending != nil {
-			if !pending.QuotaRequestPinned || pending.Bench.CreatedFrom == "" {
+			if !pending.QuotaRequestPinned || pending.Bench.CreatedFrom == "" || pending.Version == 0 {
 				// Even without a recorded reply, an older helper may have allocated
 				// its default cap. Never reinterpret a legacy creation request.
 				if !pending.QuotaRequestPinned {
@@ -85,7 +85,7 @@ func (s Store) createRegistered(ctx context.Context, key string, o Options, reco
 				}
 				pending.Bench.CreatedFrom = pending.Source
 				pending.QuotaRequestPinned = true
-				if err = s.record(*pending); err != nil {
+				if err = s.record(pending); err != nil {
 					return err
 				}
 			}
@@ -130,7 +130,7 @@ func (s Store) createRegistered(ctx context.Context, key string, o Options, reco
 			b.Checkpoint = sha
 		}
 		intent := creation{QuotaRequestPinned: true, Bench: b, Source: sha, Base: o.Base, Recovering: recovering}
-		if err = s.record(intent); err != nil {
+		if err = s.record(&intent); err != nil {
 			return err
 		}
 		if err = s.applyBenchQuota(&intent); err != nil {

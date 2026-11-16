@@ -10,10 +10,12 @@ func testPolicy() Policy {
 	return Policy{Root: "/bench", Ledger: "/var/lib/superbench-quota", OwnerUID: 1000, OwnerGID: 1000, BenchBytes: 8 << 20, StoreBytes: 16 << 20, MirrorBytes: 16 << 20, ReserveBytes: 64 << 20, BenchInodes: 128, StoreInodes: 256, MirrorInodes: 512, ReserveInodes: 256}
 }
 func TestPolicyRejectsUnsafePathsAndBudgets(t *testing.T) {
-	for _, name := range []string{"root", "relative", "metachar", "overlap", "reverse-overlap", "owner", "fraction", "huge"} {
+	for _, name := range []string{"root", "relative", "metachar", "overlap", "reverse-overlap", "owner", "fraction", "huge", "journal"} {
 		t.Run(name, func(t *testing.T) {
 			p := testPolicy()
 			switch name {
+			case "journal":
+				p.OperationJournal = "unknown"
 			case "root":
 				p.Root = "/"
 			case "relative":

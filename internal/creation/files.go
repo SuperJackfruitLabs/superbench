@@ -19,6 +19,7 @@ type Files struct {
 	Write       func(string, string, []byte) error
 }
 type Intent struct {
+	Version            int `json:",omitempty"`
 	Bench              model.Bench
 	Source             string
 	Base               string
@@ -42,12 +43,18 @@ func (s Files) Pending(key string, o model.Options, recovering bool) (*Intent, e
 	if c.Bench.CreatedFrom != "" && c.Bench.CreatedFrom != c.Source {
 		return nil, errors.New("creation provenance differs from the pinned source")
 	}
-	if c.Bench.Key != key || c.Bench.Repo != o.Repo || c.Bench.Branch != o.Branch || c.Base != o.Base || c.Recovering != recovering || c.Source == "" || c.Bench.Lease != nil || c.Bench.Path != filepath.Join(s.Data, "benches", key) || c.Bench.Mirror != repository.Path(s.Data, o.Repo) {
+	if c.Bench.Key != key || c.Bench.Repo != o.Repo || c.Bench.Branch != o.Branch || c.Base != o.Base || c.Recovering != recovering || c.Source == "" || c.Bench.Lease != nil || c.Bench.Path != s.checkoutPath(c.Bench) || c.Bench.Mirror != repository.Path(s.Data, o.Repo) {
 		return nil, errors.New("creation journal conflicts with request; preserve files and reconcile manually")
+	}
+	if err := intentIdentity(&c); err != nil {
+		return nil, err
 	}
 	return &c, nil
 }
-func (s Files) Record(c Intent) error {
+func (s Files) Record(c *Intent) error {
+	if err := s.pinRegistration(c); err != nil {
+		return err
+	}
 	raw, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
 		return err
@@ -56,6 +63,9 @@ func (s Files) Record(c Intent) error {
 }
 func (s Files) Finish(c *Intent) (*model.Bench, error) {
 	b := c.Bench
+	if b.PayloadLayoutVersion != "" || b.AllocationRoot != "" {
+		return nil, model.ErrScalarLayout
+	}
 	if stat, err := os.Lstat(b.Path); err == nil {
 		if stat.Mode()&os.ModeSymlink != 0 {
 			return nil, errors.New("worktree target is a symlink")
@@ -119,4 +129,15 @@ func (s Files) materializeWorktree(c *Intent) (*model.Bench, error) {
 		return nil, e
 	}
 	return &b, nil
+}
+
+func (s Files) checkoutPath(b model.Bench) string {
+	root := filepath.Join(s.Data, "benches", b.Key)
+	if b.PayloadLayoutVersion != "" {
+		if b.AllocationRoot != root {
+			return ""
+		}
+		return filepath.Join(root, "worktree")
+	}
+	return root
 }

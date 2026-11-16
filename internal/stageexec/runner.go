@@ -7,10 +7,16 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"sync/atomic"
+	"time"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/execution"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/output"
 )
+
+var ErrAmbiguousStart = errors.New("execution start callbacks are ambiguous")
+
+const transportDrainTimeout = 5 * time.Second
 
 type Plan struct {
 	Execution         *execution.Execution
@@ -34,6 +40,11 @@ type Runner struct {
 	// Start must persist launch intent and authorize the actual process start
 	// under the caller's launch/stop gate. An ambiguous failure retains ownership.
 	Start func(context.Context, *exec.Cmd, *execution.Execution) error
+	// Prepare is required for installed service payload transport; it cannot be
+	// combined with the legacy Start callback. StartPrepared must consume Launch
+	// inside the same existing owner/state gate as backend.Start.
+	Prepare       PrepareTransport
+	StartPrepared func(context.Context, *exec.Cmd, *execution.Execution, Launch) error
 	// Stop must fence descendants before durably recording a stopped execution.
 	Stop func() (*execution.Execution, error)
 	// Cancel reconciles explicit cancellation after the known scope is fenced,
@@ -44,7 +55,10 @@ type Runner struct {
 }
 
 func (r Runner) Run(ctx context.Context, plan Plan) (*Result, error) {
-	if plan.Execution == nil || len(plan.Args) == 0 || r.Backend == nil || r.Start == nil || r.Stop == nil || r.Cancel == nil || r.Seal == nil {
+	if r.Start != nil && r.StartPrepared != nil {
+		return nil, ErrAmbiguousStart
+	}
+	if plan.Execution == nil || len(plan.Args) == 0 || r.Backend == nil || (r.Start == nil && r.StartPrepared == nil) || r.Prepare != nil && r.StartPrepared == nil || r.Stop == nil || r.Cancel == nil || r.Seal == nil {
 		return nil, errors.New("execution stage requires a plan, fencing backend and lifecycle callbacks")
 	}
 	result := &Result{Execution: plan.Execution, ExitCode: -1}
@@ -62,17 +76,63 @@ func (r Runner) Run(ctx context.Context, plan Plan) (*Result, error) {
 	cmd.Stdout = capture.Writer
 	cmd.Stderr = capture.Writer
 	cmd.Env = plan.Environment
-	err = r.Start(ctx, cmd, plan.Execution)
+	var transport Transport
+	if r.Prepare != nil {
+		transport, err = r.Prepare(cmd, plan.Execution)
+		if err != nil {
+			return result, err
+		}
+		if transport == nil {
+			return result, errors.New("execution transport missing")
+		}
+		defer transport.Close()
+	}
+	wait := cmd.Wait
+	if transport != nil {
+		wait = transport.WaitLeader
+	}
+	var consumed atomic.Bool
+	var launchErr error
+	launch := func(start func() error) error {
+		if start == nil || !consumed.CompareAndSwap(false, true) {
+			launchErr = errors.New("execution launch must be consumed once")
+			return launchErr
+		}
+		if transport != nil {
+			launchErr = transport.Check()
+			if launchErr != nil {
+				return launchErr
+			}
+		}
+		launchErr = start()
+		if launchErr == nil && transport != nil {
+			launchErr = transport.StartIO()
+		}
+		return launchErr
+	}
+	if r.StartPrepared != nil {
+		err = r.StartPrepared(ctx, cmd, plan.Execution, launch)
+		if err == nil && !consumed.Load() {
+			err = errors.New("execution launch was not consumed")
+		}
+		err = errors.Join(err, launchErr)
+	} else {
+		err = r.Start(ctx, cmd, plan.Execution)
+	}
 	_ = capture.Writer.Close()
 	if err != nil {
 		if cmd.Process != nil {
 			if fenceErr := r.Backend.Fence(plan.Execution); fenceErr != nil {
-				go func() { _ = cmd.Wait() }()
+				go func() { _ = wait() }()
 				return result, errors.Join(err, fmt.Errorf("execution fencing failed; lease retained: %w", fenceErr))
 			}
-			_ = cmd.Wait()
+			_ = wait()
 		}
 		return result, fmt.Errorf("start failed; lease retained: %w", err)
+	}
+	var transportErrors <-chan error
+	if transport != nil {
+		transportErrors = transport.Failures()
 	}
 	done := make(chan struct{})
 	monitorDone := make(chan struct{})
@@ -82,10 +142,13 @@ func (r Runner) Run(ctx context.Context, plan Plan) (*Result, error) {
 		case <-ctx.Done():
 			_ = r.Backend.Fence(plan.Execution)
 			r.Cancel()
+		case <-transportErrors:
+			_ = r.Backend.Fence(plan.Execution)
+			r.Cancel()
 		case <-done:
 		}
 	}()
-	waitErr := cmd.Wait()
+	waitErr := wait()
 	close(done)
 	// No cancellation callback may escape into a later operation that retains
 	// the same lease token. Join before publishing the stopped/sealed result.
@@ -98,6 +161,17 @@ func (r Runner) Run(ctx context.Context, plan Plan) (*Result, error) {
 		return result, fmt.Errorf("unable to prove execution stopped; lease retained: %w", err)
 	}
 	result.Execution = stopped
+	if transport != nil {
+		// Cancellation has already fenced the run and joined its monitor. Finish
+		// bounded cleanup independently so cancellation cannot randomly skip sealing.
+		drainCtx, drainCancel := context.WithTimeout(context.WithoutCancel(ctx), transportDrainTimeout)
+		drainErr := transport.Drain(drainCtx, r.Backend)
+		drainCancel()
+		if drainErr != nil {
+			r.Cancel()
+			return result, fmt.Errorf("command IO failed; stopped lease retained: %w", drainErr)
+		}
+	}
 	logErr := capture.Finish()
 	result.LogTruncated = capture.Truncated
 	if logErr != nil {

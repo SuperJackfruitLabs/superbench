@@ -70,8 +70,13 @@ func TestArchitecture(t *testing.T) {
 				"internal/initrepair":           {"internal/repaircontrol", "internal/operationcontrol"},
 				"internal/repaircontrol":        {"internal/statestore", "internal/operationcontrol"},
 				"internal/storageproof":         {"internal/quotahelper"},
-				"internal/hoststorage":          {"internal/quotapolicy", "internal/storageproof", "internal/hostlayout", "internal/hostpolicy", "internal/quotahelper", "internal/model", "internal/output"},
+				"internal/hoststorage":          {"internal/storagecustody", "internal/quotapolicy", "internal/storageproof", "internal/hostlayout", "internal/hostpolicy", "internal/quotahelper", "internal/model", "internal/output"},
+				"internal/payloadpolicy":        {}, // Pure fixed-policy codec; no execution authority.
+				"internal/serviceidentity":      {"internal/payloadpolicy"},
+				"internal/payloadexec":          {"internal/payloadpolicy", "internal/serviceidentity"},
+				"internal/payloadlaunch":        {"internal/payloadexec", "internal/execution"},
 				"internal/stageexec":            {"internal/execution", "internal/output"},
+				"internal/payloadstage":         {"internal/model", "internal/serviceidentity", "internal/stageexec", "internal/execution", "internal/payloadexec", "internal/payloadlaunch"},
 				"internal/quotahelper":          {"internal/quotapolicy", "internal/quotaoperation", "internal/operationcontrol"},
 				"internal/operationcancel":      {"internal/statepath", "internal/statestore", "internal/gitcontrol", "internal/quotahelper", "internal/benchstate", "internal/history", "internal/model", "internal/operationcontrol", "internal/reap", "internal/retention"},
 				"internal/operationcontrol":     {"internal/quotaoperation", "internal/history", "internal/model"},
@@ -89,7 +94,7 @@ func TestArchitecture(t *testing.T) {
 				"internal/workspace":            {"internal/hostidentity", "internal/handoffjournal", "internal/crosshost", "internal/workspacematerialize", "internal/operationcontrol", "internal/workspacecopy", "internal/transferguard", "internal/workspaceplan", "internal/worktreetransfer", "internal/reftransfer", "internal/workspacepolicy", "internal/benchstate", "internal/statepath", "internal/creation", "internal/checkpointset", "internal/model", "internal/quotapolicy", "internal/repository", "internal/setup"},
 				"internal/workspaceplan":        {"internal/checkpointset", "internal/model", "internal/quotapolicy", "internal/repository", "internal/setup"},
 				"internal/execution":            {"internal/cachepolicy"},
-				"internal/model":                {"internal/execution"},
+				"internal/model":                {"internal/execution", "internal/payloadpolicy"},
 				"internal/creation":             {"internal/operationcontrol", "internal/model", "internal/repository"},
 				"internal/client":               {"internal/protocol", "internal/protocolv2"},
 				"internal/history":              {"internal/reap"},
@@ -102,9 +107,11 @@ func TestArchitecture(t *testing.T) {
 				"internal/workspacetransfer":    {"internal/history", "internal/reap", "internal/retention", "internal/hoststorage", "internal/bench", "internal/benchstate", "internal/execution", "internal/gitcontrol", "internal/model", "internal/quotapolicy", "internal/reftransfer", "internal/repository", "internal/workspace", "internal/workspacepolicy", "internal/workspacerepair", "internal/worktreetransfer"},
 				"cmd/bench":                     {"internal/localprep", "internal/crosshostflow", "internal/crosshost", "internal/handoffjournal", "internal/mirroradmin", "internal/mirrorstage", "internal/workspacetransfer", "internal/workspacerepair", "internal/workspaceprep", "internal/protocolv2", "internal/workspaceops", "internal/workspaceapi", "internal/workspacearchive", "internal/autoarchive", "internal/bench", "internal/client", "internal/protocol", "internal/reap", "internal/retention", "internal/history", "internal/maintenance"},
 				"cmd/benchd":                    {"internal/bench", "internal/service"},
-				"cmd/bench-quota":               {"internal/hoststorage", "internal/quotahelper", "internal/quotaoperation"},
+				"cmd/bench-payload":             {"internal/payloadexec"},
+				"cmd/bench-quota":               {"internal/hoststorage", "internal/quotahelper", "internal/quotaoperation", "internal/quotaoperationcontrol"},
 
 				"internal/quotaoperationjournal": {"internal/quotaoperation"},
+				"internal/quotaoperationcontrol": {"internal/hoststorage", "internal/quotaoperationjournal"},
 			}
 			allowed := !strings.Contains(strings.Split(p, "/")[0], ".")
 			for _, target := range edges[rel] {

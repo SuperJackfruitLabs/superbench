@@ -93,7 +93,15 @@ func (Host) Start(cmd *exec.Cmd, e *Execution) error {
 	}
 	defer syscall.Close(fd)
 	// clone3 places the child in its scope before executing any user code.
-	cmd.SysProcAttr = &syscall.SysProcAttr{UseCgroupFD: true, CgroupFD: fd}
+	// Preserve explicit credential drops and other caller process restrictions.
+	// Replacing the whole structure would silently run a root caller's child as
+	// root even when that caller requested a distinct unprivileged identity.
+	attributes := syscall.SysProcAttr{}
+	if cmd.SysProcAttr != nil {
+		attributes = *cmd.SysProcAttr
+	}
+	attributes.UseCgroupFD, attributes.CgroupFD = true, fd
+	cmd.SysProcAttr = &attributes
 	return cmd.Start()
 }
 func (Host) Empty(e *Execution) error {

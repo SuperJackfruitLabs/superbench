@@ -5,13 +5,14 @@ import "errors"
 // Ledger v2 omits the legacy VolumeID field. Earlier helpers fail closed on
 // that absent identity instead of interpreting a smaller allocation as default.
 type policyBinding struct {
+	OperationJournal                                      string `json:",omitempty"`
 	OwnerUID, OwnerGID                                    int
 	BenchBytes, StoreBytes, MirrorBytes, ReserveBytes     uint64
 	BenchInodes, StoreInodes, MirrorInodes, ReserveInodes uint64
 }
 
 func (p Policy) binding() policyBinding {
-	return policyBinding{p.OwnerUID, p.OwnerGID, p.BenchBytes, p.StoreBytes, p.MirrorBytes, p.ReserveBytes, p.BenchInodes, p.StoreInodes, p.MirrorInodes, p.ReserveInodes}
+	return policyBinding{p.OperationJournal, p.OwnerUID, p.OwnerGID, p.BenchBytes, p.StoreBytes, p.MirrorBytes, p.ReserveBytes, p.BenchInodes, p.StoreInodes, p.MirrorInodes, p.ReserveInodes}
 }
 
 func (l ledger) filesystem() string {
@@ -24,6 +25,9 @@ func (l ledger) filesystem() string {
 func (p Policy) ledgerHeader(l ledger) error {
 	switch l.FormatVersion {
 	case 0:
+		if p.OperationJournal != "" {
+			return errors.New("indexed operation policy requires a bound v2 ledger")
+		}
 		if l.VolumeID == "" || l.FilesystemUUID != "" || l.Binding != nil {
 			return errors.New("invalid legacy ledger identity")
 		}
