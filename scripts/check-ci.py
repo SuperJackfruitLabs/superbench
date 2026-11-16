@@ -32,7 +32,8 @@ def main():
         if os.path.lexists('/tmp/' + name):
             raise SystemExit('CI binary output already exists; use an isolated job tmp directory')
     fixture = Path(tempfile.mkdtemp(prefix='superbench-ci-', dir='/var/tmp'))
-    fixture.chmod(0o711)
+    # Physical-path inspectors open each ancestor; private children stay 0700.
+    fixture.chmod(0o755)
     work, control = fixture / 'ordinary', fixture / 'control'
     work.mkdir(mode=0o700)
     os.chown(work, account.pw_uid, account.pw_gid)
