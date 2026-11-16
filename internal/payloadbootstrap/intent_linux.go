@@ -65,12 +65,7 @@ func (m *Manager) read(s Spec) (intent, error) {
 		return intent{}, ErrBootstrap
 	}
 	canonical, err := json.Marshal(i)
-	if err != nil || !bytes.Equal(raw, canonical) || !reflect.DeepEqual(i.Spec, s) || i.Operation != m.operation || i.PolicyDigest != m.digest || i.Root.Inode == 0 || i.Controls.Inode == 0 || !m.validAllocation(s, i.Allocation) || i.CommandSHA256 != "" && !sha256Pattern.MatchString(i.CommandSHA256) || i.CommandCompleted && i.CommandSHA256 == "" {
-		return intent{}, ErrBootstrap
-	}
-	switch i.Phase {
-	case "allocating", "begun", "staging", "materialized_unfenced", "staged", "transferring", "completed":
-	default:
+	if err != nil || !bytes.Equal(raw, canonical) || m.validateIntent(s, i) != nil {
 		return intent{}, ErrBootstrap
 	}
 	after, err := f.Stat()
@@ -91,6 +86,18 @@ func (m *Manager) write(i intent, first bool) error {
 	if first {
 		if err := os.Mkdir(parent, 0700); err != nil && !errors.Is(err, os.ErrExist) {
 			return err
+		}
+		ledger, err := os.Open(filepath.Dir(parent))
+		if err != nil {
+			return err
+		}
+		err = ledger.Sync()
+		closeErr := ledger.Close()
+		if err != nil {
+			return err
+		}
+		if closeErr != nil {
+			return closeErr
 		}
 	}
 	if err := storagecustody.RootOwnedDirectory(parent, true); err != nil {
@@ -147,4 +154,27 @@ func (m *Manager) checkRoot(i intent, owner uint32) error {
 		return ErrBootstrap
 	}
 	return nil
+}
+
+// A reserved intent carries provenance only. It cannot assert any allocation,
+// physical node, Git result or ownership transfer before those effects exist.
+func (m *Manager) validateIntent(s Spec, i intent) error {
+	if m == nil || !m.operation.Valid() || !sha256Pattern.MatchString(m.digest) || s.Validate() != nil || !reflect.DeepEqual(i.Spec, s) || i.Operation != m.operation || i.PolicyDigest != m.digest || i.CommandSHA256 != "" && !sha256Pattern.MatchString(i.CommandSHA256) || i.CommandCompleted && i.CommandSHA256 == "" {
+		return ErrBootstrap
+	}
+	if i.Phase == "reserved" {
+		if i.Allocation != (quotahelper.Assignment{}) || i.Root != (payloadexec.Node{}) || i.Controls != (payloadexec.Node{}) || i.Materialized != nil || i.CommandSHA256 != "" || i.CommandCompleted {
+			return ErrBootstrap
+		}
+		return nil
+	}
+	if i.Root.Inode == 0 || i.Controls.Inode == 0 || !m.validAllocation(s, i.Allocation) {
+		return ErrBootstrap
+	}
+	switch i.Phase {
+	case "allocating", "begun", "staging", "materialized_unfenced", "staged", "transferring", "completed":
+		return nil
+	default:
+		return ErrBootstrap
+	}
 }

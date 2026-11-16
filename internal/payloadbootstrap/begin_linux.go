@@ -20,7 +20,14 @@ func (m *Manager) Begin(ctx context.Context, s Spec) error {
 		return ErrBootstrap
 	}
 	return m.store.Apply(ctx, func() error {
-		_, err := m.storage.ApplyFreshRequested(s.Key, s.QuotaBytes, func(a hoststorage.Assignment) error {
+		// Keep the exact operation and source vector durable before the quota
+		// reservation can survive a crash without a bootstrap intent. This is
+		// evidence for explicit recovery, never permission to repeat Begin.
+		reserved := intent{Spec: s, Operation: m.operation, PolicyDigest: m.digest, Phase: "reserved"}
+
+		_, err := m.storage.ApplyFreshRequested(s.Key, s.QuotaBytes, func() error {
+			return m.write(reserved, true)
+		}, func(a hoststorage.Assignment) error {
 			if err := m.check(); err != nil {
 				return err
 			}
@@ -28,7 +35,8 @@ func (m *Manager) Begin(ctx context.Context, s Spec) error {
 			if err != nil {
 				return err
 			}
-			i := intent{Spec: s, Allocation: a, Operation: m.operation, PolicyDigest: m.digest, Phase: "allocating", Root: node(info)}
+			i := reserved
+			i.Allocation, i.Phase, i.Root = a, "allocating", node(info)
 			if err = m.checkRoot(i, 0); err != nil {
 				return err
 			}
@@ -47,7 +55,7 @@ func (m *Manager) Begin(ctx context.Context, s Spec) error {
 				return err
 			}
 			i.Controls = node(controls)
-			if err = m.write(i, true); err != nil {
+			if err = m.write(i, false); err != nil {
 				return err
 			}
 			// Only fixed new directories, created exclusively under the just-reserved

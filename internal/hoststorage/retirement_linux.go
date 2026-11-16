@@ -6,10 +6,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/storageproof"
 	"os"
 	"path/filepath"
-	"strconv"
-	"strings"
 	"syscall"
 	"time"
 )
@@ -151,24 +150,8 @@ func (p Policy) retireApproved(ctx context.Context, a RetirementApproval, verify
 	return tombstone, ctx.Err()
 }
 
-func verifyRetirementUsage(raw []byte, id uint32) error {
-	count := 0
-	for _, line := range strings.Split(string(raw), "\n") {
-		f := strings.Fields(line)
-		if len(f) < 4 || f[0] != "#"+strconv.FormatUint(uint64(id), 10) {
-			continue
-		}
-		count++
-		used, err := strconv.ParseUint(f[1], 10, 64)
-		if err != nil || used != 0 {
-			return errors.New("project retains blocks or inodes; reservation retained")
-		}
-	}
-	if count != 1 {
-		return errors.New("project usage cannot be uniquely verified")
-	}
-	return nil
-}
+func verifyRetirementUsage(raw []byte, id uint32) error { return storageproof.VerifyUnused(raw, id) }
+
 func (p Policy) zeroRetirementUsage(ctx context.Context, id uint32) error {
 	for _, unit := range []string{"-b", "-i"} {
 		report, err := storageCommand(ctx, "/usr/sbin/xfs_quota", "-x", "-c", fmt.Sprintf("report -p -n %s -N -L %d -U %d", unit, id, id), p.Root)
