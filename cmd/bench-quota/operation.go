@@ -85,6 +85,15 @@ func runOperation(ctx context.Context, p hoststorage.Policy, r operationRequest,
 	if err != nil {
 		return err
 	}
+	if p.OperationJournal == "indexed-v2" {
+		if r.command != "operation-info" && (r.identity.Authority != authority || r.identity.BinarySHA256 != binary) {
+			return quotaoperation.ErrAuthority
+		}
+		if r.command == "apply-operation" && r.requested > p.BenchBytes {
+			return errors.New("requested bench bytes exceed fixed policy")
+		}
+		return runIndexedOperation(ctx, p, r, binary, authority, w)
+	}
 	if r.command == "operation-info" {
 		return operationOutput(w, quotahelper.Info{Version: quotaoperation.Version, Root: p.Root, Authority: authority, BinarySHA256: binary})
 	}

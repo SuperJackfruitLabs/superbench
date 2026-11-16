@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage"
+	"io"
 	"os"
 	"strconv"
 )
@@ -48,68 +49,73 @@ func run(args []string) error {
 	if e != nil {
 		return e
 	}
-	if retirement {
-		return runRetirement(p, f.Arg(0), f.Arg(2), os.Stdin, os.Stdout)
+	if migrating && p.OperationJournal != "" {
+		return fmt.Errorf("indexed operation policy does not permit inode migration")
 	}
-	if allocation {
-		observation, err := p.InspectAllocation(context.Background(), f.Arg(2))
-		if err != nil {
+	return runFixedPolicy(context.Background(), *policy, p, func(output io.Writer) error {
+		if retirement {
+			return runRetirement(p, f.Arg(0), f.Arg(2), os.Stdin, output)
+		}
+		if allocation {
+			observation, err := p.InspectAllocation(context.Background(), f.Arg(2))
+			if err != nil {
+				return err
+			}
+			raw, err := json.Marshal(observation)
+			if err != nil {
+				return err
+			}
+			if len(raw) > hoststorage.MaxStorageIdentity {
+				return fmt.Errorf("allocation observation exceeds limit")
+			}
+			_, err = output.Write(raw)
 			return err
 		}
-		raw, err := json.Marshal(observation)
-		if err != nil {
+		if verifying {
+			identity, err := p.VerifyStorage(context.Background(), f.Arg(2))
+			if err != nil {
+				return err
+			}
+			raw, err := json.Marshal(identity)
+			if err != nil {
+				return err
+			}
+			if len(raw) > hoststorage.MaxStorageIdentity {
+				return fmt.Errorf("storage identity exceeds limit")
+			}
+			_, err = output.Write(raw)
 			return err
 		}
-		if len(raw) > hoststorage.MaxStorageIdentity {
-			return fmt.Errorf("allocation observation exceeds limit")
+		if migrating {
+			assignments, e := p.MigrateInodes()
+			if e != nil {
+				return e
+			}
+			return json.NewEncoder(output).Encode(assignments)
 		}
-		_, err = os.Stdout.Write(raw)
-		return err
-	}
-	if verifying {
-		identity, err := p.VerifyStorage(context.Background(), f.Arg(2))
-		if err != nil {
-			return err
+		var assignment hoststorage.Assignment
+		if f.Arg(0) == "release" {
+			id, parseErr := strconv.ParseUint(f.Arg(3), 10, 32)
+			if parseErr != nil {
+				return parseErr
+			}
+			assignment, e = p.Release(f.Arg(2), uint32(id))
+		} else {
+			requested := uint64(0)
+			if f.NArg() == 4 {
+				if f.Arg(1) != "bench" {
+					return fmt.Errorf("only bench allocations accept a size request")
+				}
+				requested, e = strconv.ParseUint(f.Arg(3), 10, 64)
+				if e != nil || requested == 0 {
+					return fmt.Errorf("invalid requested bench bytes")
+				}
+			}
+			assignment, e = p.ApplyRequested(f.Arg(1), f.Arg(2), requested)
 		}
-		raw, err := json.Marshal(identity)
-		if err != nil {
-			return err
-		}
-		if len(raw) > hoststorage.MaxStorageIdentity {
-			return fmt.Errorf("storage identity exceeds limit")
-		}
-		_, err = os.Stdout.Write(raw)
-		return err
-	}
-	if migrating {
-		assignments, e := p.MigrateInodes()
 		if e != nil {
 			return e
 		}
-		return json.NewEncoder(os.Stdout).Encode(assignments)
-	}
-	var assignment hoststorage.Assignment
-	if f.Arg(0) == "release" {
-		id, parseErr := strconv.ParseUint(f.Arg(3), 10, 32)
-		if parseErr != nil {
-			return parseErr
-		}
-		assignment, e = p.Release(f.Arg(2), uint32(id))
-	} else {
-		requested := uint64(0)
-		if f.NArg() == 4 {
-			if f.Arg(1) != "bench" {
-				return fmt.Errorf("only bench allocations accept a size request")
-			}
-			requested, e = strconv.ParseUint(f.Arg(3), 10, 64)
-			if e != nil || requested == 0 {
-				return fmt.Errorf("invalid requested bench bytes")
-			}
-		}
-		assignment, e = p.ApplyRequested(f.Arg(1), f.Arg(2), requested)
-	}
-	if e != nil {
-		return e
-	}
-	return json.NewEncoder(os.Stdout).Encode(assignment)
+		return json.NewEncoder(output).Encode(assignment)
+	}, os.Stdout)
 }

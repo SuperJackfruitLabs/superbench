@@ -13,19 +13,22 @@ import (
 )
 
 type Policy struct {
-	Root            string
-	Ledger          string
-	OwnerUID        int
-	OwnerGID        int
-	BenchBytes      uint64
-	StoreBytes      uint64
-	MirrorBytes     uint64
-	ReserveBytes    uint64
-	BenchInodes     uint64
-	StoreInodes     uint64
-	MirrorInodes    uint64
-	ReserveInodes   uint64
-	upgradingInodes bool
+	// OperationJournal is selected only by installed policy. Empty retains the
+	// legacy helper; indexed-v2 requires retained indexed history on every call.
+	OperationJournal string `json:",omitempty"`
+	Root             string
+	Ledger           string
+	OwnerUID         int
+	OwnerGID         int
+	BenchBytes       uint64
+	StoreBytes       uint64
+	MirrorBytes      uint64
+	ReserveBytes     uint64
+	BenchInodes      uint64
+	StoreInodes      uint64
+	MirrorInodes     uint64
+	ReserveInodes    uint64
+	upgradingInodes  bool
 }
 type Assignment = quotahelper.Assignment
 
@@ -44,6 +47,9 @@ var volumePattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-
 var safePath = regexp.MustCompile(`^/[A-Za-z0-9_./-]+$`)
 
 func (p Policy) Validate() error {
+	if p.OperationJournal != "" && p.OperationJournal != "indexed-v2" {
+		return errors.New("unsupported operation journal policy")
+	}
 	if !safePath.MatchString(p.Root) || filepath.Clean(p.Root) != p.Root || p.Root == "/" {
 		return errors.New("quota root must be an absolute normalized path without shell/parser metacharacters")
 	}
