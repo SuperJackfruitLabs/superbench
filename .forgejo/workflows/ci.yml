@@ -1,5 +1,5 @@
 name: check
-on: [push, pull_request]
+on: {"push":{"branches":["main"],"tags":["**"]},"pull_request":{"types":["opened","synchronize","reopened"]}}
 jobs:
   check:
     runs-on: ubuntu-latest
