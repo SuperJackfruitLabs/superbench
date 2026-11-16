@@ -77,6 +77,11 @@ class InstallationGuards(unittest.TestCase):
         self.assertIn(b"NOPASSWD: /usr/local/libexec/bench-quota", rule)
         self.assertNotIn(b"/bin/sh", rule)
         self.assertIn(b'/usr/local/libexec/bench-payload ""\n', rule)
+        # Payload framing requires real pipes; disable PTYs for this command only.
+        defaults = [line for line in rule.splitlines() if line.startswith(b"Defaults")]
+        self.assertEqual(defaults, [b"Defaults!/usr/local/libexec/bench-payload !use_pty"])
+        self.assertNotIn(b"SETENV", rule)
+        self.assertNotIn(b"closefrom_override", rule)
         helper.unlink()
         with self.assertRaises(FileNotFoundError):
             payload(binaries, True)

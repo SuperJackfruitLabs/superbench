@@ -3,4 +3,6 @@
 superbench ALL=(root) NOPASSWD: /usr/local/libexec/bench-quota
 # This distinct helper accepts a bounded stdin frame, never command-line options.
 # The empty argument string is required: a bare command would permit any args.
+# Preserve framed pipe input/output; leave other commands and global defaults alone.
+Defaults!/usr/local/libexec/bench-payload !use_pty
 superbench ALL=(root) NOPASSWD: /usr/local/libexec/bench-payload ""
