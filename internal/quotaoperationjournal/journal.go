@@ -30,7 +30,7 @@ type Journal struct {
 	check    func() error
 	active   bool
 	ctx      context.Context
-	identity quotaoperation.Identity
+	identity *quotaoperation.Identity
 }
 
 func rawIdentity(i quotaoperation.Identity) ([]byte, error) {
@@ -53,7 +53,7 @@ func (j *Journal) ready() error {
 // Lookup checks every immutable field, including any retained pending identity.
 // found=false never grants authority to choose a different identity or epoch.
 func (j *Journal) Lookup(i quotaoperation.Identity) (found, denied bool, err error) {
-	if j == nil || i != j.identity {
+	if j == nil || j.identity == nil || i != *j.identity {
 		return false, false, ErrAuthority
 	}
 	raw, err := rawIdentity(i)

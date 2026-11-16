@@ -11,13 +11,52 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotaoperation"
 )
 
-func freshFixture(t *testing.T) Store {
+// These callbacks model adapter authority only, not XFS/hoststorage conformance.
+type formatFixture struct {
+	Directory string
+	Identity  quotaoperation.Identity
+	Check     func(quotaoperation.Identity) error
+	owner     uint32
+}
+
+func freshFixture(t *testing.T) *formatFixture {
 	t.Helper()
-	s, _ := fixture(t)
-	if err := os.Remove(s.Directory); err != nil {
+	raw, i := fixture(t)
+	if err := os.Remove(raw.Directory); err != nil {
 		t.Fatal(err)
 	}
-	return s
+	return &formatFixture{Directory: raw.Directory, Identity: i, owner: raw.owner, Check: func(got quotaoperation.Identity) error {
+		if got != i {
+			return ErrAuthority
+		}
+		return nil
+	}}
+}
+func (s *formatFixture) formatPath() string { return formatPath(s.Directory) }
+func (s *formatFixture) config() Config {
+	check := s.Check
+	identity := s.Identity
+	return Config{Directory: s.Directory, CheckControl: func(context.Context) error { return check(identity) }, CheckReady: func(context.Context) (string, error) { return identity.Authority, nil }}
+}
+func (s *formatFixture) InitializeFresh(ctx context.Context) (*Store, error) {
+	check := s.Check
+	identity := s.Identity
+	init, err := newInitializer(FreshConfig{Control: s.config(), Authorize: func(context.Context) error { return check(identity) }}, s.owner)
+	if err != nil {
+		return nil, err
+	}
+	control, err := init.InitializeFresh(ctx, func(_ context.Context, f FreshLedger) error { _, _, err := f.Identity(); return err })
+	if err != nil {
+		return nil, err
+	}
+	return control.Operation(ctx, identity, check)
+}
+func (s *formatFixture) OpenExisting(ctx context.Context) (*Store, error) {
+	control, err := openExisting(ctx, s.config(), s.owner)
+	if err != nil {
+		return nil, err
+	}
+	return control.Operation(ctx, s.Identity, s.Check)
 }
 
 func TestExplicitFreshFormatAndExistingFacade(t *testing.T) {
@@ -44,7 +83,10 @@ func TestExplicitFreshFormatAndExistingFacade(t *testing.T) {
 }
 
 func TestHistoricalEmptyLedgerIsNotFresh(t *testing.T) {
-	s, _ := fixture(t)
+	s := freshFixture(t)
+	if err := os.Mkdir(s.Directory, 0700); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := s.InitializeFresh(context.Background()); !errors.Is(err, os.ErrExist) {
 		t.Fatalf("historical empty ledger admitted: %v", err)
 	}

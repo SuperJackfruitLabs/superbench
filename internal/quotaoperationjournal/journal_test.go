@@ -13,7 +13,7 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotaoperation"
 )
 
-func fixture(t *testing.T) (Store, quotaoperation.Identity) {
+func fixture(t *testing.T) (journalStore, quotaoperation.Identity) {
 	t.Helper()
 	root, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
@@ -34,15 +34,10 @@ func fixture(t *testing.T) (Store, quotaoperation.Identity) {
 		t.Fatal(err)
 	}
 	i := quotaoperation.Identity{OperationID: strings.Repeat("a", 64), Epoch: strings.Repeat("b", 32), StateIdentity: strings.Repeat("c", 64), Authority: strings.Repeat("d", 64), BinarySHA256: strings.Repeat("e", 64)}
-	s := Store{Directory: dir, Identity: i, owner: uint32(os.Geteuid()), Check: func(got quotaoperation.Identity) error {
-		if got != i {
-			return ErrAuthority
-		}
-		return nil
-	}}
+	s := journalStore{Directory: dir, Identity: &i, owner: uint32(os.Geteuid()), Check: func() error { return nil }}
 	return s, i
 }
-func create(t *testing.T, s Store) {
+func create(t *testing.T, s journalStore) {
 	t.Helper()
 	if err := s.create(context.Background(), func(*Journal) error { return nil }); err != nil {
 		t.Fatal(err)
@@ -80,13 +75,8 @@ func TestPermanentHistoryDoesNotExhaustNewIdentities(t *testing.T) {
 		old := i
 		old.OperationID = fmt.Sprintf("%064x", n)
 		historical := s
-		historical.Identity = old
-		historical.Check = func(got quotaoperation.Identity) error {
-			if got != old {
-				return ErrAuthority
-			}
-			return nil
-		}
+		historical.Identity = &old
+		historical.Check = func() error { return nil }
 		if err = historical.withinExisting(context.Background(), func(j *Journal) error {
 			found, denied, e := j.Lookup(old)
 			if e != nil {
@@ -191,7 +181,7 @@ func TestAuthorityAndNamespaceAreRecheckedBeforeAdmission(t *testing.T) {
 			s, i := fixture(t)
 			create(t, s)
 			valid := true
-			s.Check = func(quotaoperation.Identity) error {
+			s.Check = func() error {
 				if !valid {
 					return ErrAuthority
 				}

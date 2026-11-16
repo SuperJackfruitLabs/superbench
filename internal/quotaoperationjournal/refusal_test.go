@@ -43,13 +43,13 @@ func (v evidence) unchanged(t *testing.T) {
 		t.Fatal("refusal changed original evidence", v.path)
 	}
 }
-func normal(t *testing.T, s Store) {
+func normal(t *testing.T, s journalStore) {
 	t.Helper()
-	if e := s.create(context.Background(), func(j *Journal) error { return j.Reserve(s.Identity) }); e != nil {
+	if e := s.create(context.Background(), func(j *Journal) error { return j.Reserve(*s.Identity) }); e != nil {
 		t.Fatal("valid baseline creation", e)
 	}
 	if e := s.withinExisting(context.Background(), func(j *Journal) error {
-		found, denied, e := j.Lookup(s.Identity)
+		found, denied, e := j.Lookup(*s.Identity)
 		if e != nil {
 			return e
 		}
@@ -61,7 +61,7 @@ func normal(t *testing.T, s Store) {
 		t.Fatal("valid baseline reopen", e)
 	}
 }
-func rejectWithin(t *testing.T, s Store, want error) {
+func rejectWithin(t *testing.T, s journalStore, want error) {
 	t.Helper()
 	called := false
 	err := s.withinExisting(context.Background(), func(*Journal) error { called = true; return nil })
