@@ -55,17 +55,11 @@ func runBootstrapCommand(args []string, override bool, input *os.File, output io
 	if err != nil {
 		return err
 	}
-	if err = manager.Begin(ctx, spec); err != nil {
-		return err
-	}
-	if err = manager.Materialize(ctx, spec); err != nil {
-		return err
-	}
-	layout, err := manager.Complete(ctx, spec)
+	result, err := manager.Bootstrap(ctx, spec)
 	if err != nil {
 		return err
 	}
-	return operationOutput(output, layout)
+	return operationOutput(output, result)
 }
 
 func parseBootstrapCommand(args []string) (string, quotaoperation.Identity, error) {

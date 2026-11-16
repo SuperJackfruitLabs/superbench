@@ -13,6 +13,7 @@ import (
 	"syscall"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/payloadexec"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotahelper"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotaoperation"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/storagecustody"
 )
@@ -21,6 +22,7 @@ const maxIntent = 128 << 10
 
 type intent struct {
 	Spec                Spec
+	Allocation          quotahelper.Assignment
 	Operation           quotaoperation.Identity
 	PolicyDigest, Phase string
 	Root, Controls      payloadexec.Node
@@ -63,7 +65,7 @@ func (m *Manager) read(s Spec) (intent, error) {
 		return intent{}, ErrBootstrap
 	}
 	canonical, err := json.Marshal(i)
-	if err != nil || !bytes.Equal(raw, canonical) || !reflect.DeepEqual(i.Spec, s) || i.Operation != m.operation || i.PolicyDigest != m.digest || i.Root.Inode == 0 || i.Controls.Inode == 0 || i.CommandSHA256 != "" && !sha256Pattern.MatchString(i.CommandSHA256) || i.CommandCompleted && i.CommandSHA256 == "" {
+	if err != nil || !bytes.Equal(raw, canonical) || !reflect.DeepEqual(i.Spec, s) || i.Operation != m.operation || i.PolicyDigest != m.digest || i.Root.Inode == 0 || i.Controls.Inode == 0 || !m.validAllocation(s, i.Allocation) || i.CommandSHA256 != "" && !sha256Pattern.MatchString(i.CommandSHA256) || i.CommandCompleted && i.CommandSHA256 == "" {
 		return intent{}, ErrBootstrap
 	}
 	switch i.Phase {
