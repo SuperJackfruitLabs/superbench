@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/finiteio"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -32,21 +33,22 @@ type Source struct {
 }
 
 type Request struct {
-	Version              string       `json:"version"`
-	Operation            string       `json:"operation"`
-	Key                  string       `json:"key,omitempty"`
-	Repositories         []Repository `json:"repositories,omitempty"`
-	CheckpointRepository string       `json:"checkpoint_repository,omitempty"`
-	Source               *Source      `json:"source,omitempty"`
-	Holder               string       `json:"holder,omitempty"`
-	RequestID            string       `json:"request_id,omitempty"`
-	LeaseToken           string       `json:"lease_token,omitempty"`
-	Arguments            []string     `json:"arguments,omitempty"`
-	Checkpoint           *bool        `json:"checkpoint,omitempty"`
-	Initialize           *bool        `json:"initialize,omitempty"`
-	Offline              *bool        `json:"offline,omitempty"`
-	RepositoryName       string       `json:"repository_name,omitempty"`
-	QuotaBytes           *uint64      `json:"quota_bytes,omitempty"`
+	Version              string          `json:"version"`
+	Operation            string          `json:"operation"`
+	Key                  string          `json:"key,omitempty"`
+	Repositories         []Repository    `json:"repositories,omitempty"`
+	CheckpointRepository string          `json:"checkpoint_repository,omitempty"`
+	Source               *Source         `json:"source,omitempty"`
+	Holder               string          `json:"holder,omitempty"`
+	RequestID            string          `json:"request_id,omitempty"`
+	LeaseToken           string          `json:"lease_token,omitempty"`
+	Arguments            []string        `json:"arguments,omitempty"`
+	Checkpoint           *bool           `json:"checkpoint,omitempty"`
+	Initialize           *bool           `json:"initialize,omitempty"`
+	Offline              *bool           `json:"offline,omitempty"`
+	RepositoryName       string          `json:"repository_name,omitempty"`
+	QuotaBytes           *uint64         `json:"quota_bytes,omitempty"`
+	IO                   *finiteio.Input `json:"io,omitempty"`
 }
 
 type shape struct{ required, optional []string }
@@ -72,9 +74,11 @@ func Growth(operation string) bool {
 }
 func ReadOnly(operation string) bool { return operation == "status" || operation == "host_status" }
 
-func Parse(raw []byte) (Request, error) {
+func Parse(raw []byte) (Request, error) { return parseRequest(raw, MaxBody, false) }
+
+func parseRequest(raw []byte, limit int, finite bool) (Request, error) {
 	var zero Request
-	if len(raw) > MaxBody || !utf8.Valid(raw) || !scalarEscapes(raw) || !strictJSON(raw) {
+	if len(raw) > limit || !utf8.Valid(raw) || !scalarEscapes(raw) || !strictJSON(raw) {
 		return zero, ErrInvalid
 	}
 	// The shallow quota field preserves its exact numeric spelling before Go's
@@ -90,6 +94,12 @@ func Parse(raw []byte) (Request, error) {
 	s, ok := shapes[r.Operation]
 	if r.Version != Version || !ok {
 		return zero, ErrInvalid
+	}
+	if finite {
+		if r.Operation != "run" || r.IO == nil {
+			return zero, ErrInvalid
+		}
+		s.required = append(append([]string(nil), s.required...), "io")
 	}
 	fields, ok := fieldSet(raw, append([]string{"version", "operation"}, s.required...), s.optional)
 	if !ok {
@@ -139,6 +149,14 @@ func quota(raw []byte) (uint64, bool) {
 }
 
 func (r Request) Digest() (string, error) {
+	if r.IO != nil {
+		if r.Operation != "run" {
+			return "", ErrInvalid
+		}
+		if _, err := r.IO.Bytes(); err != nil {
+			return "", ErrInvalid
+		}
+	}
 	raw, err := json.Marshal(r)
 	if err != nil {
 		return "", err
