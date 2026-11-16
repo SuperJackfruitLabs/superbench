@@ -18,6 +18,9 @@ func publicationFixture(t *testing.T) (payloadexec.Policy, *os.File) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := os.Chmod(root, 0700); err != nil {
+		t.Fatal(err)
+	}
 	p := payloadexec.Policy{StateRoot: root, DaemonUID: uint32(os.Geteuid()), DaemonGID: uint32(os.Getegid())}
 	f, err := publicationStateRoot(p)
 	if err != nil {
