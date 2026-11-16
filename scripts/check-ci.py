@@ -66,8 +66,8 @@ def main():
 
     env = {'PATH': str(Path(go).parent) + ':/usr/local/bin:/usr/bin:/bin',
            'HOME': str(task_home), 'TMPDIR': str(task_tmp), 'GOCACHE': str(build_cache),
-           'GOMODCACHE': str(module_cache), 'GOTOOLCHAIN': 'local', 'GOFLAGS': '-p=1',
-           'GOMAXPROCS': '2', 'CI': 'true'}
+           'GOMODCACHE': str(module_cache), 'GOTOOLCHAIN': 'local', 'GOFLAGS': '-p=8',
+           'GOMAXPROCS': '8', 'CI': 'true'}
     for name in ('GOPROXY', 'GOSUMDB', 'GOMEMLIMIT'):
         if name in os.environ:
             env[name] = os.environ[name]
