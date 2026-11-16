@@ -188,7 +188,11 @@ self-hosted runner label and invokes `--privileged-only`. It requires real root,
 private mount/network namespace support and cgroup delegation, verifies the
 protected effective-root reap refusal, and runs the installed registry/helper
 identity fixtures. Missing capabilities fail; no matching runner leaves this
-proof pending. Fork PRs do not automatically run privileged self-hosted code.
+proof pending. The job accepts only pushes to protected `main`; all PRs, tags,
+unprotected branches and absent protection metadata leave privileged proof
+unperformed. An ordinary green PR is not privileged evidence. Before registering
+a privileged runner, enforce trusted-source admission outside branch-editable
+workflow YAML: a branch writer can otherwise replace that YAML and its gate.
 An ordinary root container also performs its effective-root refusal, but that
 alone is not the installed identity or host quota/fencing/installer proof.
 

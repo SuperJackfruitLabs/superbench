@@ -15,9 +15,10 @@ jobs:
       - run: python3 scripts/check-ci.py
 
   privileged-identity:
-    # No matching runner means pending proof, never a skipped or substituted pass.
-    # Fork PR code is not automatically executed on a privileged self-hosted runner.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false
+    # Privileged proof is separate from ordinary CI. Only protected main pushes qualify;
+    # missing/false protection metadata disables this job, including every PR and tag.
+    # Runner admission must also enforce trusted source outside branch-editable YAML.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.ref_protected == true
     runs-on: [self-hosted, superbench-privileged]
     timeout-minutes: 60
     steps:
