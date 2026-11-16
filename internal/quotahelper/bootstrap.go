@@ -12,7 +12,8 @@ import (
 // helper. It has no unscoped or ordinary-Apply fallback. The helper owns complete
 // canonical Spec validation before any effects. Callers must validate its layout
 // reply against the installed service authority and original full member vector.
-// No creation path selects this transport yet.
+// A private fresh-workspace adapter can select this transport behind its
+// default-off internal gate; there is no public activation setting.
 func Bootstrap(ctx context.Context, c Config, key string, requested uint64, spec []byte) ([]byte, error) {
 	return bootstrapScoped(ctx, c, key, requested, spec, os.Geteuid(), 0)
 }
