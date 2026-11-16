@@ -13,6 +13,8 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/output"
 )
 
+var ErrAmbiguousStart = errors.New("execution start callbacks are ambiguous")
+
 type Plan struct {
 	Execution         *execution.Execution
 	Dir               string
@@ -50,6 +52,9 @@ type Runner struct {
 }
 
 func (r Runner) Run(ctx context.Context, plan Plan) (*Result, error) {
+	if r.Start != nil && r.StartPrepared != nil {
+		return nil, ErrAmbiguousStart
+	}
 	if plan.Execution == nil || len(plan.Args) == 0 || r.Backend == nil || (r.Start == nil && r.StartPrepared == nil) || r.Prepare != nil && r.StartPrepared == nil || r.Stop == nil || r.Cancel == nil || r.Seal == nil {
 		return nil, errors.New("execution stage requires a plan, fencing backend and lifecycle callbacks")
 	}

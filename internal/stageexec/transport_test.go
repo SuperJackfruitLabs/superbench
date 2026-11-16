@@ -118,3 +118,15 @@ func TestPreparedTransportCannotUseLegacyUngatedStart(t *testing.T) {
 		t.Fatalf("ungated transport admitted: %v %v", prepared, err)
 	}
 }
+
+func TestAmbiguousStartCallbacksRefuseBeforeCaptureOrPreparation(t *testing.T) {
+	p := plan(t, "exit 0")
+	r := defaults(p)
+	effects := false
+	r.StartPrepared = func(context.Context, *exec.Cmd, *execution.Execution, Launch) error { effects = true; return nil }
+	r.Prepare = func(*exec.Cmd, *execution.Execution) (Transport, error) { effects = true; return nil, nil }
+	r.Open = func() (*output.Capture, error) { effects = true; return nil, nil }
+	if result, err := r.Run(context.Background(), p); result != nil || !errors.Is(err, ErrAmbiguousStart) || effects {
+		t.Fatalf("ambiguous callbacks admitted effects: %v %v %v", result, err, effects)
+	}
+}
