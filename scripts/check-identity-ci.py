@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Verify installed registry/helper binding in disposable Linux namespaces.
 
-This is privileged CI for the registry binding primitives only, not payload
-execution, sudo installation or the complete privileged storage lifecycle.
+This is privileged CI for registry binding and scoped child credentials, not
+production payload execution, sudo installation or the full storage lifecycle.
 Unsupported namespace/cgroup environments fail; they never silently skip.
 """
 import argparse
@@ -31,6 +31,8 @@ TESTS = (
         'HELPER_BINDING_PRIVATE_MODE_LINK_TYPE_REFUSALS',
         'HELPER_BINDING_MISSING_MISMATCHED_REGISTRY_NO_FRAME',
         'HELPER_BINDING_CHANGED_PROFILE_AND_IDENTICAL_REPLACEMENT_REFUSED')),
+    ('execution', 'TestHostStartPreservesActualChildCredentials', (
+        'ACTUAL_SCOPED_CHILD_CREDENTIALS_PRESERVED',)),
 )
 LIMITS = {'cpu.max': '800000 100000', 'memory.max': str(2 << 30),
           'memory.swap.max': '0', 'pids.max': '512'}
@@ -173,11 +175,14 @@ def inside(binary, selector):
             raise RuntimeError('identity fixture requires verified private ' + kind + ' namespace')
     # The tagged fixture owns its private /etc mount and repeats these checks
     # before any mount operation. There is no PID namespace or host /etc write.
-    os.execve(binary, [binary, '-test.run=^' + selector + '$', '-test.v', '-test.timeout=240s'],
-              {'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'GOMAXPROCS': '8',
+    environment = {'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'GOMAXPROCS': '8',
                'SUPERBENCH_IDENTITY_FIXTURE': '1',
                'SUPERBENCH_IDENTITY_ORIGINAL_MNT': os.readlink('/proc/1/ns/mnt'),
-               'SUPERBENCH_IDENTITY_ORIGINAL_NET': os.readlink('/proc/1/ns/net')})
+               'SUPERBENCH_IDENTITY_ORIGINAL_NET': os.readlink('/proc/1/ns/net')}
+    if selector == 'TestHostStartPreservesActualChildCredentials':
+        environment['SUPERBENCH_EXECUTION_CREDENTIAL_FIXTURE'] = '1'
+        environment['SUPERBENCH_EXECUTION_CGROUP_ROOT'] = os.environ.get('SUPERBENCH_EXECUTION_CGROUP_ROOT', '')
+    os.execve(binary, [binary, '-test.run=^' + selector + '$', '-test.v', '-test.timeout=240s'], environment)
 
 
 def main():
@@ -223,7 +228,7 @@ def main():
     cgroup = Path('/sys/fs/cgroup') / ('superbench-identity-ci-' + str(os.getpid()) + '-' + os.urandom(6).hex())
     cgroup.mkdir()  # No writable/delegated cgroup means a hard CI failure.
     cgroup_id = identity(cgroup.stat())[:2]
-    report = {'fixture': str(fixture), 'scope': 'registry/helper binding only', 'binaries': {}, 'phases': []}
+    report = {'fixture': str(fixture), 'scope': 'registry/helper binding and scoped child credentials only', 'binaries': {}, 'phases': []}
     process, failure = None, None
 
     def interrupted(number, frame):
@@ -278,6 +283,7 @@ def main():
                 raise RuntimeError('identity fixture must be a CGO0 Linux binary')
             report['binaries'][package]['build_info'] = metadata
             namespace_env = {'PATH': '/usr/sbin:/usr/bin:/sbin:/bin',
+                             'SUPERBENCH_EXECUTION_CGROUP_ROOT': str(cgroup),
                              'SUPERBENCH_IDENTITY_ORIGINAL_MNT': os.readlink('/proc/1/ns/mnt'),
                              'SUPERBENCH_IDENTITY_ORIGINAL_NET': os.readlink('/proc/1/ns/net')}
             log = run(['unshare', '--mount', '--net', '--propagation', 'private', sys.executable,
@@ -328,7 +334,7 @@ def main():
         (fixture / 'result.json').write_text(json.dumps(report, indent=2) + '\n')
     if failure:
         raise SystemExit('identity CI failed; retain ' + str(fixture) + ': ' + failure)
-    print('PASS: installed registry/helper binding fixtures; retained evidence:', fixture)
+    print('PASS: installed registry/helper binding and scoped credentials; retained evidence:', fixture)
 
 
 if __name__ == '__main__':
