@@ -199,8 +199,8 @@ func (s Store) runStage(ctx context.Context, key, holder string, args []string, 
 	result := &RunResult{Bench: b, ExitCode: -1, Execution: execution}
 	stage, err := (stageexec.Runner{
 		Backend: s.backend(),
-		Start: func(ctx context.Context, cmd *exec.Cmd, execution *Execution) error {
-			return s.startExecution(ctx, key, b, cmd, execution)
+		StartPrepared: func(ctx context.Context, cmd *exec.Cmd, execution *Execution, launch stageexec.Launch) error {
+			return s.startExecution(ctx, key, b, cmd, execution, launch)
 		},
 		Stop: func() (*Execution, error) {
 			stopped, err := s.stop(key, b.Lease.Token, false, continuation, true)
@@ -347,7 +347,7 @@ func (s Store) ensureStopped(b *Bench) error {
 	return s.backend().Empty(b.Lease.Execution)
 }
 
-func (s Store) startExecution(ctx context.Context, key string, b *Bench, cmd *exec.Cmd, execution *Execution) error {
+func (s Store) startExecution(ctx context.Context, key string, b *Bench, cmd *exec.Cmd, execution *Execution, launch stageexec.Launch) error {
 	return s.executionGate(key, func() error {
 		return s.transaction(func(db database) error {
 			current, e := get(db, key)
@@ -363,7 +363,7 @@ func (s Store) startExecution(ctx context.Context, key string, b *Bench, cmd *ex
 			if e = ctx.Err(); e != nil {
 				return e
 			}
-			if e = s.backend().Start(cmd, execution); e != nil {
+			if e = launch(func() error { return s.backend().Start(cmd, execution) }); e != nil {
 				return e
 			}
 			current.Lease.Execution.Phase = "running"

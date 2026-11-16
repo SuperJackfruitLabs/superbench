@@ -115,8 +115,8 @@ func (m Manager) execute(ctx context.Context, key, token string, plan memberPlan
 	runner := stageexec.Runner{
 		Open:    func() (*output.Capture, error) { return m.openCapture(ctx, key, token, continuation, stage) },
 		Backend: m.Backend,
-		Start: func(ctx context.Context, cmd *exec.Cmd, e *execution.Execution) error {
-			return m.start(ctx, key, token, continuation, plan, cmd, e)
+		StartPrepared: func(ctx context.Context, cmd *exec.Cmd, e *execution.Execution, launch stageexec.Launch) error {
+			return m.start(ctx, key, token, continuation, plan, cmd, e, launch)
 		},
 		Stop: func() (*execution.Execution, error) {
 			return m.completeExecution(key, token, stage)
@@ -161,7 +161,7 @@ func (m Manager) execute(ctx context.Context, key, token string, plan memberPlan
 	})
 }
 
-func (m Manager) start(ctx context.Context, key, token, continuation string, plan memberPlan, cmd *exec.Cmd, e *execution.Execution) error {
+func (m Manager) start(ctx context.Context, key, token, continuation string, plan memberPlan, cmd *exec.Cmd, e *execution.Execution, launch stageexec.Launch) error {
 	return m.Gate(key, func() error {
 		return m.Update(func(rows benchstate.Database, tx *sql.Tx) error {
 			b, err := owned(rows, key, token)
@@ -187,7 +187,7 @@ func (m Manager) start(ctx context.Context, key, token, continuation string, pla
 			if err = ctx.Err(); err != nil {
 				return err
 			}
-			if err = operationcontrol.Effect(ctx, func() error { return m.Backend.Start(cmd, e) }); err != nil {
+			if err = operationcontrol.Effect(ctx, func() error { return launch(func() error { return m.Backend.Start(cmd, e) }) }); err != nil {
 				return err
 			}
 			b.Lease.Execution.Phase = "running"

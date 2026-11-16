@@ -166,7 +166,7 @@ func TestStoppedIntentCannotLaunchLateWriter(t *testing.T) {
 		t.Fatal(e)
 	}
 	cmd := exec.Command("sh", "-c", "exit 0")
-	if e = s.startExecution(context.Background(), "task", b, cmd, execution); e == nil {
+	if e = s.startExecution(context.Background(), "task", b, cmd, execution, func(start func() error) error { return start() }); e == nil {
 		t.Fatal("delayed writer launched after stop")
 	}
 	if cmd.Process != nil {
