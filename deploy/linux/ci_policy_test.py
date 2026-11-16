@@ -49,6 +49,15 @@ class CIPolicy(unittest.TestCase):
         self.assertNotIn('UNRELATED_AMBIENT_CREDENTIAL', environment)
         self.assertEqual(environment['SUPERBENCH_IDENTITY_FIXTURE'], '1')
 
+    def test_preparation_exec_fixture_is_selected_and_requires_its_proof(self):
+        selected = [(package, markers) for package, selector, markers in IDENTITY['TESTS']
+                    if selector == 'TestInstalledReadOnlyRegistrationInspectionFixture']
+        self.assertEqual(len(selected), 1)
+        self.assertEqual(selected[0][0], 'payloadexec')
+        self.assertIn('PREPARATION_ACTUAL_ROOT_INPUTS_AND_REFUSALS', selected[0][1])
+        phases = [package + '-' + selector for package, selector, _ in IDENTITY['TESTS']]
+        self.assertEqual(len(phases), len(set(phases)))
+
     def test_readonly_cgroup_refuses_before_privileged_fixture_execution(self):
         refusal = subprocess.CalledProcessError(1, ['identity', '--preflight'])
         with patch.object(sys, 'argv', ['check-ci.py', '--privileged-only']), patch('os.geteuid', return_value=0), \

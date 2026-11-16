@@ -8,7 +8,9 @@ package payloadexec
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -21,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/registeredinspection"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/serviceidentity"
 )
 
@@ -163,7 +166,7 @@ func TestInstalledReadOnlyRegistrationInspectionFixture(t *testing.T) {
 		t.Fatal(err)
 	}
 	request := InspectionRequest{Version: InspectionVersion, Key: l.Key, LayoutID: l.ID, PolicyDigest: l.PolicyDigest}
-	run := func(t *testing.T, r InspectionRequest, pipeUID int) ([]byte, string, error) {
+	run := func(t *testing.T, r interface{ Bytes() ([]byte, error) }, pipeUID int) ([]byte, string, error) {
 		t.Helper()
 		body, e := r.Bytes()
 		if e != nil {
@@ -218,7 +221,7 @@ func TestInstalledReadOnlyRegistrationInspectionFixture(t *testing.T) {
 		_ = errW.Close()
 		writeDone := make(chan error, 1)
 		go func() { _, e := inW.Write(framed); _ = inW.Close(); writeDone <- e }()
-		output, e := io.ReadAll(io.LimitReader(outR, MaxLayout+5))
+		output, e := io.ReadAll(io.LimitReader(outR, registeredinspection.MaxPreparation+5))
 		if e != nil {
 			t.Fatal(e)
 		}
@@ -377,6 +380,112 @@ func TestInstalledReadOnlyRegistrationInspectionFixture(t *testing.T) {
 			}
 		})
 	}
+	t.Run("preparation-inputs-through-Exec", func(t *testing.T) {
+		request := registeredinspection.PreparationRequest{Version: registeredinspection.PreparationVersion, Key: l.Key, LayoutID: l.ID, PolicyDigest: l.PolicyDigest, Member: "api"}
+		observe := func() registeredinspection.Preparation {
+			t.Helper()
+			output, diagnostic, e := run(t, request, int(p.DaemonUID))
+			if e != nil || diagnostic != "" || len(output) < 4 || int(binary.BigEndian.Uint32(output)) != len(output)-4 {
+				t.Fatalf("preparation frame: %d %q %v", len(output), diagnostic, e)
+			}
+			got, e := registeredinspection.ParsePreparation(p, output[4:])
+			if e != nil || !reflect.DeepEqual(Layout(got.Layout), l) || got.Inputs.Member != "api" {
+				t.Fatalf("preparation authority mismatch: %v", e)
+			}
+			return got
+		}
+		absent := observe()
+		if absent.Inputs.Config.Present {
+			t.Fatal("absent config fabricated")
+		}
+		for _, f := range absent.Inputs.Manifests {
+			if f.Present {
+				t.Fatal("absent manifest fabricated")
+			}
+		}
+		configDir := filepath.Join(root, "api/.bench")
+		mkdir(configDir, int(p.PayloadUID), int(p.PayloadGID))
+		configPath := filepath.Join(configDir, "config.toml")
+		config := []byte("# preserved for the ordinary parser\n")
+		manifest := []byte(`{"private":true}`)
+		write(configPath, config, int(p.PayloadUID), int(p.PayloadGID), 0600)
+		write(filepath.Join(root, "api/package.json"), manifest, int(p.PayloadUID), int(p.PayloadGID), 0600)
+		write(filepath.Join(root, "api/pnpm-lock.yaml"), nil, int(p.PayloadUID), int(p.PayloadGID), 0600)
+		got := observe()
+		if !bytes.Equal(got.Inputs.Config.Data, config) || !got.Inputs.Config.Present {
+			t.Fatal("config bytes not preserved")
+		}
+		sum := sha256.Sum256(manifest)
+		if f := got.Inputs.Manifests[0]; !f.Present || f.Bytes != uint64(len(manifest)) || f.SHA256 != hex.EncodeToString(sum[:]) || len(f.Data) != 0 {
+			t.Fatal("manifest hash or content boundary changed")
+		}
+		if f := got.Inputs.Manifests[1]; !f.Present || f.Bytes != 0 {
+			t.Fatal("empty lockfile confused with absent")
+		}
+		if got.Inputs.Manifests[2].Present {
+			t.Fatal("absent lockfile fabricated")
+		}
+		for _, scenario := range []string{"unknown-member", "wrong-pipe-owner", "config-symlink", "config-fifo", "config-oversize"} {
+			t.Run(scenario, func(t *testing.T) {
+				observe()
+				candidate, pipeUID := request, int(p.DaemonUID)
+				expected := "INSPECTION_REFUSAL preparation boundary\n"
+				switch scenario {
+				case "unknown-member":
+					candidate.Member = "unregistered"
+				case "wrong-pipe-owner":
+					pipeUID = int(p.PayloadUID)
+					expected = "INSPECTION_REFUSAL stdio boundary\n"
+				default:
+					backup := filepath.Join(configDir, "retained-config")
+					if e := os.Rename(configPath, backup); e != nil {
+						t.Fatal(e)
+					}
+					defer func() {
+						if e := os.Remove(configPath); e != nil {
+							t.Error(e)
+						}
+						if e := os.Rename(backup, configPath); e != nil {
+							t.Error(e)
+						}
+					}()
+					switch scenario {
+					case "config-symlink":
+						if e := os.Symlink(backup, configPath); e != nil {
+							t.Fatal(e)
+						}
+					case "config-fifo":
+						if e := syscall.Mkfifo(configPath, 0600); e != nil {
+							t.Fatal(e)
+						}
+						if e := os.Chown(configPath, int(p.PayloadUID), int(p.PayloadGID)); e != nil {
+							t.Fatal(e)
+						}
+					case "config-oversize":
+						if e := os.WriteFile(configPath, make([]byte, registeredinspection.MaxConfigBytes+1), 0600); e != nil {
+							t.Fatal(e)
+						}
+						if e := os.Chown(configPath, int(p.PayloadUID), int(p.PayloadGID)); e != nil {
+							t.Fatal(e)
+						}
+					}
+				}
+				output, diagnostic, e := run(t, candidate, pipeUID)
+				var exit *exec.ExitError
+				if len(output) != 0 || diagnostic != expected || !errors.As(e, &exit) || exit.ExitCode() != 17 {
+					t.Fatalf("preparation refusal: output=%d diagnostic=%q error=%v", len(output), diagnostic, e)
+				}
+			})
+		}
+		observe()
+		if current, e := os.ReadFile(registration); e != nil || !bytes.Equal(current, raw) {
+			t.Fatal("preparation changed registration", e)
+		}
+		if _, e := os.Lstat(p.CgroupRoot); !errors.Is(e, os.ErrNotExist) {
+			t.Fatal("preparation touched cgroups", e)
+		}
+		t.Log("PREPARATION_ACTUAL_ROOT_INPUTS_AND_REFUSALS")
+	})
 	positive(t)
 	t.Log("INSPECTION_SCOPE_FREE_REFUSALS_NO_CGROUP_OR_EXEC")
 }
