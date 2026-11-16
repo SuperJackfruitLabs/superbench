@@ -17,8 +17,9 @@ func TestScalarRegistrationAssignedOnlyByMigration(t *testing.T) {
 	if err := migrateForTest(db, t.TempDir(), nil); err != nil {
 		t.Fatal(err)
 	}
-	var raw string
-	if err := db.QueryRow("SELECT record FROM benches").Scan(&raw); err != nil {
+	var raw, again string
+	var changesBefore, changesAfter int64
+	if err := db.QueryRow("SELECT record, total_changes() FROM benches").Scan(&raw, &changesBefore); err != nil {
 		t.Fatal(err)
 	}
 	var fields map[string]json.RawMessage
@@ -42,9 +43,8 @@ func TestScalarRegistrationAssignedOnlyByMigration(t *testing.T) {
 	if err := migrateForTest(db, t.TempDir(), nil); err != nil {
 		t.Fatal(err)
 	}
-	var again string
-	if err := db.QueryRow("SELECT record FROM benches").Scan(&again); err != nil || again != raw {
-		t.Fatal("identity changed on repeated migration", err)
+	if err := db.QueryRow("SELECT record, total_changes() FROM benches WHERE (SELECT count(*) FROM benches)=1").Scan(&again, &changesAfter); err != nil || again != raw || changesAfter != changesBefore {
+		t.Fatal("repeated migration changed bytes or performed writes", err)
 	}
 }
 
