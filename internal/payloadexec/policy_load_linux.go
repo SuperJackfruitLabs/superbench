@@ -60,7 +60,7 @@ func openPolicyFile(parent *os.File, name string) (*os.File, os.FileInfo, error)
 		_ = opened.Close()
 		return nil, nil, errors.Join(ErrPolicy, err)
 	}
-	if !info.Mode().IsRegular() || info.Mode().Perm()&0022 != 0 || info.Sys().(*syscall.Stat_t).Uid != 0 || info.Sys().(*syscall.Stat_t).Nlink != 1 || info.Size() > MaxPolicy {
+	if !info.Mode().IsRegular() || info.Sys().(*syscall.Stat_t).Mode&07777 != 0600 || info.Sys().(*syscall.Stat_t).Uid != 0 || info.Sys().(*syscall.Stat_t).Nlink != 1 || info.Size() > MaxPolicy {
 		_ = opened.Close()
 		return nil, nil, ErrPolicy
 	}

@@ -73,7 +73,7 @@ func TestArchitecture(t *testing.T) {
 				"internal/hoststorage":          {"internal/storageproof", "internal/hostlayout", "internal/hostpolicy", "internal/quotahelper", "internal/model", "internal/output"},
 				"internal/payloadpolicy":        {}, // Pure fixed-policy codec; no execution authority.
 				"internal/serviceidentity":      {"internal/payloadpolicy"},
-				"internal/payloadexec":          {"internal/payloadpolicy"},
+				"internal/payloadexec":          {"internal/payloadpolicy", "internal/serviceidentity"},
 				"internal/payloadlaunch":        {"internal/payloadexec", "internal/execution"},
 				"internal/stageexec":            {"internal/execution", "internal/output"},
 				"internal/quotahelper":          {"internal/quotaoperation", "internal/operationcontrol"},

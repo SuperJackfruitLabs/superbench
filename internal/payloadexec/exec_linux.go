@@ -28,10 +28,11 @@ func Exec() (err error) {
 		return ErrBoundary
 	}
 	phase = "policy"
-	p, err := LoadFixedPolicy()
+	binding, err := loadHelperBinding()
 	if err != nil {
-		return errors.Join(ErrBoundary, err)
+		return err
 	}
+	p := binding.policy
 	phase = "stdio"
 	if err := verifyStdio(p); err != nil {
 		return err
@@ -103,9 +104,8 @@ func Exec() (err error) {
 		return errors.Join(ErrBoundary, aErr, cErr)
 	}
 	phase = "policy"
-	currentPolicy, err := LoadFixedPolicy()
-	if err != nil || currentPolicy != p {
-		return errors.Join(ErrBoundary, err)
+	if err := binding.recheck(); err != nil {
+		return err
 	}
 	phase = "stdio"
 	if err := verifyStdio(p); err != nil {
