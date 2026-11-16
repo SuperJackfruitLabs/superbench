@@ -28,7 +28,8 @@ def main():
     go = shutil.which('go')
     if go is None:
         raise SystemExit('the workflow must provide its pinned Go toolchain')
-    for name in ('superbench-check-bin', 'superbench-check-quota', 'superbench-check-daemon'):
+    for name in ('superbench-check-bin', 'superbench-check-quota', 'superbench-check-daemon',
+                 'superbench-check-payload'):
         if os.path.lexists('/tmp/' + name):
             raise SystemExit('CI binary output already exists; use an isolated job tmp directory')
     fixture = Path(tempfile.mkdtemp(prefix='superbench-ci-', dir='/var/tmp'))

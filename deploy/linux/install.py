@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import platform
 import stat
+import struct
 import subprocess
 import tempfile
 
@@ -34,15 +35,43 @@ def checked_path(root, relative):
     return path
 
 
+def static_helper(data):
+    """Reject a loader or shared-library dependency in the root payload helper."""
+    if len(data) < 64:
+        raise ValueError("bench-payload requires a complete static ELF64 header")
+    offset = struct.unpack_from("<Q", data, 32)[0]
+    size, count = struct.unpack_from("<HH", data, 54)
+    if size != 56 or count == 0 or offset < 64 or offset + size * count > len(data):
+        raise ValueError("bench-payload has invalid ELF program headers")
+    for index in range(count):
+        kind, _, start, _, _, length, _, _ = struct.unpack_from("<IIQQQQQQ", data, offset + index * size)
+        if start + length > len(data):
+            raise ValueError("bench-payload has an invalid ELF segment")
+        if kind == 3:
+            raise ValueError("bench-payload must not use a dynamic interpreter")
+        if kind == 2:
+            if length % 16:
+                raise ValueError("bench-payload has an invalid dynamic section")
+            for position in range(start, start + length, 16):
+                tag, _ = struct.unpack_from("<qQ", data, position)
+                if tag == 1:
+                    raise ValueError("bench-payload must not depend on shared libraries")
+                if tag == 0:
+                    break
+
+
 def payload(bin_dir, managed):
     here = Path(__file__).resolve().parent
     result = {}
     architecture = None
-    for name, target in [
+    executables = [
         ("bench", "usr/local/bin/bench"),
         ("benchd", "usr/local/bin/benchd"),
         ("bench-quota", "usr/local/libexec/bench-quota"),
-    ]:
+    ]
+    if managed:
+        executables.append(("bench-payload", "usr/local/libexec/bench-payload"))
+    for name, target in executables:
         source = bin_dir / name
         data = source.read_bytes()
         if data[:4] != b"\x7fELF" or len(data) < 20 or data[4:6] != b"\x02\x01":
@@ -51,6 +80,8 @@ def payload(bin_dir, managed):
         if machine not in (62, 183) or (architecture is not None and machine != architecture):
             raise ValueError("payload must use one supported architecture (amd64 or arm64)")
         architecture = machine
+        if name == "bench-payload":
+            static_helper(data)
         result[target] = (data, 0o755)
     for source, target, mode in [
         ("superbench.service", "etc/systemd/system/superbench.service", 0o644),

@@ -1,3 +1,6 @@
 # Only installed for managed storage. The helper validates its own fixed policy
 # and rejects policy overrides from sudo callers. No shell or XFS tools allowed.
 superbench ALL=(root) NOPASSWD: /usr/local/libexec/bench-quota
+# This distinct helper accepts a bounded stdin frame, never command-line options.
+# The empty argument string is required: a bare command would permit any args.
+superbench ALL=(root) NOPASSWD: /usr/local/libexec/bench-payload ""
