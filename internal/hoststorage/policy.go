@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotahelper"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/storagecustody"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -83,42 +84,12 @@ func (p Policy) Validate() error {
 }
 func Load(path string) (Policy, error) {
 	var p Policy
-	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
-		return p, errors.New("policy path must be absolute and normalized")
-	}
-	if e := trustedAncestors(path); e != nil {
-		return p, e
-	}
-	f, e := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
-	if e != nil {
-		return p, e
-	}
-	defer f.Close()
-	stat, e := f.Stat()
-	if e != nil {
-		return p, e
-	}
-	actual, e := filepath.EvalSymlinks(path)
-	if e != nil {
-		return p, e
-	}
-	absolute, e := filepath.Abs(path)
-	if e != nil {
-		return p, e
-	}
-	if actual != absolute {
-		return p, errors.New("policy symlinks are not allowed")
-	}
-	if !stat.Mode().IsRegular() || stat.Mode().Perm()&0022 != 0 || stat.Sys().(*syscall.Stat_t).Uid != 0 {
-		return p, errors.New("policy must be a root-owned regular file, not group/world writable")
-	}
-	dec := json.NewDecoder(f)
-	dec.DisallowUnknownFields()
-	if e = dec.Decode(&p); e != nil {
-		return p, e
+	if err := storagecustody.LoadPolicy(path, &p); err != nil {
+		return p, err
 	}
 	return p, p.Validate()
 }
+
 func rootOwnedDirectory(path string, private bool) error {
 	if e := trustedAncestors(path); e != nil {
 		return e
@@ -176,23 +147,8 @@ func save(dir, path string, v any) error {
 
 // Root-owned children beneath a root-owned sticky directory are protected too;
 // other writable ancestors would let a caller swap a checked policy/ledger path.
-func trustedAncestors(path string) error {
-	for dir := filepath.Dir(path); ; dir = filepath.Dir(dir) {
-		stat, e := os.Lstat(dir)
-		if e != nil {
-			return e
-		}
-		if !stat.IsDir() || stat.Mode()&os.ModeSymlink != 0 || stat.Sys().(*syscall.Stat_t).Uid != 0 {
-			return errors.New("privileged path has an untrusted ancestor")
-		}
-		if stat.Mode().Perm()&0022 != 0 && stat.Mode()&os.ModeSticky == 0 {
-			return errors.New("privileged path has a writable non-sticky ancestor")
-		}
-		if dir == "/" {
-			return nil
-		}
-	}
-}
+func trustedAncestors(path string) error { return storagecustody.TrustedAncestors(path) }
+
 func (p Policy) checkLedger(l ledger) error {
 	if e := p.ledgerHeader(l); e != nil {
 		return e
