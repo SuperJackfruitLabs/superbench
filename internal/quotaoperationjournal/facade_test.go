@@ -5,42 +5,57 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotaoperation"
 )
 
-func TestFacadeNeverInitializesMissingHistory(t *testing.T) {
-	s, _ := fixture(t)
+func initializedFixture(t *testing.T) *Store {
+	t.Helper()
+	opened, err := freshFixture(t).InitializeFresh(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return opened
+}
+
+func TestRawFacadeNeverInitializesMissingHistory(t *testing.T) {
+	raw, _ := fixture(t)
+	s := &Store{}
 	effects := 0
 	if err := s.Apply(context.Background(), func() error { effects++; return nil }); !errors.Is(err, ErrAuthority) {
-		t.Fatalf("missing journal apply: %v", err)
+		t.Fatalf("raw apply:%v", err)
 	}
 	proof, err := s.Cancel(context.Background())
 	if !errors.Is(err, ErrAuthority) || proof != (quotaoperation.Proof{}) || effects != 0 {
-		t.Fatalf("missing journal cancel: proof=%+v err=%v effects=%d", proof, err, effects)
+		t.Fatalf("raw cancel:%+v %v count%d", proof, err, effects)
 	}
-	entries, err := os.ReadDir(s.Directory)
+	entries, err := os.ReadDir(raw.Directory)
 	if err != nil || len(entries) != 0 {
-		t.Fatalf("missing journal was initialized: entries=%v err=%v", entries, err)
+		t.Fatalf("raw initialized history:%v %v", entries, err)
 	}
 	if err = s.Apply(context.Background(), nil); !errors.Is(err, ErrAuthority) {
-		t.Fatalf("nil effect: %v", err)
+		t.Fatalf("nil effect:%v", err)
 	}
 }
 
 func TestFacadeRetainsReservationAfterEffectFailure(t *testing.T) {
 	s := initializedFixture(t)
-	i := s.Identity
+	i := s.identity
 	effectErr := errors.New("fixed effect failed")
 	if err := s.Apply(context.Background(), func() error { return effectErr }); !errors.Is(err, effectErr) {
-		t.Fatalf("effect error changed: %v", err)
+		t.Fatalf("effect error:%v", err)
 	}
-	if err := s.withinExisting(context.Background(), func(j *Journal) error {
+	backend, err := s.backend(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = backend.withinExisting(context.Background(), func(j *Journal) error {
 		found, denied, err := j.Lookup(i)
 		if err != nil || !found || denied {
-			t.Fatalf("failed effect lost original reservation: %v %v %v", found, denied, err)
+			t.Fatalf("reservation changed:%v %v %v", found, denied, err)
 		}
 		return nil
 	}); err != nil {
@@ -48,11 +63,11 @@ func TestFacadeRetainsReservationAfterEffectFailure(t *testing.T) {
 	}
 	proof, err := s.Cancel(context.Background())
 	if err != nil || proof != (quotaoperation.Proof{Version: quotaoperation.Version, Identity: i, Cancelled: true}) {
-		t.Fatalf("original proof mismatch: %+v %v", proof, err)
+		t.Fatalf("original proof:%+v %v", proof, err)
 	}
 	effects := 0
 	if err = s.Apply(context.Background(), func() error { effects++; return nil }); !errors.Is(err, quotaoperation.ErrCancelled) || effects != 0 {
-		t.Fatalf("denied retry ran effect: %v effects=%d", err, effects)
+		t.Fatalf("denied retry:%v count%d", err, effects)
 	}
 }
 
@@ -66,7 +81,7 @@ func TestFacadeCancelHoldsSameLockThroughEffect(t *testing.T) {
 	select {
 	case <-entered:
 	case <-time.After(5 * time.Second):
-		t.Fatal("apply did not enter effect")
+		t.Fatal("apply did not enter")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
@@ -74,10 +89,10 @@ func TestFacadeCancelHoldsSameLockThroughEffect(t *testing.T) {
 	close(release)
 	applyErr := <-finished
 	if !errors.Is(err, context.DeadlineExceeded) || proof != (quotaoperation.Proof{}) || applyErr != nil {
-		t.Fatalf("cancel crossed running effect: proof=%+v err=%v apply=%v", proof, err, applyErr)
+		t.Fatalf("cancel crossed effect:%+v %v apply%v", proof, err, applyErr)
 	}
 	if _, err = s.Cancel(context.Background()); err != nil {
-		t.Fatalf("cancel after effect: %v", err)
+		t.Fatal(err)
 	}
 }
 
@@ -86,87 +101,70 @@ func TestFacadeFinalAuthorityFailureNeverReturnsSuccess(t *testing.T) {
 	effects := 0
 	err := s.Apply(context.Background(), func() error {
 		effects++
-		return os.Remove(filepath.Join(s.Directory, "operations.lock"))
+		return os.Remove(filepath.Join(s.control.config.Directory, "operations.lock"))
 	})
 	if !errors.Is(err, ErrAuthority) || effects != 1 {
-		t.Fatalf("lost lock acknowledged effect: %v effects=%d", err, effects)
+		t.Fatalf("lost lock acknowledged:%v count%d", err, effects)
 	}
 	proof, err := s.Cancel(context.Background())
 	if !errors.Is(err, os.ErrNotExist) || proof != (quotaoperation.Proof{}) {
-		t.Fatalf("lost original lock returned proof: %+v %v", proof, err)
+		t.Fatalf("lost lock proof:%+v %v", proof, err)
 	}
 }
 
-func TestFacadeAuthorityRefusalNeverReturnsProof(t *testing.T) {
-	s := initializedFixture(t)
-	if _, err := s.Cancel(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	authorityErr := errors.New("original helper authority changed")
-	s.Check = func(quotaoperation.Identity) error { return authorityErr }
-	proof, err := s.Cancel(context.Background())
-	if !errors.Is(err, authorityErr) || proof != (quotaoperation.Proof{}) {
-		t.Fatalf("changed authority returned proof: %+v %v", proof, err)
-	}
-}
-
-func initializedFixture(t *testing.T) Store {
-	t.Helper()
-	s := freshFixture(t)
-	opened, err := s.InitializeFresh(context.Background())
+func TestFacadeRevokedOriginalAuthorityNeverReturnsProof(t *testing.T) {
+	first := initializedFixture(t)
+	valid := true
+	authorityErr := errors.New("original helper authority revoked")
+	s, err := first.control.Operation(context.Background(), first.identity, func(quotaoperation.Identity) error {
+		if !valid {
+			return authorityErr
+		}
+		return nil
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return opened
+	if _, err = s.Cancel(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	valid = false
+	proof, err := s.Cancel(context.Background())
+	if !errors.Is(err, authorityErr) || proof != (quotaoperation.Proof{}) {
+		t.Fatalf("revoked proof:%+v %v", proof, err)
+	}
 }
 
 func TestRawFacadeCannotBypassPermanentAnchor(t *testing.T) {
 	raw, _ := fixture(t)
-	create(t, raw) // Only internal characterization can create an unanchored DB.
+	create(t, raw)
+	s := &Store{}
 	effects := 0
-	if err := raw.Apply(context.Background(), func() error { effects++; return nil }); !errors.Is(err, ErrAuthority) || effects != 0 {
-		t.Fatalf("raw storage authorized effects: %v effects=%d", err, effects)
+	if err := s.Apply(context.Background(), func() error { effects++; return nil }); !errors.Is(err, ErrAuthority) || effects != 0 {
+		t.Fatalf("raw effects:%v count%d", err, effects)
 	}
-	proof, err := raw.Cancel(context.Background())
+	proof, err := s.Cancel(context.Background())
 	if !errors.Is(err, ErrAuthority) || proof != (quotaoperation.Proof{}) {
-		t.Fatalf("raw storage authorized proof: %+v %v", proof, err)
+		t.Fatalf("raw proof:%+v %v", proof, err)
 	}
 }
 
-func TestFacadeCannotReplaceConstructorChecks(t *testing.T) {
-	s := initializedFixture(t)
-	raw, err := os.ReadFile(s.formatPath())
+func TestOperationFreezesRealIdentity(t *testing.T) {
+	first := initializedFixture(t)
+	original := first.identity
+	input := original
+	s, err := first.control.Operation(context.Background(), input, func(got quotaoperation.Identity) error {
+		if got != original {
+			return ErrAuthority
+		}
+		return nil
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = os.Rename(s.formatPath(), s.formatPath()+"-retained"); err != nil {
-		t.Fatal(err)
-	}
-	if err = os.WriteFile(s.formatPath(), raw, 0600); err != nil {
-		t.Fatal(err)
-	}
-	s.Check = func(quotaoperation.Identity) error { return nil }
-	effects := 0
-	if err = s.Apply(context.Background(), func() error { effects++; return nil }); !errors.Is(err, ErrAuthority) || effects != 0 {
-		t.Fatalf("replaced Check bypassed pinned anchor: %v count=%d", err, effects)
-	}
+	input.Epoch = strings.Repeat("f", 32)
 	proof, err := s.Cancel(context.Background())
-	if !errors.Is(err, ErrAuthority) || proof != (quotaoperation.Proof{}) {
-		t.Fatalf("replaced Check returned proof: %+v %v", proof, err)
-	}
-}
-
-func TestFacadeCannotRetargetAnchoredStore(t *testing.T) {
-	s := initializedFixture(t)
-	other, _ := fixture(t)
-	create(t, other)
-	s.Directory = other.Directory
-	effects := 0
-	if err := s.Apply(context.Background(), func() error { effects++; return nil }); !errors.Is(err, ErrAuthority) || effects != 0 {
-		t.Fatalf("anchored store retargeted raw journal: %v count=%d", err, effects)
-	}
-	proof, err := s.Cancel(context.Background())
-	if !errors.Is(err, ErrAuthority) || proof != (quotaoperation.Proof{}) {
-		t.Fatalf("retargeted store returned proof: %+v %v", proof, err)
+	if err != nil || proof.Identity != original || proof.Identity == input || !proof.Cancelled {
+		t.Fatalf("identity changed:%+v %v", proof, err)
 	}
 }

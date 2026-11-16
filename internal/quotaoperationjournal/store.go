@@ -14,35 +14,31 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// Store's Directory is the fixed privileged ledger, never a request path.
-// Production ownership is root. Check verifies the policy/root/binary binding.
-type Store struct {
-	Directory string
-	// Identity pins this lock callback to exactly one original typed invocation.
-	// Journal methods cannot substitute another operation, epoch or authority.
-	Identity          quotaoperation.Identity
-	Check             func(quotaoperation.Identity) error
-	owner             uint32
-	finishFresh       func() error
-	anchored          bool
-	anchoredCheck     func(quotaoperation.Identity) error
-	anchoredDirectory string
+// journalStore is the private storage adapter. A nil Identity is fixed-ledger
+// control, not an operation admission; Journal rejects scoped methods in it.
+type journalStore struct {
+	Directory    string
+	Identity     *quotaoperation.Identity
+	Check        func() error
+	owner        uint32
+	prepareFresh func() error
+	finishFresh  func() error
 }
 
 // create refuses any legacy evidence or interrupted indexed creation. Migration
 // requires a separate validator and is intentionally not an implicit fallback.
-func (s Store) create(ctx context.Context, fn func(*Journal) error) error {
+func (s journalStore) create(ctx context.Context, fn func(*Journal) error) error {
 	return s.within(ctx, true, fn)
 }
-func (s Store) withinExisting(ctx context.Context, fn func(*Journal) error) error {
+func (s journalStore) withinExisting(ctx context.Context, fn func(*Journal) error) error {
 	return s.within(ctx, false, fn)
 }
 
-func (s Store) within(ctx context.Context, create bool, fn func(*Journal) error) error {
-	if s.Check == nil || fn == nil || !s.Identity.Valid() || uint32(os.Geteuid()) != s.owner {
+func (s journalStore) within(ctx context.Context, create bool, fn func(*Journal) error) error {
+	if s.Check == nil || fn == nil || s.Identity != nil && !s.Identity.Valid() || uint32(os.Geteuid()) != s.owner {
 		return ErrAuthority
 	}
-	if err := s.Check(s.Identity); err != nil {
+	if err := s.Check(); err != nil {
 		return err
 	}
 	root, err := directory(s.Directory, s.owner)
@@ -97,10 +93,18 @@ func (s Store) within(ctx context.Context, create bool, fn func(*Journal) error)
 				return e
 			}
 		}
-		return s.Check(s.Identity)
+		return s.Check()
 	}
 	if err = check(); err != nil {
 		return err
+	}
+	if create && s.prepareFresh != nil {
+		if err = s.prepareFresh(); err != nil {
+			return err
+		}
+		if err = check(); err != nil {
+			return err
+		}
 	}
 	ops := filepath.Join(s.Directory, "operations")
 	if create {
