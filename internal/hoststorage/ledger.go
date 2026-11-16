@@ -6,6 +6,10 @@ import (
 
 type policyBinding = allocationledger.Binding
 
+// AllocationBinding is the pure policy value used to validate allocation rows.
+// It grants no storage, operation or maintenance authority.
+func (p Policy) AllocationBinding() allocationledger.Binding { return p.binding() }
+
 func (p Policy) binding() policyBinding {
 	return policyBinding{OperationJournal: p.OperationJournal, OwnerUID: p.OwnerUID, OwnerGID: p.OwnerGID, BenchBytes: p.BenchBytes, StoreBytes: p.StoreBytes, MirrorBytes: p.MirrorBytes, ReserveBytes: p.ReserveBytes, BenchInodes: p.BenchInodes, StoreInodes: p.StoreInodes, MirrorInodes: p.MirrorInodes, ReserveInodes: p.ReserveInodes}
 }
