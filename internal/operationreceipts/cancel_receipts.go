@@ -85,7 +85,7 @@ func (r *receipts) requestCancelLocked(uid uint32, id, digest string) (string, e
 		return "", err
 	}
 	var count int
-	if err = tx.QueryRow(`SELECT count(*) FROM operation_cancels`).Scan(&count); err != nil {
+	if err = tx.QueryRow(`SELECT count(*) FROM operation_cancels WHERE state='cancel_requested'`).Scan(&count); err != nil {
 		return "", err
 	}
 	if count >= maxCancelTombstones {

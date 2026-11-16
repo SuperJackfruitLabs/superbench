@@ -38,7 +38,7 @@ func (r *receipts) saveOperationIntent(i operationcontrol.Intent) error {
 		return err
 	}
 	var n int
-	if err := r.db.QueryRow(`SELECT count(*) FROM operation_intents`).Scan(&n); err != nil {
+	if err := r.db.QueryRow(`SELECT count(*) FROM operation_intents WHERE core_finalized=0`).Scan(&n); err != nil {
 		return err
 	}
 	if n >= 10000 {

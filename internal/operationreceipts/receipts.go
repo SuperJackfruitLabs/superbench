@@ -194,11 +194,20 @@ func openReceipts(state string) (*receipts, error) {
 			return nil, err
 		}
 	}
+	ledger := &receipts{db: db, active: map[string]bool{}}
+	if e = ledger.validateHistory(); e != nil {
+		db.Close()
+		return nil, e
+	}
+	if e = activeIndexes(db); e != nil {
+		db.Close()
+		return nil, e
+	}
 	if _, e = db.Exec("UPDATE receipts SET state='interrupted' WHERE state='running'"); e != nil {
 		db.Close()
 		return nil, e
 	}
-	return &receipts{db: db, active: map[string]bool{}}, nil
+	return ledger, nil
 }
 
 // lookup does not reserve an identity: completed responses precede mutable
@@ -217,6 +226,9 @@ func (r *receipts) lookupLocked(uid uint32, id, digest string) (*receipt, bool, 
 	if err == nil {
 		if prior != digest {
 			return nil, true, errConflict
+		}
+		if err = r.validateReceipt(storedReceipt{target: operationcontrol.Target{UID: uid, RequestID: id, Digest: prior}, state: state, barrier: cancelled, body: body, status: status}); err != nil {
+			return nil, true, err
 		}
 		if state == "done" && status.Valid {
 			return &receipt{body: body, status: int(status.Int64)}, true, nil
@@ -267,15 +279,21 @@ func (r *receipts) claim(uid uint32, id, digest string) (*receipt, error) {
 	if e = cancelBarrier(tx, uid, id, digest); e != nil {
 		return nil, e
 	}
-	var count, bytes, pending int64
-	if e = tx.QueryRow("SELECT count(*),coalesce(sum(length(body)),0),coalesce(sum(CASE WHEN state='running' THEN 1 ELSE 0 END),0) FROM receipts").Scan(&count, &bytes, &pending); e != nil {
+	if e = requireReceiptCapacity(tx); e != nil {
 		return nil, e
 	}
-	if count >= 10000 || bytes+(pending+1)*(64<<10) > 64<<20 {
-		return nil, errCapacity
-	}
-	if _, e = tx.Exec("INSERT INTO receipts(owner,id,digest,state) VALUES (?,?,?,'running')", uid, id, digest); e != nil {
+	result, e := tx.Exec("INSERT INTO receipts(owner,id,digest,state) VALUES (?,?,?,'running')", uid, id, digest)
+	if e = oneInserted(result, e); e != nil {
 		return nil, e
+	}
+	var storedDigest, state, barrier string
+	var body []byte
+	var status sql.NullInt64
+	if e = tx.QueryRow(`SELECT digest,state,cancel_state,body,status FROM receipts WHERE owner=? AND id=?`, uid, id).Scan(&storedDigest, &state, &barrier, &body, &status); e != nil {
+		return nil, e
+	}
+	if storedDigest != digest || state != "running" || barrier != "" || body != nil || status.Valid {
+		return nil, errInDoubt
 	}
 	if e = tx.Commit(); e != nil {
 		return nil, e

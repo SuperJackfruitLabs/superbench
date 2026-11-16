@@ -180,6 +180,10 @@ func open(state, instance string, create bool) (j *Journal, err error) {
 	if err = j.checkAuthority(); err != nil {
 		return nil, err
 	}
+	// Derived lookup acceleration only; no authority or retained identity changes.
+	if _, err = j.db.Exec(`CREATE INDEX IF NOT EXISTS repair_active_admissions ON admissions(id) WHERE phase NOT IN ('completed','cancelled')`); err != nil {
+		return nil, err
+	}
 	if err = j.checkNames(); err != nil {
 		return nil, err
 	}

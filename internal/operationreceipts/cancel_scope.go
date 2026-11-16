@@ -50,7 +50,7 @@ func (r *receipts) operationScopeLocked(parent context.Context, i operationcontr
 	scoped, err := operationcontrol.WithScope(ctx, i, func(fn func() error) error {
 		r.mu.Lock()
 		defer r.mu.Unlock()
-		if err := r.operationAdmission(i); err != nil {
+		if err := r.boundOperationAdmission(i); err != nil {
 			return err
 		}
 		return fn()

@@ -169,7 +169,7 @@ func BeginWithControl(tx *sql.Tx, i Intent, benchID string, c Control) error {
 	if count != 0 {
 		return ErrBusy
 	}
-	if err = tx.QueryRow(`SELECT count(*) FROM workspace_operations`).Scan(&count); err != nil {
+	if err = tx.QueryRow(`SELECT count(*) FROM workspace_operations WHERE phase IN ('admitted','bound')`).Scan(&count); err != nil {
 		return err
 	}
 	if count >= MaxOperations {
