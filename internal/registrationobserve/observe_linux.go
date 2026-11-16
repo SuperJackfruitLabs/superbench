@@ -69,8 +69,8 @@ func Observe(ctx context.Context, store bench.Store, authority serviceidentity.A
 		if err := held.recheck(); err != nil {
 			return model.Bench{}, err
 		}
-		if err := store.CheckWorkspaceOwner(r.Key, r.LeaseToken, r.Holder); err != nil {
-			return model.Bench{}, errors.Join(ErrObservation, err)
+		if err := checkOwner(store, r); err != nil {
+			return model.Bench{}, err
 		}
 		rows, err := store.Snapshot(r.Key)
 		if err != nil || len(rows) != 1 {
@@ -115,6 +115,13 @@ func Observe(ctx context.Context, store bench.Store, authority serviceidentity.A
 	cp := *before.Workspace.Checkpoint
 	cp.Members = append([]model.WorkspaceCommit(nil), cp.Members...)
 	return &Observation{result: Result{Layout: layout, RootPath: before.Path, Checkpoint: cp}, check: check, close: held.close, cancel: cancel}, nil
+}
+
+func checkOwner(store bench.Store, r Request) error {
+	if err := store.CheckWorkspaceOwner(r.Key, r.LeaseToken, r.Holder); err != nil {
+		return errors.Join(ErrObservation, err)
+	}
+	return nil
 }
 
 func ready(policy payloadpolicy.Policy, r Request, b model.Bench) error {

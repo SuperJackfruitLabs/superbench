@@ -62,6 +62,7 @@ func TestRegistrationObservationStrictBodyAndClosedUnavailable(t *testing.T) {
 	}{
 		{"method", "GET", "application/json", raw, 405},
 		{"media", "POST", "text/plain", raw, 415},
+		{"media-parameters", "POST", "application/json; charset=utf-8", raw, 415},
 		{"large", "POST", "application/json", []byte(strings.Repeat("x", protocolv2.MaxBody+1)), 413},
 		{"duplicate", "POST", "application/json", []byte(strings.Replace(string(raw), `"key":"card"`, `"key":"card","key":"card"`, 1)), 400},
 		{"extra", "POST", "application/json", []byte(strings.TrimSuffix(string(raw), "}") + `,"request_id":"not-an-operation"}`), 400},

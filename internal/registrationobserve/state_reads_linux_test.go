@@ -5,6 +5,7 @@ package registrationobserve
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -64,8 +65,27 @@ func TestHeldStateAllowsActualOwnerAndSnapshotReadsWithoutWrites(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer held.close()
-	if err = store.CheckWorkspaceOwner(owner.Key, owner.Lease.Token, owner.Lease.Holder); err != nil {
+	request := Request{Key: owner.Key, LeaseToken: owner.Lease.Token, Holder: owner.Lease.Holder}
+	if err = checkOwner(store, request); err != nil {
 		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		name, key, token string
+		want             error
+	}{
+		{"wrong-token", owner.Key, "different-private-token", bench.ErrLease},
+		{"unknown-key", "unknown-card", owner.Lease.Token, bench.ErrNotFound},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			r := request
+			r.Key, r.LeaseToken = c.key, c.token
+			if err := checkOwner(store, r); !errors.Is(err, c.want) || !errors.Is(err, ErrObservation) {
+				t.Fatalf("ownership refusal = %v, want %v", err, c.want)
+			}
+			if err := held.recheck(); err != nil {
+				t.Fatalf("refusal changed retained state: %v", err)
+			}
+		})
 	}
 	after, err := store.Snapshot(owner.Key)
 	if err != nil || !reflect.DeepEqual(before, after) {

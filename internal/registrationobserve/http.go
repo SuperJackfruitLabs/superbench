@@ -83,14 +83,7 @@ func (h HTTPHandler) Serve(w http.ResponseWriter, r *http.Request, uid uint32) {
 	defer stop()
 	observation, err := Observe(ctx, h.Store, authority, Request{Key: request.Key, BenchID: request.BenchID, Holder: request.Holder, LeaseToken: request.LeaseToken})
 	if err != nil {
-		switch {
-		case errors.Is(err, bench.ErrNotFound):
-			fail(404, "not_found")
-		case errors.Is(err, bench.ErrLease):
-			fail(409, "conflict")
-		default:
-			fail(503, "unavailable")
-		}
+		replyObservationError(w, request, err)
 		return
 	}
 	defer observation.Close()
@@ -100,6 +93,17 @@ func (h HTTPHandler) Serve(w http.ResponseWriter, r *http.Request, uid uint32) {
 		return
 	}
 	replyRegistrationObservation(w, request, Projection(result), 200, "")
+}
+
+func replyObservationError(w http.ResponseWriter, request protocolv2.RegistrationObserveRequest, err error) {
+	status, code := 503, "unavailable"
+	switch {
+	case errors.Is(err, bench.ErrNotFound):
+		status, code = 404, "not_found"
+	case errors.Is(err, bench.ErrLease):
+		status, code = 409, "conflict"
+	}
+	replyRegistrationObservation(w, request, nil, status, code)
 }
 
 func replyRegistrationObservation(w http.ResponseWriter, request protocolv2.RegistrationObserveRequest, result *protocolv2.RegistrationObservation, status int, code string) {
