@@ -33,6 +33,31 @@ class CausalTransforms(unittest.TestCase):
         self.assertNotIn('O_CLOEXEC', variants['late-fd'][1].split('// PRIVATE QA:')[1].split('phase = "credentials"')[0])
         self.assertEqual(variants['late-fd'][1].count('/run/superbench-exec-fixture-canary'), 1)
 
+    def test_interposed_input_and_git_statements_survive_final_sweep_mutation(self):
+        boundary = '\tphase = "executable"\n\tpath := "/usr/bin/git"\n'
+        for statement in ('\tphase = "input"\n\tif input != nil { _ = bindPayloadInput(input) }\n',
+                          '\tphase = "git-policy"\n\tif err := verifyManagedGit(); err != nil { return err }\n'):
+            execution = MODULE.replace_once(self.execution, '\tphase = "exec"\n', statement + '\tphase = "exec"\n')
+            variants = MODULE.variants(self.credentials, execution)
+            guarded, mutant = variants['late-fd'][1], variants['late-fd-mutant'][1]
+            self.assertEqual(guarded.split(boundary)[0], mutant.split(boundary)[0])
+            self.assertEqual(mutant.split(boundary)[0].count('if err := descriptorsCloseOnExec();'), 2)
+            self.assertNotIn('descriptorsCloseOnExec()', mutant.split(boundary)[1])
+            self.assertEqual(guarded.count(statement), 1)
+            self.assertEqual(mutant.count(statement), 1)
+            self.assertEqual(guarded.split(statement)[1], mutant.split(statement)[1])
+
+    def test_missing_duplicate_final_sweep_and_executable_boundary_refuse(self):
+        boundary = '\tphase = "executable"\n\tpath := "/usr/bin/git"\n'
+        sweep = '\tphase = "descriptors"\n\tif err := descriptorsCloseOnExec(); err != nil {\n\t\treturn err\n\t}\n'
+        before, suffix = self.execution.split(boundary)
+        for altered in (suffix.replace(sweep, ''), suffix.replace(sweep, sweep + sweep)):
+            with self.subTest():
+                with self.assertRaisesRegex(RuntimeError, 'exactly one source boundary'):
+                    MODULE.variants(self.credentials, before + boundary + altered)
+        with self.assertRaisesRegex(RuntimeError, 'exactly one source boundary'):
+            MODULE.variants(self.credentials, self.execution + boundary)
+
     def test_source_drift_or_duplicate_transforms_refuse(self):
         for credentials, execution in ((self.credentials.replace('return verifyDropped(p)', 'return nil'), self.execution),
                                        (self.credentials, self.execution.replace('phase = "credentials"', 'phase = "different"')),
