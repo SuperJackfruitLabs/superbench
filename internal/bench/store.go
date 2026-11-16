@@ -12,7 +12,6 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/operationcontrol"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/statepath"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/statestore"
-	"os"
 	"time"
 )
 
