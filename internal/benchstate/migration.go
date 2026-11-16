@@ -50,7 +50,7 @@ func Migrate(tx *sql.Tx, state string, pinMigratedInodes func(*model.Bench) erro
 			return err
 		}
 	}
-	if version >= 1 && version <= 28 {
+	if version >= 1 && version <= 29 {
 		if version >= 25 {
 			// Existing run provenance is already owned by this schema.
 		} else if version == 24 {
@@ -69,7 +69,7 @@ func Migrate(tx *sql.Tx, state string, pinMigratedInodes func(*model.Bench) erro
 			return err
 		}
 		for _, b := range records {
-			if b.Workspace != nil && (workspacepolicy.ValidateSchema28(b) != nil || version < 28 && workspacepolicy.ValidateSchema27(b) != nil || version < 26 && workspacepolicy.ValidateSchema25(b) != nil || version < 14 || version == 14 && workspacepolicy.ValidateSchema14(b) != nil || version == 15 && workspacepolicy.ValidateSchema15(b) != nil || version == 16 && workspacepolicy.ValidateSchema16(b) != nil || version == 17 && workspacepolicy.ValidateSchema17(b) != nil || (version == 18 || version == 19) && workspacepolicy.ValidateSchema19(b) != nil || version == 20 && workspacepolicy.ValidateSchema20(b) != nil || version == 21 && workspacepolicy.ValidateSchema21(b) != nil) {
+			if b.Workspace != nil && (version < 29 && workspacepolicy.ValidateSchema28(b) != nil || version < 28 && workspacepolicy.ValidateSchema27(b) != nil || version < 26 && workspacepolicy.ValidateSchema25(b) != nil || version < 14 || version == 14 && workspacepolicy.ValidateSchema14(b) != nil || version == 15 && workspacepolicy.ValidateSchema15(b) != nil || version == 16 && workspacepolicy.ValidateSchema16(b) != nil || version == 17 && workspacepolicy.ValidateSchema17(b) != nil || (version == 18 || version == 19) && workspacepolicy.ValidateSchema19(b) != nil || version == 20 && workspacepolicy.ValidateSchema20(b) != nil || version == 21 && workspacepolicy.ValidateSchema21(b) != nil) {
 				return errors.New("aggregate workspace cannot be adopted from an older state schema")
 			}
 			if b.Lease != nil && b.Lease.Execution != nil && b.Lease.Execution.Phase != "stopped" {
@@ -93,9 +93,12 @@ func Migrate(tx *sql.Tx, state string, pinMigratedInodes func(*model.Bench) erro
 		} else if err := historicalTransferPlans(tx); err != nil {
 			return err
 		}
+		if err = migrateRegistrationIDs(tx, records); err != nil {
+			return err
+		}
 		for key, b := range records {
 			if version >= 18 {
-				continue // Preserve current records byte-for-byte; only authority changes.
+				continue // Aggregate bytes are unchanged; scalar identity was injected above.
 			}
 			if version < 5 {
 				if err = pinMigratedInodes(b); err != nil {
@@ -142,7 +145,7 @@ func Migrate(tx *sql.Tx, state string, pinMigratedInodes func(*model.Bench) erro
 		if err != nil {
 			return err
 		}
-		_, err = tx.Exec("PRAGMA user_version=29")
+		_, err = tx.Exec("PRAGMA user_version=30")
 		return err
 	}
 	if version != 0 {
@@ -164,6 +167,12 @@ func Migrate(tx *sql.Tx, state string, pinMigratedInodes func(*model.Bench) erro
 			if err != nil {
 				return err
 			}
+		}
+		if b.Lease != nil && b.Lease.Execution != nil && b.Lease.Execution.Phase != "stopped" {
+			return errors.New("stop supervised executions with the installed binary before upgrading state")
+		}
+		if b.RegistrationID, err = model.Nonce(); err != nil {
+			return err
 		}
 		raw, e := json.Marshal(b)
 		if e != nil {
@@ -194,7 +203,7 @@ func Migrate(tx *sql.Tx, state string, pinMigratedInodes func(*model.Bench) erro
 	if err = operationcontrol.Schema(tx); err != nil {
 		return err
 	}
-	_, err = tx.Exec("PRAGMA user_version=29")
+	_, err = tx.Exec("PRAGMA user_version=30")
 	return err
 }
 

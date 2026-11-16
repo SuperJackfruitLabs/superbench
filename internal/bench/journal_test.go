@@ -21,7 +21,7 @@ func TestCreationJournalReconciles(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if resumed.Path != b.Path {
+	if resumed.Path != b.Path || resumed.RegistrationID != b.RegistrationID || b.RegistrationID == "" {
 		t.Fatal("did not adopt original checkout")
 	}
 	if g(t, resumed.Path, "rev-parse", "HEAD") != g(t, b.Path, "rev-parse", "HEAD") {

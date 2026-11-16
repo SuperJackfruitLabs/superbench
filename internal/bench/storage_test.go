@@ -215,7 +215,7 @@ func TestStateUpgradePinsInodesAndRefusesChangedAllocation(t *testing.T) {
 			if e != nil {
 				t.Fatal(e)
 			}
-			if _, e = db.Exec("DROP TABLE IF EXISTS workspace_handoff_imports; DROP TABLE IF EXISTS workspace_handoff_exports; DROP TABLE IF EXISTS workspace_handoff_offers; DROP TABLE IF EXISTS workspace_handoff_identity; DROP TABLE initialization_repair_operations; DROP TABLE workspace_operation_cancellations; DROP TABLE workspace_operation_runs; DROP TABLE workspace_operations; PRAGMA user_version=4"); e != nil {
+			if _, e = db.Exec("UPDATE benches SET record=json_remove(record,'$.RegistrationID'); DROP TABLE IF EXISTS workspace_handoff_imports; DROP TABLE IF EXISTS workspace_handoff_exports; DROP TABLE IF EXISTS workspace_handoff_offers; DROP TABLE IF EXISTS workspace_handoff_identity; DROP TABLE initialization_repair_operations; DROP TABLE workspace_operation_cancellations; DROP TABLE workspace_operation_runs; DROP TABLE workspace_operations; PRAGMA user_version=4"); e != nil {
 				t.Fatal(e)
 			}
 			db.Close()
@@ -263,7 +263,7 @@ func TestStateUpgradePreservesReapIntentWithoutReallocatingRetiredProject(t *tes
 	if e != nil {
 		t.Fatal(e)
 	}
-	if _, e = db.Exec("DROP TABLE IF EXISTS workspace_handoff_imports; DROP TABLE IF EXISTS workspace_handoff_exports; DROP TABLE IF EXISTS workspace_handoff_offers; DROP TABLE IF EXISTS workspace_handoff_identity; DROP TABLE initialization_repair_operations; DROP TABLE workspace_operation_cancellations; DROP TABLE workspace_operation_runs; DROP TABLE workspace_operations; PRAGMA user_version=4"); e != nil {
+	if _, e = db.Exec("UPDATE benches SET record=json_remove(record,'$.RegistrationID'); DROP TABLE IF EXISTS workspace_handoff_imports; DROP TABLE IF EXISTS workspace_handoff_exports; DROP TABLE IF EXISTS workspace_handoff_offers; DROP TABLE IF EXISTS workspace_handoff_identity; DROP TABLE initialization_repair_operations; DROP TABLE workspace_operation_cancellations; DROP TABLE workspace_operation_runs; DROP TABLE workspace_operations; PRAGMA user_version=4"); e != nil {
 		t.Fatal(e)
 	}
 	db.Close()

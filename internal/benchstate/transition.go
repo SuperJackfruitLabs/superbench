@@ -12,6 +12,8 @@ import (
 )
 
 type identityRecord struct {
+	registration        string
+	layout, allocation  string
 	rowDigest           string
 	workspace           *model.Workspace
 	path                string
@@ -56,6 +58,13 @@ func Capture(records Database) IdentitySnapshot {
 	out := IdentitySnapshot{}
 	for key, b := range records {
 		entry := identityRecord{}
+		if b != nil {
+			entry.registration = b.RegistrationID
+			entry.layout, entry.allocation = b.PayloadLayoutVersion, b.AllocationRoot
+			if entry.layout != "" {
+				entry.path = b.Path
+			}
+		}
 		if b != nil && b.Workspace != nil {
 			raw, _ := json.Marshal(b)
 			sum := sha256.Sum256(raw)
@@ -297,7 +306,7 @@ func ValidateTransition(before IdentitySnapshot, after Database) error {
 	for key, old := range before {
 		b, exists := after[key]
 		if old.workspace == nil {
-			if exists && b != nil && b.Workspace != nil {
+			if exists && (b == nil || b.Workspace != nil || old.registration != b.RegistrationID || old.layout != b.PayloadLayoutVersion || old.allocation != b.AllocationRoot || old.layout != "" && old.path != b.Path) {
 				return invalid
 			}
 			continue

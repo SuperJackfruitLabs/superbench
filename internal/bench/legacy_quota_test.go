@@ -54,7 +54,7 @@ func legacyAllocatedCreationRetainsQuota(t *testing.T, replyRecorded bool) {
 	if err = os.MkdirAll(intent.Bench.Path, 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err = s.record(intent); err != nil {
+	if err = s.record(&intent); err != nil {
 		t.Fatal(err)
 	}
 	original := s.quotaApply

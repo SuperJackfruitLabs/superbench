@@ -37,7 +37,7 @@ func TestReservedHandoffKeyCannotBecomeOrdinaryRegistration(t *testing.T) {
 	}
 	defer tx.Rollback()
 	err = Update(tx, func(rows Database, _ *sql.Tx) error {
-		rows["reserved"] = &model.Bench{Key: "reserved", Path: "/fixed/benches/reserved", Mirror: "/fixed/mirrors/repo", Repo: "repo", Branch: "card/reserved"}
+		rows["reserved"] = &model.Bench{RegistrationID: "0123456789abcdef0123456789abcdef", Key: "reserved", Path: "/fixed/benches/reserved", Mirror: "/fixed/mirrors/repo", Repo: "repo", Branch: "card/reserved"}
 		return nil
 	})
 	if err == nil {
@@ -55,7 +55,7 @@ func TestSchema29Preserves28AndRejectsFutureJournalOrMarker(t *testing.T) {
 		if err := migrateForTest(db, t.TempDir(), nil); err != nil {
 			t.Fatal(err)
 		}
-		assertVersion(t, db, 29)
+		assertVersion(t, db, SchemaVersion)
 		if err := db.QueryRow(`SELECT record FROM benches`).Scan(&after); err != nil || before != after {
 			t.Fatal("changed old row", err)
 		}

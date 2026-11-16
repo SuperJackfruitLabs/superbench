@@ -58,7 +58,7 @@ func (s Store) applyBenchQuota(c *creation) error {
 	c.Bench.ProjectID = a.ProjectID
 	c.Bench.QuotaBytes = a.Bytes
 	c.Bench.QuotaInodes = a.Inodes
-	return s.record(*c)
+	return s.record(c)
 }
 
 func (s Store) releaseQuota(b *Bench) error {

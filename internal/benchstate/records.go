@@ -17,7 +17,7 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspacepolicy"
 )
 
-const SchemaVersion = 29
+const SchemaVersion = 30
 
 type Database map[string]*model.Bench
 
@@ -27,6 +27,9 @@ type Reader interface {
 }
 
 func Validate(records Database) error {
+	return validate(records, true)
+}
+func validate(records Database, current bool) error {
 	if records == nil {
 		return errors.New("invalid state: null database")
 	}
@@ -71,6 +74,9 @@ func Validate(records Database) error {
 			return errors.New("invalid bench record")
 		}
 	}
+	if err := registrationIdentities(records, current); err != nil {
+		return err
+	}
 	return validateTransferLinks(records)
 }
 func Legacy(state string) (Database, error) {
@@ -85,7 +91,10 @@ func Legacy(state string) (Database, error) {
 	if err = json.Unmarshal(raw, &records); err != nil {
 		return nil, fmt.Errorf("invalid legacy state: %w", err)
 	}
-	if err = Validate(records); err != nil {
+	if err = legacyRegistrationFields(raw); err != nil {
+		return nil, err
+	}
+	if err = validate(records, false); err != nil {
 		return nil, err
 	}
 	return records, nil
@@ -111,11 +120,16 @@ func Load(r Reader) (Database, error) {
 	if err = rows.Err(); err != nil {
 		return nil, err
 	}
-	if err = Validate(records); err != nil {
-		return nil, err
-	}
 	var version int
 	if err = r.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
+		return nil, err
+	}
+	if version < SchemaVersion {
+		if err = rejectHistoricalRegistration(r); err != nil {
+			return nil, err
+		}
+	}
+	if err = validate(records, version == SchemaVersion); err != nil {
 		return nil, err
 	}
 	if version == SchemaVersion {

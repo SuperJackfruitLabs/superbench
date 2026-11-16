@@ -14,6 +14,6 @@ func (s Store) journalPath(key string) string { return s.creationFiles().Journal
 func (s Store) pending(key string, o Options, recovering bool) (*creation, error) {
 	return s.creationFiles().Pending(key, o, recovering)
 }
-func (s Store) record(c creation) error                  { return s.creationFiles().Record(c) }
+func (s Store) record(c *creation) error                 { return s.creationFiles().Record(c) }
 func (s Store) finishCreate(c *creation) (*Bench, error) { return s.creationFiles().Finish(c) }
 func (s Store) mirrorPath(repo string) string            { return repository.Path(s.Data, repo) }

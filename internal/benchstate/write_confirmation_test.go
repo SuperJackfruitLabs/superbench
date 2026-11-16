@@ -21,7 +21,7 @@ func TestIgnoredCoreWriteCannotAcknowledgeTransition(t *testing.T) {
 	}
 	defer tx.Rollback()
 	err = Update(tx, func(rows Database, _ *sql.Tx) error {
-		rows["newrow"] = &model.Bench{Key: "newrow", Path: "/fixed/benches/newrow", Mirror: "/fixed/mirrors/repo", Repo: "repo", Branch: "card/newrow"}
+		rows["newrow"] = &model.Bench{RegistrationID: "0123456789abcdef0123456789abcdef", Key: "newrow", Path: "/fixed/benches/newrow", Mirror: "/fixed/mirrors/repo", Repo: "repo", Branch: "card/newrow"}
 		return nil
 	})
 	if err == nil {

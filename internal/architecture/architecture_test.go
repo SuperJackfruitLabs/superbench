@@ -94,7 +94,7 @@ func TestArchitecture(t *testing.T) {
 				"internal/workspace":            {"internal/hostidentity", "internal/handoffjournal", "internal/crosshost", "internal/workspacematerialize", "internal/operationcontrol", "internal/workspacecopy", "internal/transferguard", "internal/workspaceplan", "internal/worktreetransfer", "internal/reftransfer", "internal/workspacepolicy", "internal/benchstate", "internal/statepath", "internal/creation", "internal/checkpointset", "internal/model", "internal/quotapolicy", "internal/repository", "internal/setup"},
 				"internal/workspaceplan":        {"internal/checkpointset", "internal/model", "internal/quotapolicy", "internal/repository", "internal/setup"},
 				"internal/execution":            {"internal/cachepolicy"},
-				"internal/model":                {"internal/execution"},
+				"internal/model":                {"internal/execution", "internal/payloadpolicy"},
 				"internal/creation":             {"internal/operationcontrol", "internal/model", "internal/repository"},
 				"internal/client":               {"internal/protocol", "internal/protocolv2"},
 				"internal/history":              {"internal/reap"},
