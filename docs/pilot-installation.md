@@ -22,18 +22,22 @@ establish an end-to-end card result:
 
 - Wire the coordinator to launch the registered worker with its exact retained
   input and consume its separate, binding-validated result after fencing and drain.
-- Add the Hermes worker-protocol adapter, including prompt/result conversion and
-  explicit provider configuration in the isolated payload home.
-- Land the SuperBench #47–#54 payload-identity stack and complete its fresh-layout
-  bootstrap, restricted RUN/setup/Git, installer and sudo integration. Merging
-  those foundations alone does not activate every required route.
+- Complete the fresh-layout bootstrap, restricted RUN/setup/Git routing, and
+  installer/sudo integration. The payload-identity foundations are present in
+  source, but do not activate every required route or prove a fresh installation.
+- Prepare explicit provider configuration in the isolated payload home and verify
+  the Hermes adapter through the real supervised worker path. The adapter is
+  merged in AgentPod #902; its source and codec tests do not establish this
+  provider-backed lifecycle.
 - Publish an operator-approved AgentPod release containing the coordinator wiring,
   adapter and compatible worker. Re-pin the installed Node and worker binaries and
   registry after that upgrade; v0.1.129 does not contain these changes.
 
-The empty bridge-profile fix is merged in AgentPod #900, but it does not close
-these gaps. Keep checkpoint flags off until the enablement gates and actual
-lifecycle checks pass. Configuration, matching hashes and a successful install
+AgentPod source also includes the empty bridge-profile fix (#900), registered
+worker corpus coverage (#903), and explicit capacity-refusal handling (#901).
+These merged changes do not establish which binaries are installed or close the
+coordinator and fresh-installation gaps above. Keep checkpoint flags off until
+the enablement gates and actual lifecycle checks pass. Configuration, matching hashes and a successful install
 are not evidence that a card can complete.
 
 ## 1. Prepare and install the standalone service
@@ -51,14 +55,17 @@ mkdir -p /absolute/build/bin
 GOMAXPROCS=8 go build -p 8 -o /absolute/build/bin/bench ./cmd/bench
 GOMAXPROCS=8 go build -p 8 -o /absolute/build/bin/benchd ./cmd/benchd
 GOMAXPROCS=8 go build -p 8 -o /absolute/build/bin/bench-quota ./cmd/bench-quota
+CGO_ENABLED=0 GOMAXPROCS=8 go build -p 8 -o /absolute/build/bin/bench-payload ./cmd/bench-payload
 python3 deploy/linux/install.py --bin-dir /absolute/build/bin \
   --root /absolute/private/staging --managed
 ```
 
-These are the three binaries required by the current main installer. Review the
-staged files, owners, modes, systemd unit, wrapper and sudo rule before applying
-anything. Staging writes only below the supplied physical absolute root. On a
-fresh host, direct Linux root then runs:
+These are the four binaries required by the managed installer. The payload
+helper must be a static Linux executable for the target architecture; do not
+omit it or substitute a dynamically linked build. Review the staged files,
+owners, modes, systemd unit, wrapper and sudo rule before applying anything.
+Staging writes only below the supplied physical absolute root. On a fresh host,
+direct Linux root then runs:
 
 ```sh
 python3 deploy/linux/install.py --bin-dir /absolute/build/bin --root / \
