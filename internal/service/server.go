@@ -195,7 +195,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	request, e := protocol.Parse(body)
 	if e != nil {
-		s.reply(w, protocol.Request{}, nil, 400, "invalid_request", "invalid operation request")
+		s.reply(w, protocol.Request{}, nil, 400, "invalid_request", protocol.InvalidMessage(e))
 		return
 	}
 	if !protocol.ReadOnly(request.Operation) && !s.config.Operators[uid] {
