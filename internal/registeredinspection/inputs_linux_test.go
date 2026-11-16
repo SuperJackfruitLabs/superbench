@@ -5,6 +5,7 @@ package registeredinspection
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -129,5 +130,122 @@ func TestObserveInputsRejectsReplacementAndClosedObservation(t *testing.T) {
 	o.Close()
 	if err := o.Check(); !errors.Is(err, ErrBoundary) {
 		t.Fatalf("closed observation accepted: %v", err)
+	}
+}
+
+func TestObserveInputsRefusesForeignDeviceAndWritableConfigDirectory(t *testing.T) {
+	for _, kind := range []string{"file-device", "directory-device", "group-writable", "other-writable"} {
+		t.Run(kind, func(t *testing.T) {
+			path, f, dev := inputCheckout(t)
+			if kind == "file-device" {
+				if err := os.WriteFile(filepath.Join(path, "package.json"), []byte("{}"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				configDir := filepath.Join(path, ".bench")
+				if err := os.Mkdir(configDir, 0700); err != nil {
+					t.Fatal(err)
+				}
+				mode := os.FileMode(0700)
+				if kind == "group-writable" {
+					mode = 0720
+				}
+				if kind == "other-writable" {
+					mode = 0702
+				}
+				if err := os.Chmod(configDir, mode); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if kind == "file-device" || kind == "directory-device" {
+				dev ^= 1
+			}
+			o, err := observeInputCheckout(f, dev)
+			if o != nil {
+				o.Close()
+			}
+			if !errors.Is(err, ErrBoundary) || o != nil {
+				t.Fatalf("%s accepted: %v", kind, err)
+			}
+		})
+	}
+}
+
+func TestObserveInputsEnforcesReadSideConfigCap(t *testing.T) {
+	for _, size := range []int{MaxConfigBytes, MaxConfigBytes + 1} {
+		t.Run(fmt.Sprint(size), func(t *testing.T) {
+			path, f, dev := inputCheckout(t)
+			if err := os.Mkdir(filepath.Join(path, ".bench"), 0700); err != nil {
+				t.Fatal(err)
+			}
+			data := bytes.Repeat([]byte("x"), size)
+			if err := os.WriteFile(filepath.Join(path, ".bench/config.toml"), data, 0600); err != nil {
+				t.Fatal(err)
+			}
+			o, err := observeInputCheckout(f, dev)
+			if o != nil {
+				defer o.Close()
+			}
+			if size > MaxConfigBytes {
+				if !errors.Is(err, ErrBoundary) || o != nil {
+					t.Fatalf("oversized config accepted: %v", err)
+				}
+			} else if err != nil || o == nil || !bytes.Equal(o.Snapshot().Config.Data, data) {
+				t.Fatalf("config at exact limit refused or changed: %v", err)
+			}
+		})
+	}
+}
+
+func TestInputCheckRefusesConfigDirectoryReplacementEditAndAddition(t *testing.T) {
+	for _, kind := range []string{"directory-replaced", "config-edited-in-place", "config-added"} {
+		t.Run(kind, func(t *testing.T) {
+			path, f, dev := inputCheckout(t)
+			dir, target := filepath.Join(path, ".bench"), filepath.Join(path, ".bench/config.toml")
+			if err := os.Mkdir(dir, 0700); err != nil {
+				t.Fatal(err)
+			}
+			if kind != "config-added" {
+				if err := os.WriteFile(target, []byte("before"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			o, err := observeInputCheckout(f, dev)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer o.Close()
+			if err = o.Check(); err != nil {
+				t.Fatal("valid baseline refused", err)
+			}
+			switch kind {
+			case "directory-replaced":
+				if err = os.Rename(dir, dir+".original"); err != nil {
+					t.Fatal(err)
+				}
+				if err = os.Mkdir(dir, 0700); err != nil {
+					t.Fatal(err)
+				}
+			case "config-edited-in-place":
+				before, err := os.Stat(target)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err = os.WriteFile(target, []byte("after with different size"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				after, err := os.Stat(target)
+				if err != nil || !os.SameFile(before, after) {
+					t.Fatal("edit replaced inode", err)
+				}
+			case "config-added":
+				if err = os.WriteFile(target, []byte("new config"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err = o.Check(); !errors.Is(err, ErrBoundary) {
+				t.Fatalf("%s accepted: %v", kind, err)
+			}
+		})
 	}
 }

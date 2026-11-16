@@ -19,7 +19,7 @@ func main() {
 	// retry, restore privileges, print private inputs, or continue this process.
 	err := payloadexec.Exec()
 	if err == nil {
-		// Only the read-only inspection variant returns successfully.
+		// Only read-only layout or preparation-input inspections return successfully.
 		return
 	}
 	fmt.Fprintf(os.Stderr, "managed payload refused: %s\n", payloadexec.RefusalCode(err))

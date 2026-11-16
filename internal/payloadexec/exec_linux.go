@@ -15,7 +15,7 @@ import (
 // Exec belongs only in a dedicated fixed helper. The caller must exit on every
 // returned error: credentials may already have been irreversibly dropped. This
 // function must never be called inside a daemon or reusable server process.
-// Only a successfully completed read-only inspection returns nil.
+// Only completed read-only layout or preparation-input inspections return nil.
 // It consumes a bounded request frame from stdin, retaining only Git's subsequent
 // ordinary stdin. It does not create or convert any layout or change ownership.
 func Exec() (err error) {
