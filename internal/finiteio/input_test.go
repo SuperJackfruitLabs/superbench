@@ -152,3 +152,14 @@ func TestResponseRepresentabilityIncludesFullLegacyMetadataAtMaximumOutput(t *te
 		t.Fatal("invalid output bound admitted", err)
 	}
 }
+
+func TestObserveEnforcesRequestedOutputLimitBeforeReturningBytes(t *testing.T) {
+	input := Input{Version: Version, StdoutLimitBytes: 1}
+	if _, err := Observe([]byte{1}, input); err != nil {
+		t.Fatal("exact requested output limit refused", err)
+	}
+	output, err := Observe([]byte{1, 2}, input)
+	if !errors.Is(err, ErrInvalid) || output != (Output{}) {
+		t.Fatalf("requested output limit ignored: output=%+v err=%v", output, err)
+	}
+}

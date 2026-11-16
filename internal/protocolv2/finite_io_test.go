@@ -93,7 +93,7 @@ func TestFiniteIOOwnerDigestVectors(t *testing.T) {
 		SHA256   string `json:"sha256"`
 	}
 	sum := sha256.Sum256(raw)
-	if json.Unmarshal(pinRaw, &pin) != nil || pin.Revision != "5d01a98dd869c4b6f66562b8f0356e50d141a1bc" || pin.SHA256 != hex.EncodeToString(sum[:]) {
+	if json.Unmarshal(pinRaw, &pin) != nil || pin.Revision != "496959ac16bc207135abb5ebb32e99339d124021" || pin.SHA256 != hex.EncodeToString(sum[:]) {
 		t.Fatal("proposed owner corpus pin changed")
 	}
 	var corpus struct {
@@ -189,5 +189,17 @@ func TestFiniteProfileRejectsEveryDuplicateParameterSpelling(t *testing.T) {
 	// Existing unprofiled parameter handling and its smaller budget are unchanged.
 	if limit, err := BodyLimit(`application/json; note="a;b"`); err != nil || limit != MaxBody {
 		t.Fatal("legacy parameter handling changed", limit, err)
+	}
+}
+
+func TestFiniteProfileRefusesOtherwiseValidSetupInput(t *testing.T) {
+	legacy := []byte(`{"version":"superbench.v2","operation":"setup","key":"card","holder":"run:one","request_id":"run-1"}`)
+	if request, err := Parse(legacy); err != nil || request.Operation != "setup" {
+		t.Fatal("otherwise-valid setup fixture refused", err)
+	}
+	raw := bytes.Replace(legacy, []byte(`"request_id":"run-1"`), []byte(`"request_id":"run-1","io":{"version":"superbench.finite-io.v1","stdin_base64":"AAEC","stdout_limit_bytes":1}`), 1)
+	request, err := ParseMedia(raw, FiniteIOContentType)
+	if !errors.Is(err, ErrInvalid) || request.Version != "" || request.IO != nil {
+		t.Fatalf("otherwise-valid setup inherited finite input: request=%+v err=%v", request, err)
 	}
 }
