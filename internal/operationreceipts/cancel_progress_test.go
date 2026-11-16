@@ -110,7 +110,7 @@ func TestProgressMigrationAndDowngradePreserveHistoricalResponse(t *testing.T) {
 	if err = r.finish(i.Target.UID, i.Target.RequestID, []byte(`{"original":true}`), 200); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = r.db.Exec(`ALTER TABLE operation_intents DROP COLUMN core_finalized;PRAGMA user_version=5`); err != nil {
+	if _, err = r.db.Exec(`DROP INDEX receipt_unresolved;DROP INDEX intent_unresolved;DROP INDEX cancel_unresolved;ALTER TABLE operation_intents DROP COLUMN core_finalized;PRAGMA user_version=5`); err != nil {
 		t.Fatal(err)
 	}
 	r.db.Close()

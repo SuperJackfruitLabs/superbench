@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/protocolv2"
@@ -51,7 +52,7 @@ func TestV2HTTPReceiptCapacityBlocksGrowthButNotReconciliation(t *testing.T) {
 	v2OK(t, s, v2Operator, create)
 	leased, _ := v2OK(t, s, v2Operator, protocolv2.Request{Operation: "lease", Key: create.Key, Holder: "capacity-owner", RequestID: "capacity-lease"})
 	token := v2Mutation(t, leased).Grant.LeaseToken
-	_, err := receiptTestDB(t, s).Exec(`WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<10000) INSERT INTO receipts(owner,id,digest,state,body,status) SELECT 9999,'fill-'||x,'unused','done',X'7B7D',200 FROM n`)
+	_, err := receiptTestDB(t, s).Exec(`WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<1024) INSERT INTO receipts(owner,id,digest,state,body,status) SELECT 9999,'fill-'||x,?,'interrupted',NULL,NULL FROM n`, strings.Repeat("b", 64))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,5 +135,25 @@ func TestV2HTTPMissingPartialCreationReceiptDoesNotResumeInitialization(t *testi
 	}
 	if err := s.config.Store.CheckWorkspaceOwner(create.Key, partial.Lease.Token, "initialization"); err != nil {
 		t.Fatal("partial owner changed", err)
+	}
+}
+
+func TestV2HTTPHistoricalReceiptsDoNotBlockGrowthOrChangeExactReplay(t *testing.T) {
+	s, create, _ := v2Fixture(t)
+	_, original := v2OK(t, s, v2Operator, create)
+	if _, err := receiptTestDB(t, s).Exec(`WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<10001)
+ INSERT INTO receipts(owner,id,digest,state,body,status) SELECT 9999,'history-'||x,?,'done',X'7B7D',200 FROM n`, strings.Repeat("b", 64)); err != nil {
+		t.Fatal(err)
+	}
+	owner, _ := v2OK(t, s, v2Operator, protocolv2.Request{Operation: "lease", Key: create.Key, Holder: "later-owner", RequestID: "after-history"})
+	token := v2Mutation(t, owner).Grant.LeaseToken
+	if token == "" {
+		t.Fatal("fresh growth returned no owned grant")
+	}
+	before := v2Snapshot(t, s)
+	count := v2ReceiptCount(t, s)
+	_, replay := v2OK(t, s, v2Operator, create)
+	if !bytes.Equal(original, replay) || v2ReceiptCount(t, s) != count || !reflect.DeepEqual(before, v2Snapshot(t, s)) {
+		t.Fatal("exact historical replay changed response or later ownership")
 	}
 }

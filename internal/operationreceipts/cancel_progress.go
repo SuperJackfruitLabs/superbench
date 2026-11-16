@@ -52,11 +52,11 @@ func saveCoreFinalized(tx *sql.Tx, i operationcontrol.Intent) error {
 func (r *receipts) completedOperations() ([]operationcontrol.Intent, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	var count, invalid int
-	if err := r.db.QueryRow(`SELECT count(*),coalesce(sum(CASE WHEN core_finalized IN (0,1) THEN 0 ELSE 1 END),0) FROM operation_intents`).Scan(&count, &invalid); err != nil {
+	var count int
+	if err := r.db.QueryRow(`SELECT count(*) FROM operation_intents WHERE core_finalized=0`).Scan(&count); err != nil {
 		return nil, err
 	}
-	if count > 10000 || invalid != 0 {
+	if count > operationcontrol.MaxOperations {
 		return nil, errInDoubt
 	}
 	rows, err := r.db.Query(`SELECT i.owner,i.id,i.digest,i.key,i.operation,i.epoch FROM operation_intents i JOIN receipts r ON r.owner=i.owner AND r.id=i.id AND r.digest=i.digest WHERE i.core_finalized=0 AND r.state='done' AND r.cancel_state='' ORDER BY i.owner,i.id LIMIT 64`)

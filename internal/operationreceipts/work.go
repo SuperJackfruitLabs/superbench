@@ -32,19 +32,19 @@ func (r *receipts) ReconciliationBatch(after WorkCursor) ([]ReconciliationWork, 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	var count, tombstones int
-	if err := r.db.QueryRow(`SELECT count(*) FROM operation_intents`).Scan(&count); err != nil {
+	if err := r.db.QueryRow(`SELECT count(*) FROM operation_intents WHERE core_finalized=0`).Scan(&count); err != nil {
 		return nil, WorkCursor{}, err
 	}
-	if err := r.db.QueryRow(`SELECT count(*) FROM operation_cancels`).Scan(&tombstones); err != nil {
+	if err := r.db.QueryRow(`SELECT count(*) FROM operation_cancels WHERE state='cancel_requested'`).Scan(&tombstones); err != nil {
 		return nil, WorkCursor{}, err
 	}
 	if count > operationcontrol.MaxOperations || tombstones > maxCancelTombstones {
 		return nil, WorkCursor{}, errInDoubt
 	}
 	rows, err := r.db.Query(`SELECT owner,id,digest,key,operation,epoch,core_finalized,receipt_digest,state,cancel_state,typed FROM (
- SELECT i.owner,i.id,i.digest,i.key,i.operation,i.epoch,i.core_finalized,r.digest AS receipt_digest,r.state,r.cancel_state,1 AS typed FROM operation_intents i LEFT JOIN receipts r ON r.owner=i.owner AND r.id=i.id
+ SELECT i.owner,i.id,i.digest,i.key,i.operation,i.epoch,i.core_finalized,r.digest AS receipt_digest,r.state,r.cancel_state,1 AS typed FROM operation_intents i LEFT JOIN receipts r ON r.owner=i.owner AND r.id=i.id WHERE i.core_finalized=0
  UNION ALL
- SELECT c.owner,c.id,c.digest,'','','',0,c.digest,'pending',c.state,0 FROM operation_cancels c WHERE NOT EXISTS(SELECT 1 FROM receipts r WHERE r.owner=c.owner AND r.id=c.id)
+ SELECT c.owner,c.id,c.digest,'','','',0,c.digest,'pending',c.state,0 FROM operation_cancels c WHERE c.state='cancel_requested' AND NOT EXISTS(SELECT 1 FROM receipts r WHERE r.owner=c.owner AND r.id=c.id)
  ) WHERE owner>? OR (owner=? AND id>?) ORDER BY owner,id LIMIT 64`, after.UID, after.UID, after.RequestID)
 	if err != nil {
 		return nil, WorkCursor{}, err

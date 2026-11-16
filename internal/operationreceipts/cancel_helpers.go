@@ -28,7 +28,7 @@ func (r *receipts) recordOperationHelper(i operationcontrol.Intent, h operationc
 	if !h.Valid(i) {
 		return errConflict
 	}
-	if err := r.operationAdmission(i); err != nil {
+	if err := r.boundOperationAdmission(i); err != nil {
 		return err
 	}
 	stored, err := r.operationIntent(i.Target)
@@ -68,12 +68,6 @@ func (r *receipts) recordOperationHelper(i operationcontrol.Intent, h operationc
 		return err
 	}
 	if count >= operationcontrol.MaxHelpers {
-		return errCapacity
-	}
-	if err = r.db.QueryRow(`SELECT count(*) FROM operation_helpers`).Scan(&count); err != nil {
-		return err
-	}
-	if count >= 10000*operationcontrol.MaxHelpers {
 		return errCapacity
 	}
 	result, err := r.db.Exec(`INSERT INTO operation_helpers(owner,id,kind,key,invocation) VALUES(?,?,?,?,?)`, i.Target.UID, i.Target.RequestID, h.Kind, h.Key, string(raw))

@@ -109,17 +109,23 @@ func TestLostReceiptAndIntentCannotReopenRetainedHelperAuthority(t *testing.T) {
 	if _, err = r.db.Exec(`DELETE FROM operation_intents;DELETE FROM receipts`); err != nil {
 		t.Fatal(err)
 	}
-	r.db.Close()
-	r, err = openReceipts(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer r.db.Close()
+	// Retain the prior restart-condition checks without the volatile dispatch
+	// cache masking durable guards. Open now refuses this corrupt database.
+	r.active = make(map[string]bool)
 	if _, err = r.claim(i.Target.UID, i.Target.RequestID, i.Target.Digest); !errors.Is(err, errInDoubt) {
 		t.Fatal("lost helper receipt redispatched", err)
 	}
 	if state, err := r.requestCancelV2(i.Target.UID, i.Target.RequestID, i.Target.Digest); !errors.Is(err, errInDoubt) || state != "" {
 		t.Fatal("unbound helper adopted as no effects", state, err)
+	}
+	if err = r.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if reopened, e := openReceipts(root); !errors.Is(e, errInDoubt) || reopened != nil {
+		if reopened != nil {
+			reopened.Close()
+		}
+		t.Fatal("orphaned durable authority escaped Open", reopened, e)
 	}
 }
 
@@ -137,7 +143,7 @@ func TestHelperSchemaUpgradePreservesHistoricalReceiptAndRejectsDowngrade(t *tes
 	if err = r.finish(1, "done", body, 200); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = r.db.Exec(`DROP TABLE operation_helpers;ALTER TABLE operation_intents DROP COLUMN core_finalized;ALTER TABLE operation_intents DROP COLUMN helper_tracking;PRAGMA user_version=3`); err != nil {
+	if _, err = r.db.Exec(`DROP INDEX receipt_unresolved;DROP INDEX intent_unresolved;DROP INDEX cancel_unresolved;DROP TABLE operation_helpers;ALTER TABLE operation_intents DROP COLUMN core_finalized;ALTER TABLE operation_intents DROP COLUMN helper_tracking;PRAGMA user_version=3`); err != nil {
 		t.Fatal(err)
 	}
 	r.db.Close()

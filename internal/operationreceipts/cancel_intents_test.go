@@ -108,12 +108,9 @@ func TestMissingTypedReceiptNeverReopensIdentityAfterRestart(t *testing.T) {
 	if _, err = r.db.Exec(`DELETE FROM receipts WHERE owner=8 AND id='missing'`); err != nil {
 		t.Fatal(err)
 	}
-	r.db.Close()
-	r, err = openReceipts(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer r.db.Close()
+	// Retain the prior restart-condition checks without the volatile dispatch
+	// cache masking durable guards. Open now refuses this corrupt database.
+	r.active = make(map[string]bool)
 	if _, err = r.claim(8, "missing", i.Target.Digest); !errors.Is(err, errInDoubt) {
 		t.Fatal("lost receipt redispatched", err)
 	}
@@ -130,5 +127,14 @@ func TestMissingTypedReceiptNeverReopensIdentityAfterRestart(t *testing.T) {
 	var n int
 	if err = r.db.QueryRow(`SELECT count(*) FROM receipts`).Scan(&n); err != nil || n != 0 {
 		t.Fatal("failed reconciliation recreated receipt", n, err)
+	}
+	if err = r.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if reopened, e := openReceipts(root); !errors.Is(e, errInDoubt) || reopened != nil {
+		if reopened != nil {
+			reopened.Close()
+		}
+		t.Fatal("orphaned durable authority escaped Open", reopened, e)
 	}
 }
