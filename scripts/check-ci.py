@@ -117,6 +117,11 @@ def main():
     print(log.decode('utf-8'), end='')
     print('root refusal binary SHA256:', hashlib.sha256(raw).hexdigest())
     print('PASS: ordinary unprivileged suite and explicit root refusal; fixture retained:', fixture)
+    # This is a separate, mandatory privileged registry-binding check. The
+    # script comes from the trusted CI checkout, never the ordinary writable copy.
+    subprocess.run([shutil.which('python3'), str(source / 'scripts/check-identity-ci.py'),
+                    '--source', str(checkout), '--user', args.user, '--go', go,
+                    '--gocache', str(build_cache), '--gomodcache', str(module_cache)], check=True)
 
 
 if __name__ == '__main__':
