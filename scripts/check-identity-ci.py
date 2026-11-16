@@ -40,7 +40,7 @@ TESTS = (
     ('quotaoperationcontrol', 'TestInstalledIndexedPolicyDescriptorContinuity', (
         'INDEXED_POLICY_FIXED_FD_LEAF_ANCESTOR_FIFO_REFUSALS_PASS',)),
 )
-LIMITS = {'cpu.max': '800000 100000', 'memory.max': str(2 << 30),
+LIMITS = {'cpu.max': '200000 100000', 'memory.max': str(2 << 30),
           'memory.swap.max': '0', 'pids.max': '512'}
 
 
@@ -181,7 +181,7 @@ def inside(binary, selector):
             raise RuntimeError('identity fixture requires verified private ' + kind + ' namespace')
     # The tagged fixture owns its private /etc mount and repeats these checks
     # before any mount operation. There is no PID namespace or host /etc write.
-    environment = {'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'GOMAXPROCS': '8',
+    environment = {'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'GOMAXPROCS': '2',
                'SUPERBENCH_IDENTITY_FIXTURE': '1',
                'SUPERBENCH_IDENTITY_ORIGINAL_MNT': os.readlink('/proc/1/ns/mnt'),
                'SUPERBENCH_IDENTITY_ORIGINAL_NET': os.readlink('/proc/1/ns/net')}
@@ -233,7 +233,7 @@ def main():
            'HOME': str(work / 'home'), 'TMPDIR': str(work / 'tmp'),
            'GOCACHE': str(args.gocache), 'GOMODCACHE': str(args.gomodcache),
            'GOTOOLCHAIN': 'local', 'GOPROXY': 'off', 'GOSUMDB': 'off',
-           'GOFLAGS': '-p=8', 'GOMAXPROCS': '8', 'GOMEMLIMIT': '1GiB', 'CGO_ENABLED': '0'}
+           'GOFLAGS': '-p=2', 'GOMAXPROCS': '2', 'GOMEMLIMIT': '1GiB', 'CGO_ENABLED': '0'}
     cgroup = Path('/sys/fs/cgroup') / ('superbench-identity-ci-' + str(os.getpid()) + '-' + os.urandom(6).hex())
     cgroup.mkdir()  # No writable/delegated cgroup means a hard CI failure.
     cgroup_id = identity(cgroup.stat())[:2]

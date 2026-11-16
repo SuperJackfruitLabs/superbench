@@ -17,7 +17,7 @@ IDENTITY = runpy.run_path(str(ROOT / 'scripts/check-identity-ci.py'), run_name='
 class CIPolicy(unittest.TestCase):
     def test_fixture_budget_and_whole_workflow_deadline(self):
         quota, period = map(int, IDENTITY['LIMITS']['cpu.max'].split())
-        self.assertEqual(quota, 8 * period)
+        self.assertEqual(quota, 2 * period)
         self.assertEqual(IDENTITY['LIMITS']['memory.max'], str(2 << 30))
         self.assertEqual(IDENTITY['LIMITS']['memory.swap.max'], '0')
         workflow = (ROOT / '.forgejo/workflows/ci.yml').read_text()
@@ -45,7 +45,7 @@ class CIPolicy(unittest.TestCase):
         binary, arguments, environment = execute.call_args.args
         self.assertEqual(binary, '/owned/sealed/fixture')
         self.assertIn('-test.run=^ExactFixture$', arguments)
-        self.assertEqual(environment.get('GOMAXPROCS'), '8')
+        self.assertEqual(environment.get('GOMAXPROCS'), '2')
         self.assertNotIn('UNRELATED_AMBIENT_CREDENTIAL', environment)
         self.assertEqual(environment['SUPERBENCH_IDENTITY_FIXTURE'], '1')
 
