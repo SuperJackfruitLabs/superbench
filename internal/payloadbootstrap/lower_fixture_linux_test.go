@@ -6,7 +6,7 @@ package payloadbootstrap_test
 // systemd install gate. A root supervisor supplies a new private XFS mount,
 // original PID namespace, private mount/net namespaces and an owned cgroup.
 // No account, host policy, service, sudo rule or network is configured here.
-// Calls target the real manager API; this checkpoint has no bootstrap CLI route.
+// Calls target the real manager Bootstrap API, not the command/daemon route.
 // On failure all filesystem evidence is retained. The supervisor must preserve
 // the fixture if any helper/unknown writer remains; never kill a quota helper
 // mid-transaction merely to make cleanup pass.
@@ -236,10 +236,19 @@ func TestFreshIndexedMaterializerLowerFixture(t *testing.T) {
 	if exit != nil {
 		t.Fatalf("actual materializer failed: %s %v", stderr, exit)
 	}
-	layout, err := payloadexec.ParseLayout(private, out)
-	if err != nil || layout.Key != spec.Key || layout.ID != spec.ID || len(layout.Members) != 2 {
-		t.Fatalf("completed layout invalid: %+v %v", layout, err)
+	result, err := payloadbootstrap.ParseResult(out, private, spec)
+	if err != nil {
+		t.Fatalf("completed bootstrap result invalid: %+v %v", result, err)
 	}
+	actualStorage, err := p.VerifyStorage(t.Context(), spec.Key)
+	if err != nil || result.Allocation != actualStorage.Assignment || result.Allocation.ProjectID < 10000 || result.Allocation.Bytes != spec.QuotaBytes || result.Allocation.Inodes != p.BenchInodes {
+		t.Fatalf("bootstrap result differs from actual ledger/kernel assignment: %+v %+v %v", result.Allocation, actualStorage.Assignment, err)
+	}
+	layoutRaw, err := result.Layout.Bytes(private)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Log("LOWER_ACTUAL_BOOTSTRAP_RESULT_MATCHES_LEDGER_AND_KERNEL_PASS")
 	root := filepath.Join(p.Root, "benches", spec.Key)
 	err = filepath.WalkDir(root, func(path string, d os.DirEntry, e error) error {
 		if e != nil {
@@ -264,7 +273,7 @@ func TestFreshIndexedMaterializerLowerFixture(t *testing.T) {
 			t.Fatalf("source symlink changed: %q %v", target, err)
 		}
 	}
-	assertLowerBytes(t, filepath.Join(private.StateRoot, "payload-layouts", spec.Key+".json"), out)
+	assertLowerBytes(t, filepath.Join(private.StateRoot, "payload-layouts", spec.Key+".json"), layoutRaw)
 	if err = control.Run(t.Context(), func() error { _, e := p.ApplyRequested("bench", spec.Key, 0); return e }); !errors.Is(err, hoststorage.ErrRegisteredAllocation) {
 		t.Fatalf("legacy quota path reclaimed registered allocation: %v", err)
 	}
@@ -375,8 +384,8 @@ func daemonLowerGitInput(t *testing.T, dir, input string, args ...string) string
 	return string(out)
 }
 
-// Direct actual manager API only: no bootstrap CLI or service route exists in
-// this checkpoint. SelfBinarySHA binds the static fixture actually calling it.
+// Direct actual manager Bootstrap API only; this does not test the command or
+// service route. SelfBinarySHA binds the static fixture actually calling it.
 func lowerBootstrap(t *testing.T, base, helper, sha string, id quotaoperation.Identity, spec payloadbootstrap.Spec) ([]byte, string, error) {
 	t.Helper()
 	verifyLowerHelper(t, helper, sha)
@@ -385,24 +394,14 @@ func lowerBootstrap(t *testing.T, base, helper, sha string, id quotaoperation.Id
 		return nil, err.Error(), err
 	}
 	manager, err := payloadbootstrap.Open(t.Context(), control, id)
-	if err == nil {
-		err = manager.Begin(t.Context(), spec)
-	}
-	if err == nil {
-		err = manager.Materialize(t.Context(), spec)
-	}
 	if err != nil {
 		return nil, err.Error(), err
 	}
-	layout, err := manager.Complete(t.Context(), spec)
+	result, err := manager.Bootstrap(t.Context(), spec)
 	if err != nil {
 		return nil, err.Error(), err
 	}
-	policy, err := payloadexec.LoadFixedPolicy()
-	if err != nil {
-		t.Fatal(err)
-	}
-	raw, err := layout.Bytes(policy)
+	raw, err := json.Marshal(result)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -28,7 +28,7 @@ func (m *Manager) Begin(ctx context.Context, s Spec) error {
 			if err != nil {
 				return err
 			}
-			i := intent{Spec: s, Operation: m.operation, PolicyDigest: m.digest, Phase: "allocating", Root: node(info)}
+			i := intent{Spec: s, Allocation: a, Operation: m.operation, PolicyDigest: m.digest, Phase: "allocating", Root: node(info)}
 			if err = m.checkRoot(i, 0); err != nil {
 				return err
 			}

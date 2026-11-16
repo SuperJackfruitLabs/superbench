@@ -43,12 +43,21 @@ func helperArgs(c Config, uid int, args []string) (string, []string) {
 	return c.Command, args
 }
 func helperCommand(ctx context.Context, c Config, uid int, guard bool, beforeStart func() error, args ...string) ([]byte, error) {
+	return helperCommandInput(ctx, c, uid, guard, beforeStart, nil, args...)
+}
+
+// Input is a finite owned byte slice; no caller reader can hold a privileged
+// helper open indefinitely. The helper parses it before acquiring its lock.
+func helperCommandInput(ctx context.Context, c Config, uid int, guard bool, beforeStart func() error, input []byte, args ...string) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	capacityEligible := len(args) > 0 && args[0] == "apply-operation"
 	command, args := helperArgs(c, uid, args)
 	cmd := exec.Command(command, args...)
+	if input != nil {
+		cmd.Stdin = bytes.NewReader(input)
+	}
 	stdout, stderr := &boundedOutput{max: MaxReply}, &boundedOutput{max: 4096}
 	cmd.Stdout, cmd.Stderr = stdout, stderr
 	start := func() error {
