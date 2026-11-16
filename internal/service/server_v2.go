@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"mime"
 	"net/http"
 
@@ -174,6 +175,9 @@ func (s *Server) serveV2(w http.ResponseWriter, r *http.Request) {
 	status, code, message := 200, "", ""
 	if operationErr != nil {
 		status, code, message = operationErrorV2(operationErr)
+		if code == "capacity_exhausted" {
+			log.Printf("%s: %s", code, message)
+		}
 	}
 	response := responseV2(request, result, code, message)
 	encoded, encodeErr := json.Marshal(response)
