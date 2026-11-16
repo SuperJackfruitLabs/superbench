@@ -78,6 +78,7 @@ Then extend the existing "accent recipe makes every palette" test, the signal-ba
 - Modify: `packages/frame/src/data/ledger.snapshot.json`, `packages/frame/scripts/{build-ledger,refresh-releases}.mjs`
 - Modify: `scripts/og/render.mjs` ("Ten tools"), `worker/src/{docs,handler,releases}.ts`, `worker/src/ledger.json`, `worker/wrangler.jsonc` (`superbench.dev/captain/*` route, matching siblings)
 - Modify: `packages/frame/package.json` (vibekit-ui `^0.0.19`), `package-lock.json`, `packages/frame/README.md`
+- Modify: `packages/frame/src/data/products.ts`: remove the `PRODUCTS.supertoolkit.licence = 'Apache-2.0'` override, because SuperToolkit is MIT since supertoolkit#56; `products.test.ts` 'licenses each product as its repo does' follows
 - Test: `packages/frame/test/products.test.ts`, `packages/frame/test/colours.test.ts`, `packages/frame/test/lab.test.ts`, `packages/frame/e2e/{behaviour,render}.spec.ts`, `worker/test/lab.test.ts`
 
 **Interfaces:**
