@@ -3,6 +3,7 @@
 package payloadbootstrap
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -11,6 +12,48 @@ import (
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/payloadexec"
 )
+
+func TestTransferRefusesChangedMetadataBeforeOwnershipEffects(t *testing.T) {
+	for _, kind := range []string{"mode", "content", "hardlink"} {
+		t.Run(kind, func(t *testing.T) {
+			m, i := captureFixture(t)
+			path := filepath.Join(m.root(i.Spec), "api", "tracked")
+			if err := os.WriteFile(path, []byte("retained"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			captured, err := m.capture(i)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer captured.close()
+			// Use the actual ordinary identity for any attempted transition. The
+			// assertion must fail on a bypass, not on permission to chown a uid.
+			m.policy.PayloadUID, m.policy.PayloadGID = m.policy.DaemonUID, m.policy.DaemonGID
+			switch kind {
+			case "mode":
+				err = os.Chmod(path, 0644)
+			case "content":
+				err = os.WriteFile(path, []byte("changed retained work"), 0600)
+			case "hardlink":
+				err = os.Link(path, filepath.Join(m.root(i.Spec), "retained-link"))
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			before, err := os.Stat(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := captured.transfer(context.Background(), m); !errors.Is(err, ErrBootstrap) {
+				t.Fatalf("changed metadata reached transfer: %v", err)
+			}
+			after, err := os.Stat(path)
+			if err != nil || !sameMetadata(before, after) {
+				t.Fatalf("refusal changed retained file: %v", err)
+			}
+		})
+	}
+}
 
 func captureFixture(t *testing.T) (*Manager, intent) {
 	t.Helper()

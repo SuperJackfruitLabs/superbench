@@ -4,9 +4,7 @@ package payloadbootstrap
 
 import (
 	"context"
-	"errors"
 	"os"
-	"path/filepath"
 	"syscall"
 	"time"
 
@@ -94,40 +92,18 @@ func (m *Manager) publish(l payloadexec.Layout) error {
 	if err := m.check(); err != nil {
 		return err
 	}
-	// StateRoot is an already protected installed daemon-owned state root. This
-	// code creates one fixed metadata child, never a caller-selected ancestry.
-	if err := m.checkStateAncestors(); err != nil {
-		return err
-	}
-	info, err := os.Lstat(m.policy.StateRoot)
+	state, err := publicationStateRoot(m.policy)
 	if err != nil {
 		return err
 	}
-	st := info.Sys().(*syscall.Stat_t)
-	actual, err := filepath.EvalSymlinks(m.policy.StateRoot)
-	if err != nil || actual != m.policy.StateRoot || !info.IsDir() || st.Uid != m.policy.DaemonUID || info.Mode().Perm()&0077 != 0 {
-		return ErrBootstrap
-	}
-	dir := filepath.Join(m.policy.StateRoot, "payload-layouts")
-	if err = os.Mkdir(dir, 0700); err == nil {
-		if err = os.Chown(dir, int(m.policy.DaemonUID), int(m.policy.DaemonGID)); err != nil {
-			return err
-		}
-	} else if !errors.Is(err, os.ErrExist) {
-		return err
-	}
-	parent, err := os.OpenFile(dir, os.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW, 0)
+	defer state.Close()
+	parent, err := publicationDirectory(state, m.policy)
 	if err != nil {
 		return err
 	}
 	defer parent.Close()
-	d, err := parent.Stat()
-	if err != nil {
+	if err = checkPublicationDirectory(state, parent, m.policy); err != nil {
 		return err
-	}
-	ds := d.Sys().(*syscall.Stat_t)
-	if ds.Uid != m.policy.DaemonUID || ds.Gid != m.policy.DaemonGID || ds.Mode&07777 != 0700 {
-		return ErrBootstrap
 	}
 	raw, err := l.Bytes(m.policy)
 	if err != nil {
@@ -157,14 +133,16 @@ func (m *Manager) publish(l payloadexec.Layout) error {
 	if err = parent.Sync(); err != nil {
 		return err
 	}
-	named, err := os.Lstat(dir)
-	if err != nil || !os.SameFile(d, named) {
-		return ErrBootstrap
-	}
-	if err = m.checkStateAncestors(); err != nil {
+	if err = checkPublicationDirectory(state, parent, m.policy); err != nil {
 		return err
 	}
-	namedFile, err := os.Lstat(filepath.Join(dir, l.Key+".json"))
+	fd, err = syscall.Openat(int(parent.Fd()), l.Key+".json", syscall.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK|syscall.O_CLOEXEC, 0)
+	if err != nil {
+		return err
+	}
+	named := os.NewFile(uintptr(fd), l.Key+".json")
+	defer named.Close()
+	namedFile, err := named.Stat()
 	if err != nil {
 		return err
 	}
@@ -173,20 +151,4 @@ func (m *Manager) publish(l payloadexec.Layout) error {
 		return ErrBootstrap
 	}
 	return m.check()
-}
-
-func (m *Manager) checkStateAncestors() error {
-	for dir := m.policy.StateRoot; ; dir = filepath.Dir(dir) {
-		info, err := os.Lstat(dir)
-		if err != nil {
-			return err
-		}
-		st := info.Sys().(*syscall.Stat_t)
-		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || st.Uid != 0 && st.Uid != m.policy.DaemonUID || info.Mode().Perm()&0022 != 0 && !(st.Uid == 0 && info.Mode()&os.ModeSticky != 0) {
-			return ErrBootstrap
-		}
-		if dir == "/" {
-			return nil
-		}
-	}
 }

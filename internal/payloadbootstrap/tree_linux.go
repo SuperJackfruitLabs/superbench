@@ -203,6 +203,10 @@ func (t *tree) transfer(ctx context.Context, m *Manager) error {
 			return err
 		}
 		e := &t.entries[j]
+		now, err := e.file.Stat()
+		if err != nil || !sameMetadata(e.before, now) {
+			return errors.Join(ErrBootstrap, err)
+		}
 		if e.before.Mode()&os.ModeSymlink != 0 {
 			if err := syscall.Fchownat(int(e.file.Fd()), "", int(m.policy.PayloadUID), int(m.policy.PayloadGID), atEmptyPath|atSymlinkNoFollow); err != nil {
 				return err
