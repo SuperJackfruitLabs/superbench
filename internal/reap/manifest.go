@@ -11,7 +11,6 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"path/filepath"
 	"syscall"
 	"unicode/utf8"
 )
@@ -35,8 +34,15 @@ type Tree struct {
 }
 
 func inspect(root, relative string, recoverable bool) (Entry, error) {
-	p := filepath.Join(root, relative)
-	st, e := os.Lstat(p)
+	handle, err := openTree(root)
+	if err != nil {
+		return Entry{}, err
+	}
+	defer handle.Close()
+	return inspectAt(handle, relative, recoverable)
+}
+func inspectAt(root *os.Root, relative string, recoverable bool) (Entry, error) {
+	st, e := root.Lstat(relative)
 	if e != nil {
 		return Entry{}, e
 	}
@@ -46,7 +52,7 @@ func inspect(root, relative string, recoverable bool) (Entry, error) {
 	object1, object256 := sha1.New(), sha256.New()
 	objectSize := st.Size()
 	if st.Mode()&os.ModeSymlink != 0 {
-		target, e := os.Readlink(p)
+		target, e := root.Readlink(relative)
 		if e != nil {
 			return v, e
 		}
@@ -58,7 +64,7 @@ func inspect(root, relative string, recoverable bool) (Entry, error) {
 	writer := io.MultiWriter(hash, object1, object256)
 	switch {
 	case st.Mode().IsRegular():
-		f, e := os.OpenFile(p, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+		f, e := root.OpenFile(relative, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
 		if e != nil {
 			return v, e
 		}
@@ -80,7 +86,7 @@ func inspect(root, relative string, recoverable bool) (Entry, error) {
 			return v, closeErr
 		}
 	case st.Mode()&os.ModeSymlink != 0:
-		target, e := os.Readlink(p)
+		target, e := root.Readlink(relative)
 		if e != nil {
 			return v, e
 		}
@@ -104,7 +110,12 @@ func Snapshot(root string, tracked map[string]bool) (Tree, error) {
 	if !utf8.ValidString(root) {
 		return tree, errors.New("invalid UTF-8 root path")
 	}
-	entry, e := inspect(root, ".", false)
+	handle, e := openTree(root)
+	if e != nil {
+		return tree, e
+	}
+	defer handle.Close()
+	entry, e := inspectAt(handle, ".", false)
 	if e != nil {
 		return tree, e
 	}
@@ -112,16 +123,12 @@ func Snapshot(root string, tracked map[string]bool) (Tree, error) {
 		return tree, errors.New("reap root must be a directory")
 	}
 	tree.Root = entry
-	e = filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
+	e = fs.WalkDir(handle.FS(), ".", func(rel string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
-		if path == root {
+		if rel == "." {
 			return nil
-		}
-		rel, e := filepath.Rel(root, path)
-		if e != nil {
-			return e
 		}
 		if !utf8.ValidString(rel) {
 			return errors.New("invalid UTF-8 entry path")
@@ -129,7 +136,7 @@ func Snapshot(root string, tracked map[string]bool) (Tree, error) {
 		if len(tree.Entries) >= MaxEntries {
 			return errors.New("reap entry limit exceeded")
 		}
-		v, e := inspect(root, rel, tracked[rel])
+		v, e := inspectAt(handle, rel, tracked[rel])
 		if e != nil {
 			return e
 		}
@@ -140,6 +147,9 @@ func Snapshot(root string, tracked map[string]bool) (Tree, error) {
 		return nil
 	})
 	if e != nil {
+		return tree, e
+	}
+	if e = checkTreeName(root, handle); e != nil {
 		return tree, e
 	}
 	raw, e := json.Marshal(tree)
@@ -175,21 +185,52 @@ func Remaining(root string, approved Tree) (Tree, error) {
 	}
 	return actual, nil
 }
-func DeleteContents(root string, approved Tree) error {
+func DeleteContents(root string, approved Tree) error { return deleteContents(root, approved, nil) }
+func deleteContents(root string, approved Tree, beforeRemove func(Entry) error) error {
+	if e := RequireNonRoot(); e != nil {
+		return e
+	}
 	actual, e := Remaining(root, approved)
 	if e != nil {
 		return e
 	}
+	handle, e := openTree(root)
+	if e != nil {
+		return e
+	}
+	defer handle.Close()
+	opened, e := inspectAt(handle, ".", false)
+	if e != nil {
+		return e
+	}
+	if opened != actual.Root {
+		return errors.New("reap root identity changed")
+	}
 	for i := len(actual.Entries) - 1; i >= 0; i-- {
 		v := actual.Entries[i]
-		now, e := inspect(root, v.Path, v.Recoverable)
+		if e = checkTreeName(root, handle); e != nil {
+			return e
+		}
+		now, e := inspectAt(handle, v.Path, v.Recoverable)
 		if e != nil {
 			return e
 		}
 		if now != v {
 			return errors.New("entry changed during deletion; preserve remaining files")
 		}
-		if e = os.Remove(filepath.Join(root, v.Path)); e != nil {
+		if beforeRemove != nil {
+			if e = beforeRemove(v); e != nil {
+				return e
+			}
+		}
+		if e = checkTreeName(root, handle); e != nil {
+			return e
+		}
+		now, e = inspectAt(handle, v.Path, v.Recoverable)
+		if e != nil || now != v {
+			return errors.New("reap entry changed before removal")
+		}
+		if e = handle.Remove(v.Path); e != nil {
 			return e
 		}
 	}

@@ -84,7 +84,7 @@ func TestCancelFailureNeverAcknowledgesOrErasesReplayProtection(t *testing.T) {
 	if _, err = r.db.Exec(`CREATE TRIGGER refuse_cancel BEFORE INSERT ON operation_cancels BEGIN SELECT RAISE(FAIL,'fault'); END`); err != nil {
 		t.Fatal(err)
 	}
-	if state, err := r.requestCancel(3, "unknown", digest); err == nil || state != "" {
+	if state, err := r.requestCancel(3, "unknown", digest); err == nil || !strings.Contains(err.Error(), "fault") || state != "" {
 		t.Fatal("failed persistence acknowledged", state, err)
 	}
 	if _, err = r.claim(3, "lost", digest); err != nil {
@@ -117,7 +117,7 @@ func TestCancelTombstoneCapacityNeverBlocksAdmittedCancellation(t *testing.T) {
 	if state, err := r.requestCancel(8, "admitted", digest); err != nil || state != "cancel_requested" {
 		t.Fatal("known cancellation blocked", state, err)
 	}
-	if _, _, err := r.lookup(8, "admitted", digest); err == nil {
+	if prior, found, err := r.lookup(8, "admitted", digest); !errors.Is(err, errCancelRequested) || !found || prior != nil {
 		t.Fatal("barrier absent")
 	}
 }
@@ -135,13 +135,13 @@ func TestIgnoredCancellationWriteNeverAcknowledgesBarrier(t *testing.T) {
 	if _, err = r.db.Exec(`CREATE TRIGGER ignore_cancel BEFORE UPDATE OF cancel_state ON receipts BEGIN SELECT RAISE(IGNORE); END`); err != nil {
 		t.Fatal(err)
 	}
-	if state, err := r.requestCancel(4, "live", digest); err == nil || state != "" {
+	if state, err := r.requestCancel(4, "live", digest); !errors.Is(err, errInDoubt) || state != "" {
 		t.Fatal("ignored cancellation acknowledged", state, err)
 	}
 	if _, err = r.db.Exec(`CREATE TRIGGER ignore_tombstone BEFORE INSERT ON operation_cancels BEGIN SELECT RAISE(IGNORE); END`); err != nil {
 		t.Fatal(err)
 	}
-	if state, err := r.requestCancel(4, "unknown", digest); err == nil || state != "" {
+	if state, err := r.requestCancel(4, "unknown", digest); !errors.Is(err, errInDoubt) || state != "" {
 		t.Fatal("ignored tombstone acknowledged", state, err)
 	}
 }

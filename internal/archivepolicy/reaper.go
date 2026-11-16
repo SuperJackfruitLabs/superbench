@@ -67,6 +67,9 @@ func (r Reaper) Plan(key string) (*reap.Plan, error) {
 // Reap requires the concrete reviewed manifest. It journals approval before any
 // deletion. Retry accepts only unchanged remaining entries, never new files.
 func (r Reaper) Reap(p reap.Plan) (*model.Bench, error) {
+	if err := reap.RequireNonRoot(); err != nil {
+		return nil, err
+	}
 	digest, e := p.DigestValue()
 	if e != nil {
 		return nil, e

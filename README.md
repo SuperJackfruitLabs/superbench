@@ -176,6 +176,15 @@ Storage feasibility evidence is in sketchbook's `ideas/2026-11-14-superbench/res
 ## Development
 
 Run `sh scripts/check.sh`: formatting, zero-warning vet ratchet, architecture guards,
-race-enabled integration tests and build. See [code quality](docs/code-quality.md).
+race-enabled integration tests and build. This ordinary suite refuses root.
+Forge CI uses `python3 scripts/check-ci.py` as a root conductor: it copies only
+committed source into a private work directory, runs the ordinary suite as a
+non-root account, then runs the explicit root-reap refusal case from a protected
+test binary. It retains its own fixture for inspection or container disposal;
+it does not install a service or change host users or policy. The optional user
+and cache arguments support an existing isolated verification environment.
+This verifies the root deletion boundary; privileged quota, fencing and installer
+lifecycle tests remain separate and must not be inferred from skipped tests.
+See [code quality](docs/code-quality.md).
 SQLite is provided by the pinned pure-Go modernc.org/sqlite driver. Forge is the primary remote; the first three implementation checkpoints passed
 Forge CI. No production deployment is configured.

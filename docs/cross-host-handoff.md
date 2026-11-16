@@ -15,6 +15,33 @@ duplicate fields, changed vectors and another destination are refused. It has
 no lease token, local checkout path, command, environment or claimed fencing bit.
 Repository addresses remain private administrative data.
 
+## Administrative trust requirement
+
+Offers, export plans and artifacts are unsigned. Their SHA-256 digests bind
+bytes; they do not authenticate a machine, an operator or a completed source
+relinquishment. The commands do not independently verify who produced these
+files. An invented destination offer can permanently exclude a source key;
+an invented export artifact can leave an old writer using the same branches.
+
+Use this flow only between operators who independently verify both endpoints
+through an authenticated channel they already trust. Before approving export,
+the source operator must confirm the offer with the destination operator:
+actual host and state identities, reserved key and workspace ID, creation ID,
+repository/member allowlist and exact offer digest. Before approving import,
+the destination operator must confirm the final artifact with the source
+operator: exact source and destination identities, transfer approval, complete
+repository/branch/commit vector, immutable checkpoint seal and digest, and the
+source's completed permanent launch exclusion and writer fencing. Verify the
+actual terminal source procedure and retained evidence, not an asserted field
+or an artifact checksum alone. Transfer the exact approved bytes through that
+same authenticated channel.
+
+`--approve` records the local operator's review; it supplies no signature or
+remote-origin proof. Refuse files from an unknown sender, a mismatched endpoint
+or an unverified source. There is no automatic acceptance of unsigned third-party
+offers or artifacts, and an unreachable source still needs independent fencing.
+No additional issuer, signing key or network authority is introduced here.
+
 The coordinator's host observation uses the stable Linux machine identity (in
 the same hash domain as existing managed execution) or the macOS platform UUID.
 Only a domain-separated digest leaves that observation; missing, ambiguous or
@@ -43,8 +70,9 @@ New durable cross-host authority needs versioned state that old binaries refuse;
 a parser and a new file beside the database cannot provide that guarantee.
 An unreachable source still requires independent fencing and its own reviewed
 recovery procedure. This flow creates no network lease service or alternative
-issuer. Real two-host Git/runtime verification and managed cross-host crash/fencing
-verification remain outstanding; local journal and lifecycle tests are separate evidence.
+issuer. A two-host no-hook trial is verified below. Managed cross-host hook,
+crash and fencing verification remains outstanding; local journal and lifecycle
+tests are separate evidence.
 
 The private journal implementation retains a state incarnation, unique
 destination offers, one export per source and imports bound to the exact offer.
@@ -52,7 +80,7 @@ It checks writes by reading them back and retains terminal identity on replay.
 Schema29 binds these journals to core source exclusion and destination creation.
 SQL tests establish journal behavior; real Git/SQLite lifecycle tests separately
 exercise export, import, partial failures and retries on one machine. Neither
-kind of test establishes remote source fencing or a completed two-host runtime trial.
+kind of local test alone establishes remote source fencing or a completed two-host runtime trial.
 
 ## Reviewed local commands
 
@@ -128,8 +156,8 @@ owner, no retry generates a new transfer/creation identity, and no source
 failure restores source authority.
 
 The artifact digest binds reviewed bytes; it is not a signature, remote
-quiescence attestation or network authorization. An administrator must transfer
-and review the actual final export produced by the source procedure. Importing
+quiescence attestation or network authorization. The independent endpoint checks above are mandatory; an administrator must
+transfer and review the actual final export produced by the source procedure. Importing
 an invented artifact does not prove that another machine stopped. This feature
 does not add a distributed lease service or protect against trusted operators
 writing directly outside the protocol.
@@ -138,6 +166,27 @@ No-hook initialization can run on a laptop. Configured supervised hooks retain
 the existing Linux backend requirement; a macOS host identity does not supply
 that backend. Such an import retains its exact initialization ownership rather
 than reporting managed readiness. The separate cooperative local preparation
-mode is not supervised aggregate initialization evidence. Real two-host and
-managed hook/crash verification are required in addition to the journal and
-native source/destination tests.
+mode is not supervised aggregate initialization evidence. Managed hook/crash
+verification is required in addition to the journal, native lifecycle and no-hook
+two-host evidence.
+
+
+## Two-host verification scope
+
+The implementation in [the cross-host handoff change](https://forge.superjackfruit.com/SuperJackfruitLabs/superbench/pulls/43)
+passed an actual macOS-to-Linux transfer between independent host/state pairs.
+The trial used no setup hooks and unmanaged logical quotas; it did not establish
+managed macOS fencing or privileged cross-host recovery.
+
+It verified both original task branches, permanent source exclusion and retained
+source identity, metadata-only checkout detachment with ignored bytes and index
+preserved, a fresh destination workspace identity and whole-vector genesis,
+late-holder replay without a token or root grant, and a later checkpoint/release
+while the original artifact remained immutable after remote task refs advanced.
+A rejected unsupported repository transport was a separate preflight refusal;
+the successful trial used an accepted Git transport without weakening validation.
+
+This trial does not authenticate unsigned administrative files. The independent
+operator checks above remain required. Managed setup hooks, controller-loss and
+cross-host fencing need their own rerunnable verification before those guarantees
+can be claimed.

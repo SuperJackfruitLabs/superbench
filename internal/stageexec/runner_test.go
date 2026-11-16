@@ -203,8 +203,9 @@ func TestCancellationFencesBeforeReconciliationCallback(t *testing.T) {
 	}
 	select {
 	case err := <-done:
-		if err == nil {
-			t.Fatal("canceled payload reported success")
+		var exit *exec.ExitError
+		if !errors.As(err, &exit) || exit.ExitCode() != -1 {
+			t.Fatal("canceled payload did not report the killed process outcome", err)
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("canceled payload not reaped")
@@ -221,7 +222,9 @@ func TestExistingLogAndInvalidPlanHaveNoLaunchEffects(t *testing.T) {
 		t.Fatal("existing log launched a payload")
 		return nil
 	}
-	if result, err := r.Run(context.Background(), p); err == nil || result == nil {
+	r.Stop = func() (*execution.Execution, error) { t.Fatal("existing log reached Stop"); return nil, nil }
+	r.Seal = func(*output.Capture, *int, bool) error { t.Fatal("existing log reached Seal"); return nil }
+	if result, err := r.Run(context.Background(), p); !errors.Is(err, os.ErrExist) || result == nil {
 		t.Fatalf("existing log adopted: %+v %v", result, err)
 	}
 	raw, err := os.ReadFile(p.Execution.Log)
@@ -240,7 +243,8 @@ func TestExistingLogAndInvalidPlanHaveNoLaunchEffects(t *testing.T) {
 		next := plan(t, "exit 0")
 		runner := defaults(next)
 		change(&runner, &next)
-		if result, err := runner.Run(context.Background(), next); err == nil || result != nil {
+		runner.Open = func() (*output.Capture, error) { t.Fatal("invalid plan opened capture"); return nil, nil }
+		if result, err := runner.Run(context.Background(), next); err == nil || err.Error() != "execution stage requires a plan, fencing backend and lifecycle callbacks" || result != nil {
 			t.Fatalf("invalid stage accepted: %+v %v", result, err)
 		}
 	}

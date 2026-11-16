@@ -14,6 +14,14 @@ Do not bypass the installed daemon's uid policy by granting clients access to it
 private state. Perform local administration as the trusted service owner/operator,
 using exactly the state/data paths of that service.
 
+Reap refuses effective UID zero before accessing its state or approval. Run it
+as the non-root service owner, including for aggregate workspaces. Approved
+entry inspection and deletion use an `os.Root` handle bound to the physical
+root, with identity checks that refuse replaced roots or escaping intermediate
+symlinks. This does not permit deleting unknown or changed files. The fixed
+privileged quota helper has a separate empty-allocation retirement authority;
+it is not a root tree-deletion interface.
+
 ## Archive
 
 Stop/reconcile any supervised execution, commit intended source changes, checkpoint

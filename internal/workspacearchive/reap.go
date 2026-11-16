@@ -18,6 +18,9 @@ import (
 // Reap requires the concrete reviewed frozen tree. Its durable approval survives
 // interrupted deletion, registration cleanup and quota retirement independently.
 func (m Manager) Reap(ctx context.Context, approval Plan) (*model.Bench, error) {
+	if err := reap.RequireNonRoot(); err != nil {
+		return nil, err
+	}
 	ctx, cancel, err := m.bounded(ctx, approval.Key)
 	if err != nil {
 		return nil, err

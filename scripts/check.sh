@@ -1,5 +1,9 @@
 #!/bin/sh
 set -eu
+if [ "$(id -u)" -eq 0 ]; then
+  echo "Ordinary checks require a non-root user; the CI conductor is scripts/check-ci.py" >&2
+  exit 1
+fi
 unformatted=$(gofmt -l cmd internal)
 if [ -n "$unformatted" ]; then printf 'Run gofmt on:\n%s\n' "$unformatted"; exit 1; fi
 # Zero-warning ratchet: any vet diagnostic fails; there is no grandfathered baseline.

@@ -151,6 +151,9 @@ func Frozen(path string, original Tree) (Tree, error) {
 // During retry, directories may have gained only owner-write permission; files
 // must still match exactly. No new entries are allowed by Remaining.
 func DeleteFrozenContents(path string, approved Tree) error {
+	if err := RequireNonRoot(); err != nil {
+		return err
+	}
 	tracked := map[string]bool{}
 	for _, v := range approved.Entries {
 		tracked[v.Path] = v.Recoverable

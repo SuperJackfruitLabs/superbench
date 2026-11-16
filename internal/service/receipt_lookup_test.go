@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/json"
+	"errors"
 	"net"
 	"strings"
 	"sync"
@@ -127,8 +128,8 @@ func TestReceiptConnectionPromotionCannotConsumeNormalOrCancellationCapacity(t *
 	if len(reads) != 0 || len(normal) != 64 {
 		t.Fatal("incorrect close release")
 	}
-	if err := c.promoteRead(); err == nil {
-		t.Fatal("closed connection promoted")
+	if err := c.promoteRead(); !errors.Is(err, net.ErrClosed) {
+		t.Fatal("closed connection did not reject promotion as closed", err)
 	}
 }
 

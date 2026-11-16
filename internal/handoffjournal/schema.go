@@ -1,6 +1,6 @@
 // Package handoffjournal retains exclusive cross-host offers and transfers in
 // the core transaction. It does not inspect hosts, fence writers or run Git.
-// These tables require a future core schema migration before production use.
+// Core schema29 introduced these tables and their source/destination guards.
 package handoffjournal
 
 import (
