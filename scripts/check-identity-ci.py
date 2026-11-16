@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Verify installed registry/helper binding in disposable Linux namespaces.
 
-This is privileged CI for registry binding and scoped child credentials, not
+This is privileged CI for registry binding, scoped child credentials and
+installed indexed-policy refusal, not successful storage initialization,
 production payload execution, sudo installation or the full storage lifecycle.
 Unsupported namespace/cgroup environments fail; they never silently skip.
 """
@@ -33,6 +34,8 @@ TESTS = (
         'HELPER_BINDING_CHANGED_PROFILE_AND_IDENTICAL_REPLACEMENT_REFUSED')),
     ('execution', 'TestHostStartPreservesActualChildCredentials', (
         'ACTUAL_SCOPED_CHILD_CREDENTIALS_PRESERVED',)),
+    ('bench-quota', 'TestInstalledIndexedPolicyRefusesMissingHistory', (
+        'INSTALLED_INDEXED_POLICY_MISSING_HISTORY_NO_FALLBACK',)),
 )
 LIMITS = {'cpu.max': '800000 100000', 'memory.max': str(2 << 30),
           'memory.swap.max': '0', 'pids.max': '512'}
@@ -46,7 +49,7 @@ def identity(info):
 def boundary():
     result = {}
     for name in ('/etc', '/etc/superbench', '/etc/superbench/service-identity.json',
-                 '/etc/superbench/payload-policy.json'):
+                 '/etc/superbench/payload-policy.json', '/etc/superbench/storage.json'):
         try:
             result[name] = identity(os.lstat(name))
         except FileNotFoundError:
@@ -182,6 +185,8 @@ def inside(binary, selector):
     if selector == 'TestHostStartPreservesActualChildCredentials':
         environment['SUPERBENCH_EXECUTION_CREDENTIAL_FIXTURE'] = '1'
         environment['SUPERBENCH_EXECUTION_CGROUP_ROOT'] = os.environ.get('SUPERBENCH_EXECUTION_CGROUP_ROOT', '')
+    if selector == 'TestInstalledIndexedPolicyRefusesMissingHistory':
+        environment['SUPERBENCH_INDEXED_POLICY_FIXTURE'] = '1'
     os.execve(binary, [binary, '-test.run=^' + selector + '$', '-test.v', '-test.timeout=240s'], environment)
 
 
@@ -228,7 +233,7 @@ def main():
     cgroup = Path('/sys/fs/cgroup') / ('superbench-identity-ci-' + str(os.getpid()) + '-' + os.urandom(6).hex())
     cgroup.mkdir()  # No writable/delegated cgroup means a hard CI failure.
     cgroup_id = identity(cgroup.stat())[:2]
-    report = {'fixture': str(fixture), 'scope': 'registry/helper binding and scoped child credentials only', 'binaries': {}, 'phases': []}
+    report = {'fixture': str(fixture), 'scope': 'registry/helper binding, scoped credentials and indexed-policy refusal only', 'binaries': {}, 'phases': []}
     process, failure = None, None
 
     def interrupted(number, frame):
@@ -275,7 +280,7 @@ def main():
         for package, selector, markers in TESTS:
             candidate, binary = work / (package + '.test'), sealed / (package + '.test')
             run([args.go, 'test', '-c', '-tags=serviceidentityfixture', '-o', str(candidate),
-                 './internal/' + package], package + '-compile', env, ordinary=True)
+                 ('./cmd/' if package == 'bench-quota' else './internal/') + package], package + '-compile', env, ordinary=True)
             report['binaries'][package] = {'sha256': capture(candidate, binary, account.pw_uid)}
             metadata = subprocess.check_output([args.go, 'version', '-m', str(binary)],
                                                env={'PATH': env['PATH'], 'GOTOOLCHAIN': 'local'}, text=True, timeout=10)
