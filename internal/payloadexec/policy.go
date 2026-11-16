@@ -53,6 +53,18 @@ func Environment(home, tmp string, ambient []string) ([]string, error) {
 		return nil, ErrPolicy
 	}
 	result := []string{"PATH=/usr/local/bin:/usr/bin:/bin", "HOME=" + home, "TMPDIR=" + tmp, "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1"}
+	ambientEnvironment, err := AmbientEnvironment(ambient)
+	if err != nil {
+		return nil, err
+	}
+	return append(result, ambientEnvironment...), nil
+}
+
+// AmbientEnvironment returns only the existing bounded locale/CI allowlist. It
+// conveys no HOME/TMPDIR, Git settings, loader metadata, credentials or PATH.
+// The fixed launcher and final payload each construct their own trusted prefix.
+func AmbientEnvironment(ambient []string) ([]string, error) {
+	var result []string
 	allowed := map[string]bool{"LANG": true, "LC_ALL": true, "LC_CTYPE": true, "TZ": true, "TERM": true, "CI": true}
 	seen := map[string]bool{}
 	for _, item := range ambient {

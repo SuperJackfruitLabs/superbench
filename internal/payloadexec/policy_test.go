@@ -2,6 +2,8 @@ package payloadexec
 
 import (
 	"errors"
+	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -48,6 +50,36 @@ func TestPayloadEnvironmentDoesNotInheritDaemonOrLoaderAuthority(t *testing.T) {
 	for i := range want {
 		if env[i] != want[i] {
 			t.Fatalf("environment %d = %q, want %q", i, env[i], want[i])
+		}
+	}
+}
+
+func TestAmbientExtractionPreservesPayloadEnvironmentAndValidation(t *testing.T) {
+	ambient := []string{"HOME=private", "PATH=private", "GIT_CONFIG_COUNT=1", "LANG=C.UTF-8", "CI=true", "LC_ALL=C", "LD_PRELOAD=private"}
+	locale, err := AmbientEnvironment(ambient)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantLocale := []string{"LANG=C.UTF-8", "CI=true", "LC_ALL=C"}
+	if !reflect.DeepEqual(locale, wantLocale) {
+		t.Fatalf("ambient allowlist changed: %q", locale)
+	}
+	prefix := []string{"PATH=/usr/local/bin:/usr/bin:/bin", "HOME=/payload/home", "TMPDIR=/payload/tmp", "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1"}
+	payload, err := Environment("/payload/home", "/payload/tmp", ambient)
+	if err != nil || !reflect.DeepEqual(payload, append(prefix, wantLocale...)) {
+		t.Fatalf("payload environment changed: %q %v", payload, err)
+	}
+	for _, invalid := range [][]string{{"LANG=C", "LANG=C"}, {"LANG"}, {"CI=" + strings.Repeat("x", 257)}, {"LC_ALL=\x00"}, {"LC_CTYPE=\xff"}} {
+		if got, err := AmbientEnvironment(invalid); got != nil || !errors.Is(err, ErrPolicy) {
+			t.Fatalf("ambient validation changed: %q %v", got, err)
+		}
+		if got, err := Environment("/payload/home", "/payload/tmp", invalid); got != nil || !errors.Is(err, ErrPolicy) {
+			t.Fatalf("payload validation changed: %q %v", got, err)
+		}
+	}
+	for _, paths := range [][2]string{{"/", "/"}, {"/payload/home", "/payload/home"}, {"relative", "/payload/tmp"}} {
+		if got, err := Environment(paths[0], paths[1], ambient); got != nil || !errors.Is(err, ErrPolicy) {
+			t.Fatalf("payload layout restriction relaxed: %q %v", got, err)
 		}
 	}
 }

@@ -71,6 +71,7 @@ func TestArchitecture(t *testing.T) {
 				"internal/repaircontrol":        {"internal/statestore", "internal/operationcontrol"},
 				"internal/storageproof":         {"internal/quotahelper"},
 				"internal/hoststorage":          {"internal/storageproof", "internal/hostlayout", "internal/hostpolicy", "internal/quotahelper", "internal/model", "internal/output"},
+				"internal/payloadlaunch":        {"internal/payloadexec", "internal/execution"},
 				"internal/stageexec":            {"internal/execution", "internal/output"},
 				"internal/quotahelper":          {"internal/quotaoperation", "internal/operationcontrol"},
 				"internal/operationcancel":      {"internal/statepath", "internal/statestore", "internal/gitcontrol", "internal/quotahelper", "internal/benchstate", "internal/history", "internal/model", "internal/operationcontrol", "internal/reap", "internal/retention"},
