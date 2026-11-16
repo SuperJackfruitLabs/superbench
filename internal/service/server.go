@@ -267,9 +267,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	status, code, message := 200, "", ""
 	if operationErr != nil {
 		status, code, message = operationError(operationErr)
-		if code == "capacity_exhausted" {
-			log.Printf("%s: %s", code, message)
-		}
 	}
 	response := makeResponse(request, result, code, message)
 	encoded, e := json.Marshal(response)
@@ -353,10 +350,6 @@ func operationError(e error) (int, string, string) {
 		return 409, "conflict", "aggregate workspace requires the workspace API"
 	case errors.Is(e, bench.ErrArchived) || errors.Is(e, bench.ErrBusy) || errors.Is(e, bench.ErrExists) || errors.Is(e, bench.ErrNotFenced) || errors.Is(e, bench.ErrCheckpoint) || errors.Is(e, bench.ErrDirty):
 		return 409, "conflict", "bench state conflicts with this operation"
-	}
-	var capacity *bench.CapacityError
-	if errors.As(e, &capacity) && capacity.Valid() {
-		return 422, "capacity_exhausted", capacity.Message()
 	}
 	return 422, "operation_failed", "operation failed; inspect retained bench state and local logs"
 }

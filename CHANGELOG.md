@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Return a specific logical-capacity refusal with needed and total byte/inode budgets when a fixed quota reservation cannot fit. Preserve quota limits, retained creation intents and nonzero failures; log only the same bounded diagnostics.
+- Return a specific v2 logical-capacity refusal with needed and total byte/inode budgets when a fixed quota reservation cannot fit. Preserve quota limits, retained creation intents and nonzero failures; log only the same bounded diagnostics. Keep the v1 closed error code and message unchanged.
 
 - Add fixed-policy XFS allocation, host admission and shared store caps, frozen
   pnpm/npm setup, atomic mirror publication and bounded/reserved run logs.

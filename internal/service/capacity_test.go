@@ -12,11 +12,18 @@ import (
 func TestCapacityErrorProjectionKeepsOnlyLogicalQuantities(t *testing.T) {
 	capacity := &bench.CapacityError{NeededBytes: 6500, AvailableBytes: 6000, NeededInodes: 400, AvailableInodes: 900}
 	wrapped := fmt.Errorf("private policy /private/secret uid=99: %w", capacity)
-	for name, project := range map[string]func(error) (int, string, string){"scalar": operationError, "workspace": operationErrorV2} {
+	for _, tc := range []struct {
+		name, code, message string
+		project             func(error) (int, string, string)
+	}{
+		{"scalar_v1", "operation_failed", "operation failed; inspect retained bench state and local logs", operationError},
+		{"workspace_v2", "capacity_exhausted", capacity.Message(), operationErrorV2},
+	} {
+		name, project := tc.name, tc.project
 		t.Run(name, func(t *testing.T) {
 			status, code, message := project(wrapped)
-			if status != 422 || code != "capacity_exhausted" || message != capacity.Message() || strings.Contains(message, "private") {
-				t.Fatalf("wrong typed projection: %d %s %s", status, code, message)
+			if status != 422 || code != tc.code || message != tc.message || strings.Contains(message, "private") {
+				t.Fatalf("wrong version-scoped projection: %d %s %s", status, code, message)
 			}
 			_, generic, _ := project(errors.New(capacity.Error()))
 			if generic != "operation_failed" {
