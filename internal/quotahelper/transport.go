@@ -3,7 +3,6 @@
 package quotahelper
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -11,14 +10,12 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/operationcontrol"
 	"os"
 	"os/exec"
+
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotapolicy"
 	"path/filepath"
 )
 
-type Assignment struct {
-	Path          string
-	ProjectID     uint32
-	Bytes, Inodes uint64
-}
+type Assignment = quotapolicy.Assignment
 type Config struct{ State, Data, Command, PolicyOverride string }
 
 func Apply(ctx context.Context, c Config, kind, key string, requested uint64) (Assignment, error) {
@@ -42,16 +39,31 @@ func apply(ctx context.Context, c Config, kind, key string, requested uint64, ui
 		command = "/usr/bin/sudo"
 	}
 	cmd := exec.Command(command, args...)
-	var output bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &output, &output
+	stdout, stderr := &boundedOutput{max: MaxReply}, &boundedOutput{max: 4096}
+	cmd.Stdout, cmd.Stderr = stdout, stderr
 	e := operationcontrol.Effect(ctx, cmd.Start)
 	if e == nil {
 		e = cmd.Wait()
 	}
-	raw := output.Bytes()
 	if e != nil {
-		return Assignment{}, fmt.Errorf("quota allocation: %w: %s", e, string(raw))
+		var exit *exec.ExitError
+		if !stdout.overflow && !stderr.overflow && stdout.Len() == 0 && errors.As(e, &exit) && exit.ExitCode() == 1 {
+			if capacity := capacityFailure(stderr.Bytes()); capacity != nil {
+				return Assignment{}, fmt.Errorf("quota allocation: %w: %w", e, capacity)
+			}
+		}
+		if stdout.overflow || stderr.overflow {
+			return Assignment{}, fmt.Errorf("quota allocation: %w: helper output exceeds bounds", e)
+		}
+		return Assignment{}, fmt.Errorf("quota allocation: %w: %s%s", e, stdout.Bytes(), stderr.Bytes())
 	}
+	if stdout.overflow || stderr.overflow {
+		return Assignment{}, errors.New("quota helper output exceeds bounds")
+	}
+	if stderr.Len() != 0 {
+		return Assignment{}, errors.New("quota helper returned ambiguous output")
+	}
+	raw := stdout.Bytes()
 	var a Assignment
 	if e = json.Unmarshal(raw, &a); e != nil {
 		return a, e

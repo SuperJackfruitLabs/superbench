@@ -46,6 +46,7 @@ func helperCommand(ctx context.Context, c Config, uid int, guard bool, beforeSta
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	capacityEligible := len(args) > 0 && args[0] == "apply-operation"
 	command, args := helperArgs(c, uid, args)
 	cmd := exec.Command(command, args...)
 	stdout, stderr := &boundedOutput{max: MaxReply}, &boundedOutput{max: 4096}
@@ -68,6 +69,12 @@ func helperCommand(ctx context.Context, c Config, uid int, guard bool, beforeSta
 		err = cmd.Wait()
 	}
 	if err != nil {
+		var exit *exec.ExitError
+		if capacityEligible && !stdout.overflow && !stderr.overflow && stdout.Len() == 0 && errors.As(err, &exit) && exit.ExitCode() == 1 {
+			if capacity := capacityFailure(stderr.Bytes()); capacity != nil {
+				return nil, fmt.Errorf("fixed-helper operation failed: %w: %w", err, capacity)
+			}
+		}
 		return nil, fmt.Errorf("fixed-helper operation failed: %w", err)
 	}
 	if stdout.overflow || stderr.overflow {

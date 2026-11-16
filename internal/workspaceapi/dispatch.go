@@ -9,7 +9,8 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspaceops"
 )
 
-// ErrorStatus exposes static messages only; private backend diagnostics stay in
+// ErrorStatus exposes static messages and typed logical capacity quantities;
+// private backend diagnostics stay in
 // local evidence instead of becoming an API error or a printed capability.
 func ErrorStatus(err error) (int, string, string) {
 	switch {
@@ -25,6 +26,10 @@ func ErrorStatus(err error) (int, string, string) {
 		return 403, "forbidden", "valid holder capability required"
 	case errors.Is(err, workspaceops.ErrConflict), errors.Is(err, bench.ErrScalar), errors.Is(err, bench.ErrWorkspace), errors.Is(err, bench.ErrArchived), errors.Is(err, bench.ErrBusy), errors.Is(err, bench.ErrExists), errors.Is(err, bench.ErrNotFenced), errors.Is(err, bench.ErrCheckpoint), errors.Is(err, bench.ErrDirty):
 		return 409, "conflict", "workspace state conflicts with this operation"
+	}
+	var capacity *bench.CapacityError
+	if errors.As(err, &capacity) && capacity.Valid() {
+		return 422, "capacity_exhausted", capacity.Message()
 	}
 	return 422, "operation_failed", "operation failed; inspect retained workspace state and local logs"
 }

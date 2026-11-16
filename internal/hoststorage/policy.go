@@ -28,6 +28,7 @@ type Policy struct {
 	upgradingInodes bool
 }
 type Assignment = quotahelper.Assignment
+type CapacityError = quotahelper.CapacityError
 
 type ledger struct {
 	FormatVersion  int            `json:",omitempty"`

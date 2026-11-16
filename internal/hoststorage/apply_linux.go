@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hostlayout"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotapolicy"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -169,7 +170,11 @@ func (p Policy) ApplyRequested(kind, key string, requested uint64) (Assignment, 
 		reserved += inodes
 	}
 	if (!known || p.upgradingInodes) && reserved > fs.Files {
-		return zero, errors.New("host inode budget exhausted; refusing overcommit")
+		needed, err := quotapolicy.ReservationBytes(p.StoreBytes+p.MirrorBytes+p.ReserveBytes, l.Assignments, kind == "bench" && !known, size)
+		if err != nil {
+			return zero, err
+		}
+		return zero, &CapacityError{NeededBytes: needed, AvailableBytes: fs.Blocks * uint64(fs.Bsize), NeededInodes: reserved, AvailableInodes: fs.Files}
 	}
 
 	if known {
@@ -198,20 +203,12 @@ func (p Policy) ApplyRequested(kind, key string, requested uint64) (Assignment, 
 		}
 	} else {
 		// Reserve all shared caps even before those projects are first materialized.
-		used := p.StoreBytes + p.MirrorBytes + p.ReserveBytes
-		for k, v := range l.Assignments {
-			if strings.HasPrefix(k, "bench:") {
-				if used > 1<<60-v.Bytes {
-					return zero, errors.New("budget overflow")
-				}
-				used += v.Bytes
-			}
-		}
-		if kind == "bench" {
-			used += size
+		used, err := quotapolicy.ReservationBytes(p.StoreBytes+p.MirrorBytes+p.ReserveBytes, l.Assignments, kind == "bench", size)
+		if err != nil {
+			return zero, err
 		}
 		if used > fs.Blocks*uint64(fs.Bsize) {
-			return zero, errors.New("host quota budget exhausted; refusing overcommit")
+			return zero, &CapacityError{NeededBytes: used, AvailableBytes: fs.Blocks * uint64(fs.Bsize), NeededInodes: reserved, AvailableInodes: fs.Files}
 		}
 		if _, e = os.Lstat(path); e == nil {
 			return zero, errors.New("unmanaged target exists; refusing quota adoption")

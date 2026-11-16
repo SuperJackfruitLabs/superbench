@@ -1,16 +1,13 @@
 package bench
 
 import (
-	"encoding/json"
 	"errors"
-	"fmt"
-	"os"
-	"os/exec"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage"
 )
 
 type HostConfig = hoststorage.HostConfig
+type CapacityError = hoststorage.CapacityError
 type Space = hoststorage.Space
 type HostStatus = hoststorage.HostStatus
 
@@ -61,37 +58,7 @@ func (s Store) applyBenchQuota(c *creation) error {
 	return s.record(*c)
 }
 
-func (s Store) releaseQuota(b *Bench) error {
-	c, e := s.hostConfig()
-	if e != nil {
-		return e
-	}
-	if c == nil {
-		return errors.New("managed bench has no host policy")
-	}
-	args := []string{}
-	if c.PolicyOverride != "" {
-		args = append(args, "--policy", c.PolicyOverride)
-	}
-	args = append(args, "release", "bench", b.Key, fmt.Sprint(b.ProjectID))
-	command := c.QuotaHelper
-	if os.Geteuid() != 0 {
-		args = append([]string{"-n", command}, args...)
-		command = "/usr/bin/sudo"
-	}
-	raw, e := exec.Command(command, args...).CombinedOutput()
-	if e != nil {
-		return fmt.Errorf("quota release: %w: %s", e, raw)
-	}
-	var a hoststorage.Assignment
-	if e = json.Unmarshal(raw, &a); e != nil {
-		return e
-	}
-	if a.Path != b.Path || a.ProjectID != b.ProjectID || a.Bytes != 0 || a.Inodes != 0 {
-		return errors.New("quota helper did not confirm retired assignment")
-	}
-	return nil
-}
+func (s Store) releaseQuota(b *Bench) error { return s.workerStorage().ReleaseBenchQuota(b) }
 
 func (s Store) ensureBenchQuota(b *Bench) error { return s.workerStorage().EnsureBenchQuota(b) }
 
