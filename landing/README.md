@@ -12,10 +12,6 @@ npm run build   # -> dist/, then checks the frame and the copy
 
 Astro 7 needs Node 22.23.4 or newer.
 
-`package-lock.json` and `public/og.png` are added in phase B, once vibekit-frame 0.0.17 and
-vibekit-ui 0.0.19 are published: the lockfile from the first `npm install`, the image from
-frontdoor's renderer (see `og/README.md`). Until then `npm ci` and the build cannot run.
-
 ## How it deploys
 
 A Cloudflare Worker with static assets named `superbench-site`, configured by
