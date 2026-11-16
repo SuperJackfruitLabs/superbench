@@ -103,6 +103,8 @@ func TestArchitecture(t *testing.T) {
 				"cmd/bench":                     {"internal/localprep", "internal/crosshostflow", "internal/crosshost", "internal/handoffjournal", "internal/mirroradmin", "internal/mirrorstage", "internal/workspacetransfer", "internal/workspacerepair", "internal/workspaceprep", "internal/protocolv2", "internal/workspaceops", "internal/workspaceapi", "internal/workspacearchive", "internal/autoarchive", "internal/bench", "internal/client", "internal/protocol", "internal/reap", "internal/retention", "internal/history", "internal/maintenance"},
 				"cmd/benchd":                    {"internal/bench", "internal/service"},
 				"cmd/bench-quota":               {"internal/hoststorage", "internal/quotahelper", "internal/quotaoperation"},
+
+				"internal/quotaoperationjournal": {"internal/quotaoperation"},
 			}
 			allowed := !strings.Contains(strings.Split(p, "/")[0], ".")
 			for _, target := range edges[rel] {
@@ -110,7 +112,7 @@ func TestArchitecture(t *testing.T) {
 					allowed = true
 				}
 			}
-			if p == "modernc.org/sqlite" && (rel == "internal/statestore" && filepath.Base(path) == "sqlite.go" || rel == "internal/operationreceipts" && filepath.Base(path) == "receipts.go") {
+			if p == "modernc.org/sqlite" && (rel == "internal/statestore" && filepath.Base(path) == "sqlite.go" || rel == "internal/operationreceipts" && filepath.Base(path) == "receipts.go" || rel == "internal/quotaoperationjournal" && filepath.Base(path) == "store.go") {
 				allowed = true
 			}
 			if p == "github.com/pelletier/go-toml/v2" && rel == "internal/setup" && filepath.Base(path) == "config.go" {
