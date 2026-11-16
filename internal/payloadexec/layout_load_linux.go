@@ -20,8 +20,27 @@ func LoadLayout(p Policy, r Request) (Layout, error) {
 	if err := r.Validate(); err != nil {
 		return Layout{}, err
 	}
+	layout, err := loadRegistration(p, r.Key, r.LayoutID, r.PolicyDigest)
+	if err != nil {
+		return Layout{}, err
+	}
+	if layout.Scalar && r.Root || !layout.Scalar && r.Member == "" && !r.Root {
+		return Layout{}, ErrPolicy
+	}
+	if _, _, _, _, err := layout.paths(p, r.Member); err != nil {
+		return Layout{}, err
+	}
+	return layout, nil
+}
+
+// loadRegistration has no execution scope or member selection. It reads only the
+// existing immutable registration; physical nodes require separate inspection.
+func loadRegistration(p Policy, key, layoutID, policySHA string) (Layout, error) {
+	if p.Validate() != nil || !logical.MatchString(key) || !identity.MatchString(layoutID) || !hostIdentity.MatchString(policySHA) {
+		return Layout{}, ErrPolicy
+	}
 	digest, err := policyDigest(p)
-	if err != nil || r.PolicyDigest != digest {
+	if err != nil || policySHA != digest {
 		return Layout{}, ErrPolicy
 	}
 	directory := filepath.Join(p.StateRoot, "payload-layouts")
@@ -30,7 +49,7 @@ func LoadLayout(p Policy, r Request) (Layout, error) {
 		return Layout{}, errors.Join(ErrPolicy, err)
 	}
 	defer parent.Close()
-	name := r.Key + ".json"
+	name := key + ".json"
 	fd, err := syscall.Openat(int(parent.Fd()), name, syscall.O_RDONLY|syscall.O_NONBLOCK|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
 	if err != nil {
 		return Layout{}, errors.Join(ErrPolicy, err)
@@ -73,11 +92,8 @@ func LoadLayout(p Policy, r Request) (Layout, error) {
 		return Layout{}, errors.Join(ErrPolicy, err)
 	}
 	layout, err := ParseLayout(p, raw)
-	if err != nil || layout.Key != r.Key || layout.ID != r.LayoutID || layout.Scalar && r.Root || !layout.Scalar && r.Member == "" && !r.Root {
+	if err != nil || layout.Key != key || layout.ID != layoutID {
 		return Layout{}, errors.Join(ErrPolicy, err)
-	}
-	if _, _, _, _, err := layout.paths(p, r.Member); err != nil {
-		return Layout{}, err
 	}
 	return layout, nil
 }

@@ -10,7 +10,7 @@ import (
 
 func TestRefusalNeverExposesPrivateCauseOrUnrecognizedPhase(t *testing.T) {
 	private := errors.New("private/path secret-token=fixture")
-	for _, phase := range []string{"caller", "policy", "stdio", "descriptors", "frame", "scope", "layout", "boundary", "environment", "executable", "credentials", "exec"} {
+	for _, phase := range []string{"caller", "policy", "stdio", "descriptors", "frame", "inspection", "scope", "layout", "boundary", "environment", "executable", "credentials", "exec"} {
 		err := &refusalError{phase: phase, cause: errors.Join(ErrBoundary, private)}
 		if RefusalCode(err) != phase || !errors.Is(err, private) || !errors.Is(err, ErrBoundary) || err.Error() != "managed payload refused: "+phase {
 			t.Fatal("closed refusal lost category or internal cause")
