@@ -27,3 +27,18 @@ The subsequent [disabled reader candidate](../../web/README.md) uses a pinned
 proposed observation corpus for its actual JavaScript viewmodel. It adds no live
 reader/authentication boundary and does not establish browser rendering proof for
 this design. Its inventory/history subset leaves the full Phase 2 work explicit.
+
+## Fixture-backed reader states
+
+Open [reader-states.html](reader-states.html) directly as a standalone static
+review artifact. It needs no server or JavaScript and makes no network requests.
+The displayed inventory, transferred-source block, latest-only checkpoint and
+retained-history examples are generated through the actual proposed reader codec
+from the pinned corpus. An explicit expired state shows why an old observation
+cannot authorize a new read. Logical labels are escaped; internal bench IDs,
+physical host identities, private paths and ownership capabilities are not shown.
+
+Regenerate with `node scripts/render-reader-mockup.mjs`. The focused JavaScript
+suite checks reproducibility, hostile text, missing fixtures and zero versus
+unavailable values. These are source/model checks, not browser layout or runtime
+authorization proof. No live adapter, service, listener or terminal is added.
