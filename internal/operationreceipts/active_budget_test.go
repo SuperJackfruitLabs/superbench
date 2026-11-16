@@ -3,8 +3,12 @@ package operationreceipts
 import (
 	"bytes"
 	"context"
+	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/operationcontrol"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -193,5 +197,258 @@ func TestMalformedHistoricalRelationRefusesLookupAndReopen(t *testing.T) {
 				t.Fatal("reopen adopted corrupt terminal relation", e)
 			}
 		})
+	}
+}
+
+func TestDerivedIndexesDoNotChangeSchemaOrHistoricalBytes(t *testing.T) {
+	root := t.TempDir()
+	r, err := openReceipts(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = r.claim(12, "legacy", "opaque-hash"); err != nil {
+		t.Fatal(err)
+	}
+	body := []byte(" \n{\"historical\":true}\n")
+	if err = r.finish(12, "legacy", body, 209); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = r.db.Exec(`DROP INDEX receipt_unresolved;DROP INDEX intent_unresolved;DROP INDEX cancel_unresolved`); err != nil {
+		t.Fatal(err)
+	}
+	r.Close()
+	r, err = openReceipts(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	var version, count int
+	if err = r.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 6 {
+		t.Fatal("derived index changed authority format", version, err)
+	}
+	if err = r.db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type='index' AND name IN ('receipt_unresolved','intent_unresolved','cancel_unresolved')`).Scan(&count); err != nil || count != 3 {
+		t.Fatal("missing derived indexes", count, err)
+	}
+	original, found, err := r.lookup(12, "legacy", "opaque-hash")
+	if err != nil || !found || original.status != 209 || !bytes.Equal(original.body, body) {
+		t.Fatal("index rebuilding rewrote historical response", err)
+	}
+}
+
+func TestHistoricalHelpersDoNotConsumeNewRequestInventory(t *testing.T) {
+	r, err := openReceipts(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	retainedHistory(t, r, 10001, 1)
+	tx, err := r.db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stmt, err := tx.Prepare(`INSERT INTO operation_helpers(owner,id,kind,key,invocation) VALUES(?,?,?,?,?)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for n := 0; n < 10001; n++ {
+		i := cutoffIntent(fmt.Sprintf("history-%05d", n))
+		h := helperFixture(i)
+		for _, kind := range []string{"bench", "store", "mirrors"} {
+			h.Kind, h.Key, h.Requested = "bench", i.Key, 1024
+			if kind != "bench" {
+				h.Kind, h.Key, h.Requested = "shared", kind, 0
+			}
+			raw, e := json.Marshal(h)
+			if e != nil {
+				t.Fatal(e)
+			}
+			if _, e = stmt.Exec(i.Target.UID, i.Target.RequestID, h.Kind, h.Key, string(raw)); e != nil {
+				t.Fatal(e)
+			}
+		}
+	}
+	stmt.Close()
+	if err = tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	i := cutoffIntent("new-helper")
+	_, _, stop, err := r.ClaimScope(context.Background(), i)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stop()
+	h := helperFixture(i)
+	if err = r.recordOperationHelper(i, h); err != nil {
+		t.Fatal("historical helper count blocked new owned inventory", err)
+	}
+	if got, e := r.operationHelpers(i); e != nil || len(got) != 1 || got[0] != h {
+		t.Fatal("new exact helper inventory changed", got, e)
+	}
+	if got, e := r.operationHelpers(cutoffIntent("history-00000")); e != nil || len(got) != 3 {
+		t.Fatal("new helper damaged historical evidence", got, e)
+	}
+	changed := h
+	changed.Requested *= 2
+	if err = r.recordOperationHelper(i, changed); !errors.Is(err, errConflict) {
+		t.Fatal("inventory accounting allowed authority replacement", err)
+	}
+}
+
+func TestIndexCreationFailureDoesNotAcknowledgeOrRewriteHistory(t *testing.T) {
+	root := t.TempDir()
+	r, err := openReceipts(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = r.claim(12, "legacy", "opaque"); err != nil {
+		t.Fatal(err)
+	}
+	body := []byte(`{"unchanged":true}`)
+	if err = r.finish(12, "legacy", body, 201); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = r.db.Exec(`DROP INDEX intent_unresolved;CREATE TABLE intent_unresolved(x)`); err != nil {
+		t.Fatal(err)
+	}
+	r.Close()
+	if failed, e := openReceipts(root); e == nil || !strings.Contains(e.Error(), "there is already a table named intent_unresolved") {
+		if failed != nil {
+			failed.Close()
+		}
+		t.Fatal("index conflict did not refuse opening", e)
+	}
+	db, err := sql.Open("sqlite", filepath.Join(root, "service.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var got []byte
+	var status, version int
+	if err = db.QueryRow(`SELECT body,status FROM receipts WHERE owner=12 AND id='legacy'`).Scan(&got, &status); err != nil || !bytes.Equal(got, body) || status != 201 {
+		t.Fatal("failed index creation rewrote receipt", err)
+	}
+	if err = db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 6 {
+		t.Fatal("failed index creation changed format", version, err)
+	}
+}
+
+func TestActiveEffectNeverSkipsItsExactRetainedRelation(t *testing.T) {
+	for _, fault := range []string{"epoch", "missing", "finalized"} {
+		t.Run(fault, func(t *testing.T) {
+			r, err := openReceipts(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer r.Close()
+			i := cutoffIntent("live")
+			_, ctx, stop, err := r.ClaimScope(context.Background(), i)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer stop()
+			query := `UPDATE operation_intents SET epoch='` + strings.Repeat("c", 32) + `'`
+			expected := errConflict
+			if fault == "missing" {
+				query = `DELETE FROM operation_intents`
+				expected = errInDoubt
+			}
+			if fault == "finalized" {
+				query = `UPDATE operation_intents SET core_finalized=1`
+				expected = errInDoubt
+			}
+			if _, err = r.db.Exec(query); err != nil {
+				t.Fatal(err)
+			}
+			effects := 0
+			if err = operationcontrol.Effect(ctx, func() error { effects++; return nil }); !errors.Is(err, expected) || effects != 0 {
+				t.Fatal("active controller skipped its retained relation", effects, err)
+			}
+		})
+	}
+}
+
+func TestLegacyActiveReservationRequiresExactDurableInsert(t *testing.T) {
+	for _, fault := range []string{"ignored", "rebound"} {
+		t.Run(fault, func(t *testing.T) {
+			r, err := openReceipts(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer r.Close()
+			trigger := `CREATE TRIGGER broken BEFORE INSERT ON receipts BEGIN SELECT RAISE(IGNORE); END`
+			if fault == "rebound" {
+				trigger = `CREATE TRIGGER broken AFTER INSERT ON receipts BEGIN UPDATE receipts SET digest='different' WHERE owner=NEW.owner AND id=NEW.id; END`
+			}
+			if _, err = r.db.Exec(trigger); err != nil {
+				t.Fatal(err)
+			}
+			if prior, e := r.claim(12, "original", "opaque-digest"); !errors.Is(e, errInDoubt) || prior != nil {
+				t.Fatal("unverified reservation acknowledged", prior, e)
+			}
+			var count int
+			if err = r.db.QueryRow(`SELECT count(*) FROM receipts`).Scan(&count); err != nil || count != 0 || len(r.active) != 0 {
+				t.Fatal("failed reservation escaped transaction", count, len(r.active), err)
+			}
+		})
+	}
+}
+
+func TestOpenRefusesKeysOutsideHistoricalPaginationDomain(t *testing.T) {
+	for _, table := range []string{"receipts", "operation_intents", "operation_helpers", "operation_cancels"} {
+		for _, fault := range []string{"negative-uid", "overflow-uid", "empty-root-id"} {
+			t.Run(table+"/"+fault, func(t *testing.T) {
+				root := t.TempDir()
+				r, err := openReceipts(root)
+				if err != nil {
+					t.Fatal(err)
+				}
+				i := cutoffIntent("historical")
+				var uid int64 = int64(i.Target.UID)
+				id := i.Target.RequestID
+				if fault == "negative-uid" {
+					uid = -1
+				}
+				if fault == "overflow-uid" {
+					uid = 1 << 32
+				}
+				if fault == "empty-root-id" {
+					uid = 0
+					id = ""
+				}
+				var query string
+				var args []any
+				switch table {
+				case "receipts":
+					query = `INSERT INTO receipts(owner,id,digest,state,body,status) VALUES(?,?,?,'done',?,200)`
+					args = []any{uid, id, i.Target.Digest, []byte(`{}`)}
+				case "operation_intents":
+					query = `INSERT INTO operation_intents(owner,id,digest,key,operation,epoch,helper_tracking,core_finalized) VALUES(?,?,?,?,?,?,1,0)`
+					args = []any{uid, id, i.Target.Digest, i.Key, i.Operation, i.Epoch}
+				case "operation_helpers":
+					h := helperFixture(i)
+					raw, e := json.Marshal(h)
+					if e != nil {
+						t.Fatal(e)
+					}
+					query = `INSERT INTO operation_helpers(owner,id,kind,key,invocation) VALUES(?,?,'bench',?,?)`
+					args = []any{uid, id, i.Key, string(raw)}
+				case "operation_cancels":
+					query = `INSERT INTO operation_cancels(owner,id,digest,state) VALUES(?,?,?,'cancelled')`
+					args = []any{uid, id, i.Target.Digest}
+				}
+				if _, err = r.db.Exec(query, args...); err != nil {
+					t.Fatal(err)
+				}
+				if err = r.Close(); err != nil {
+					t.Fatal(err)
+				}
+				if reopened, e := openReceipts(root); !errors.Is(e, errInDoubt) {
+					if reopened != nil {
+						reopened.Close()
+					}
+					t.Fatal("invalid historical cursor key escaped Open", e)
+				}
+			})
+		}
 	}
 }

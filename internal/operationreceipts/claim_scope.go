@@ -49,14 +49,11 @@ func (r *receipts) claimTypedLocked(i operationcontrol.Intent) error {
 	if err = cancelBarrier(tx, t.UID, t.RequestID, t.Digest); err != nil {
 		return err
 	}
-	var count, bytes, pending int64
-	if err = tx.QueryRow(`SELECT count(*),coalesce(sum(length(body)),0),coalesce(sum(CASE WHEN state='running' THEN 1 ELSE 0 END),0) FROM receipts`).Scan(&count, &bytes, &pending); err != nil {
+	if err = requireReceiptCapacity(tx); err != nil {
 		return err
 	}
-	if count >= 10000 || bytes+(pending+1)*(64<<10) > 64<<20 {
-		return errCapacity
-	}
-	if err = tx.QueryRow(`SELECT count(*) FROM operation_intents`).Scan(&count); err != nil {
+	var count int64
+	if err = tx.QueryRow(`SELECT count(*) FROM operation_intents WHERE core_finalized=0`).Scan(&count); err != nil {
 		return err
 	}
 	if count >= operationcontrol.MaxOperations {
