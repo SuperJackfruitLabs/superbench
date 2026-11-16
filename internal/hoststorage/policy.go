@@ -4,13 +4,11 @@ package hoststorage
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotahelper"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/storagecustody"
 	"os"
 	"path/filepath"
 	"regexp"
-	"syscall"
 )
 
 type Policy struct {
@@ -91,27 +89,7 @@ func Load(path string) (Policy, error) {
 }
 
 func rootOwnedDirectory(path string, private bool) error {
-	if e := trustedAncestors(path); e != nil {
-		return e
-	}
-	stat, e := os.Lstat(path)
-	if e != nil {
-		return e
-	}
-	if !stat.IsDir() || stat.Mode()&os.ModeSymlink != 0 || stat.Sys().(*syscall.Stat_t).Uid != 0 || stat.Mode().Perm()&0022 != 0 {
-		return fmt.Errorf("%s must be a root-owned directory without group/world write", path)
-	}
-	actual, e := filepath.EvalSymlinks(path)
-	if e != nil {
-		return e
-	}
-	if actual != path {
-		return errors.New("quota policy directory traverses a symlink")
-	}
-	if private && stat.Mode().Perm()&0077 != 0 {
-		return errors.New("privileged ledger directory must be private")
-	}
-	return nil
+	return storagecustody.RootOwnedDirectory(path, private)
 }
 func save(dir, path string, v any) error {
 	raw, e := json.MarshalIndent(v, "", "  ")
@@ -148,7 +126,6 @@ func save(dir, path string, v any) error {
 // Root-owned children beneath a root-owned sticky directory are protected too;
 // other writable ancestors would let a caller swap a checked policy/ledger path.
 func trustedAncestors(path string) error { return storagecustody.TrustedAncestors(path) }
-
 func (p Policy) checkLedger(l ledger) error {
 	if e := p.ledgerHeader(l); e != nil {
 		return e
@@ -201,60 +178,6 @@ func (p Policy) checkLedger(l ledger) error {
 	return nil
 }
 
-type ownerRecord struct{ Root, Ledger string }
+type ownerRecord = storagecustody.OwnerRecord
 
-func (p Policy) anchor() error {
-	path := filepath.Join(p.Root, ".superbench-quota-owner.json")
-	expected := ownerRecord{Root: p.Root, Ledger: p.Ledger}
-	stage, e := os.CreateTemp(p.Root, ".quota-owner-")
-	if e != nil {
-		return e
-	}
-	defer os.Remove(stage.Name())
-	raw, e := json.Marshal(expected)
-	if e != nil {
-		stage.Close()
-		return e
-	}
-	if _, e = stage.Write(raw); e != nil {
-		stage.Close()
-		return e
-	}
-	if e = stage.Sync(); e != nil {
-		stage.Close()
-		return e
-	}
-	if e = stage.Close(); e != nil {
-		return e
-	}
-	// Publish complete contents without replacing an anchor from a competing ledger.
-	if e = os.Link(stage.Name(), path); os.IsExist(e) {
-		stat, e := os.Lstat(path)
-		if e != nil {
-			return e
-		}
-		if !stat.Mode().IsRegular() || stat.Sys().(*syscall.Stat_t).Uid != 0 || stat.Mode().Perm()&0022 != 0 {
-			return errors.New("invalid filesystem ownership anchor")
-		}
-		raw, e := os.ReadFile(path)
-		if e != nil {
-			return e
-		}
-		var actual ownerRecord
-		if e = json.Unmarshal(raw, &actual); e != nil {
-			return e
-		}
-		if actual != expected {
-			return errors.New("filesystem already belongs to another quota ledger")
-		}
-		return nil
-	} else if e != nil {
-		return e
-	}
-	dir, e := os.Open(p.Root)
-	if e != nil {
-		return e
-	}
-	defer dir.Close()
-	return dir.Sync()
-}
+func (p Policy) anchor() error { return storagecustody.Anchor(p.Root, p.Ledger) }

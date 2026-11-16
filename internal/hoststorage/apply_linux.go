@@ -20,6 +20,22 @@ func (p Policy) Apply(kind, key string) (Assignment, error) {
 	return p.ApplyRequested(kind, key, 0)
 }
 func (p Policy) ApplyRequested(kind, key string, requested uint64) (Assignment, error) {
+	return p.applyRequested(kind, key, requested, nil)
+}
+
+// ApplyFreshRequested reserves only a previously unknown bench allocation. The
+// trusted helper callback runs under the allocation lock after quota confirmation
+// and before ownership is released. It must journal its exact fresh root before
+// exposing it. A failed callback retains the allocation; no retry adopts it.
+// Callers must hold their real operation journal barrier before entering here.
+func (p Policy) ApplyFreshRequested(key string, requested uint64, initialize func(Assignment) error) (Assignment, error) {
+	if initialize == nil {
+		return Assignment{}, ErrFreshAllocation
+	}
+	return p.applyRequested("bench", key, requested, initialize)
+}
+
+func (p Policy) applyRequested(kind, key string, requested uint64, initialize func(Assignment) error) (Assignment, error) {
 	var zero Assignment
 	if os.Geteuid() != 0 {
 		return zero, errors.New("quota helper requires root")
@@ -157,6 +173,14 @@ func (p Policy) ApplyRequested(kind, key string, requested uint64) (Assignment, 
 	}
 
 	a, known := l.Assignments[name]
+	if kind == "bench" {
+		if err := p.refuseRegisteredAllocation(key); err != nil {
+			return zero, err
+		}
+	}
+	if initialize != nil && known {
+		return zero, ErrFreshAllocation
+	}
 	reserved := p.StoreInodes + p.MirrorInodes + p.ReserveInodes
 	for key, assignment := range l.Assignments {
 		if strings.HasPrefix(key, "bench:") && assignment.Bytes != 0 {
@@ -281,6 +305,12 @@ func (p Policy) ApplyRequested(kind, key string, requested uint64) (Assignment, 
 		if !found || hard != expectedLimit {
 			return zero, errors.New("unable to confirm project byte/inode hard limit")
 		}
+	}
+	if initialize != nil {
+		if e = initialize(a); e != nil {
+			return zero, e
+		}
+		return a, nil
 	}
 	if e = os.Chown(path, p.OwnerUID, p.OwnerGID); e != nil {
 		return zero, e
