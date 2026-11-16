@@ -2,6 +2,7 @@ package bench
 
 import (
 	"context"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/reap"
 	"time"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspacearchive"
@@ -45,6 +46,9 @@ func (s Store) PlanWorkspaceReapContext(ctx context.Context, key string) (*Works
 
 // ReapWorkspaceContext accepts only the concrete reviewed aggregate manifest.
 func (s Store) ReapWorkspaceContext(ctx context.Context, plan WorkspaceReapPlan) (*Bench, error) {
+	if err := reap.RequireNonRoot(); err != nil {
+		return nil, err
+	}
 	s, ctx, err := s.workspaceControls(ctx)
 	if err != nil {
 		return nil, err

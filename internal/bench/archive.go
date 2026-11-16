@@ -91,6 +91,9 @@ func (s Store) reapJournal(key string) string          { return filepath.Join(s.
 // Reap requires the concrete reviewed manifest. It journals approval before any
 // deletion. Retry accepts only unchanged remaining entries, never new files.
 func (s Store) Reap(p ReapPlan) (*Bench, error) {
+	if err := reap.RequireNonRoot(); err != nil {
+		return nil, err
+	}
 	if err := s.RequireLegacy(p.Key); err != nil {
 		return nil, err
 	}

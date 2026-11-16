@@ -11,6 +11,9 @@ import (
 )
 
 func approvedReap(s bench.Store, key, path, approval string) (*bench.Bench, error) {
+	if err := reap.RequireNonRoot(); err != nil {
+		return nil, err
+	}
 	if path == "" || approval == "" {
 		return nil, errors.New("reap requires --plan and --approve matching the reviewed Digest")
 	}
