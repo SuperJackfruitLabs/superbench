@@ -27,17 +27,18 @@ type Config struct {
 	ArchiveInterval    time.Duration
 }
 type Server struct {
-	proposedCancellation  bool
-	proposedReceiptLookup bool
-	receiptSlots          chan struct{}
-	cancelWake            chan struct{}
-	config                Config
-	ctx                   context.Context
-	receipts              *receipts
-	slots                 chan struct{}
-	handlers              sync.WaitGroup
-	admission             sync.Mutex
-	closing               bool
+	proposedCancellation            bool
+	proposedReceiptLookup           bool
+	proposedRegistrationObservation bool
+	receiptSlots                    chan struct{}
+	cancelWake                      chan struct{}
+	config                          Config
+	ctx                             context.Context
+	receipts                        *receipts
+	slots                           chan struct{}
+	handlers                        sync.WaitGroup
+	admission                       sync.Mutex
+	closing                         bool
 }
 
 func Serve(ctx context.Context, c Config) error { return serve(ctx, c, false) }
@@ -144,7 +145,7 @@ func serve(ctx context.Context, c Config, proposed bool) error {
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if s.proposedCancellation || s.proposedReceiptLookup {
+	if s.proposedCancellation || s.proposedReceiptLookup || s.proposedRegistrationObservation {
 		r.Close = true
 		w.Header().Set("Connection", "close")
 	}

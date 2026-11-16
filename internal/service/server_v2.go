@@ -35,6 +35,10 @@ func (s *Server) serveV2(w http.ResponseWriter, r *http.Request) {
 		s.receiptLookupV2(w, r, uid)
 		return
 	}
+	if r.URL.Path == "/v2/registrations/observe" && s.proposedRegistrationObservation {
+		s.registrationObservationV2(w, r, uid)
+		return
+	}
 	if r.URL.Path != "/v2/operations" {
 		s.replyV2(w, protocolv2.Request{}, nil, 404, "not_found", "unknown endpoint")
 		return
