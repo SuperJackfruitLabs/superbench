@@ -59,7 +59,9 @@ func (j *Journal) Reserve(ctx context.Context, a Admission) error {
 			return err
 		}
 		var count int
-		if err = j.db.QueryRow(`SELECT count(*) FROM admissions`).Scan(&count); err != nil {
+		// Terminal identities remain permanent replay evidence. Only a committed
+		// cutoff closes future effect admission and releases this active slot.
+		if err = j.db.QueryRow(`SELECT count(*) FROM admissions WHERE phase NOT IN ('completed','cancelled')`).Scan(&count); err != nil {
 			return err
 		}
 		if count >= MaxRecords {

@@ -48,6 +48,11 @@ func TestTerminalHistoryDoesNotExhaustRepairAdmissionBudget(t *testing.T) {
 	if err := j.Reserve(ctx, fresh); err != nil {
 		t.Fatal("terminal history exhausted repair admission budget", err)
 	}
+	// A version-1 journal without the derived index remains readable. Reopen
+	// may rebuild acceleration, but must preserve every retained identity.
+	if _, err := j.db.Exec(`DROP INDEX IF EXISTS repair_active_admissions`); err != nil {
+		t.Fatal(err)
+	}
 	if err := j.Close(); err != nil {
 		t.Fatal(err)
 	}

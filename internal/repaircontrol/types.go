@@ -12,6 +12,7 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/operationcontrol"
 )
 
+// MaxRecords bounds unresolved admissions, not permanent terminal history.
 const MaxRecords = 10000
 const MaxRecord = 65536
 
