@@ -115,13 +115,8 @@ func (r *Route) Prepare(cmd *exec.Cmd, scope *execution.Execution) (gitcontrol.T
 	}
 	request.PolicyDigest = registry.PolicySHA256
 	layout, err := payloadexec.LoadLayout(p, request)
-	if err != nil || layout.Scalar != r.scalar || !r.scalar && len(layout.Members) != len(r.members) {
+	if err != nil || !r.matchesLayout(layout) {
 		return nil, ErrRefused
-	}
-	for i, m := range layout.Members {
-		if m.Name != r.members[i].Name {
-			return nil, ErrRefused
-		}
 	}
 	r.layout = &layout
 	bridge, err := payloadlaunch.Prepare(cmd, payloadlaunch.Target{Key: r.key, LayoutID: r.id, Member: r.member, PolicyDigest: request.PolicyDigest, Kind: "git"}, scope, r.input)
@@ -129,6 +124,26 @@ func (r *Route) Prepare(cmd *exec.Cmd, scope *execution.Execution) (gitcontrol.T
 		return nil, ErrRefused
 	}
 	return &transport{Bridge: bridge, route: r, request: request, guard: payloadlaunch.GuardCommand(cmd)}, nil
+}
+
+// Scalar routes have no grouped member vector. Both forms must match the
+// registered shape before any indexed member comparison or payload launch.
+func (r Route) matchesLayout(l payloadexec.Layout) bool {
+	if l.Scalar != r.scalar {
+		return false
+	}
+	if r.scalar {
+		return r.member == "" && len(r.members) == 0 && len(l.Members) == 1 && l.Members[0].Name == ""
+	}
+	if len(l.Members) != len(r.members) {
+		return false
+	}
+	for i, m := range l.Members {
+		if m.Name != r.members[i].Name {
+			return false
+		}
+	}
+	return true
 }
 
 type transport struct {

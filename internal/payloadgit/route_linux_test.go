@@ -6,6 +6,8 @@ import (
 	"context"
 	"errors"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/gitpolicy"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/payloadexec"
 	"io"
 	"testing"
 
@@ -48,5 +50,36 @@ func TestExecuteRejectsLeadingGitOptionsBeforeAuthority(t *testing.T) {
 	_, err := (Route{}).Execute(context.Background(), gitcontrol.Runner{}, []string{"status"}, nil, 0, 1024)
 	if !errors.Is(err, ErrRefused) || errors.Is(err, gitpolicy.ErrPolicy) {
 		t.Fatalf("valid subcommand did not reach separate authority refusal: %v", err)
+	}
+}
+
+func TestLayoutMatchingHandlesScalarWithoutGroupedMemberIndex(t *testing.T) {
+	scalar := Route{scalar: true}
+	scalarLayout := payloadexec.Layout{Scalar: true, Members: []payloadexec.LayoutMember{{Name: ""}}}
+	if !scalar.matchesLayout(scalarLayout) {
+		t.Fatal("scalar route refused its one unnamed registered member")
+	}
+	grouped := Route{member: "api", members: []model.WorkspaceMember{{Name: "api"}, {Name: "web"}}}
+	groupedLayout := payloadexec.Layout{Members: []payloadexec.LayoutMember{{Name: "api"}, {Name: "web"}}}
+	if !grouped.matchesLayout(groupedLayout) {
+		t.Fatal("exact grouped vector refused")
+	}
+	for name, tc := range map[string]struct {
+		r Route
+		l payloadexec.Layout
+	}{
+		"scalar-empty":      {scalar, payloadexec.Layout{Scalar: true}},
+		"scalar-named":      {scalar, payloadexec.Layout{Scalar: true, Members: []payloadexec.LayoutMember{{Name: "api"}}}},
+		"scalar-extra":      {scalar, payloadexec.Layout{Scalar: true, Members: []payloadexec.LayoutMember{{}, {}}}},
+		"scalar-as-grouped": {scalar, groupedLayout},
+		"grouped-as-scalar": {grouped, scalarLayout},
+		"grouped-missing":   {grouped, payloadexec.Layout{Members: []payloadexec.LayoutMember{{Name: "api"}}}},
+		"grouped-reordered": {grouped, payloadexec.Layout{Members: []payloadexec.LayoutMember{{Name: "web"}, {Name: "api"}}}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if tc.r.matchesLayout(tc.l) {
+				t.Fatal("mismatched registration accepted")
+			}
+		})
 	}
 }
