@@ -305,3 +305,12 @@ and broader collection, and the
 AgentPod acquisition/prompt/checkpoint pilot on an opt-in board. The review of
 charter/treaty boundaries must precede suite consumers. Source-level progress or
 passing single-host drills alone is not evidence that those outcomes are done.
+
+## Phase 2 design preview
+
+The [bench browser mockup](mockups/README.md) starts the requested design work
+for host inventory, checkpoint and handoff timelines, files, saved diffs and
+logs. Its data is illustrative and its terminal/takeover controls are unavailable.
+It makes no service calls and does not enable a viewer or change Phase 1's
+acceptance gates. Browser rendering and visual review remain pending; static
+markup references and script syntax have been checked.

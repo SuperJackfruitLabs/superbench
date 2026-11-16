@@ -73,6 +73,43 @@ def guard():
         raise RuntimeError('identity CI requires at least 4 GiB available memory')
 
 
+
+def probe_cgroup():
+    """Exercise only a new empty child; never remount or change its parent."""
+    cgroup = Path('/sys/fs/cgroup') / ('superbench-identity-ci-preflight-' +
+                                     str(os.getpid()) + '-' + os.urandom(6).hex())
+    cgroup.mkdir()
+    original = cgroup.stat()
+    try:
+        for name, value in LIMITS.items():
+            (cgroup / name).write_text(value)
+        if {name: (cgroup / name).read_text().strip() for name in LIMITS} != LIMITS:
+            raise RuntimeError('identity CI cgroup limits unsupported')
+    finally:
+        current = cgroup.stat()
+        if (current.st_dev, current.st_ino) != (original.st_dev, original.st_ino):
+            raise RuntimeError('identity CI preflight cgroup replaced; retained')
+        if 'populated 0' not in (cgroup / 'cgroup.events').read_text():
+            raise RuntimeError('identity CI preflight cgroup populated; retained')
+        cgroup.rmdir()  # No recursive removal or process ever admitted by this probe.
+
+
+def preflight():
+    if not sys.platform.startswith('linux') or os.getuid() != 0 or os.geteuid() != 0:
+        raise SystemExit('identity CI requires a privileged Linux runner')
+    for tool in ('unshare', 'python3', 'true'):
+        if shutil.which(tool) is None:
+            raise SystemExit('identity CI requires ' + tool)
+    for kind in ('mnt', 'net', 'pid'):
+        if os.readlink('/proc/self/ns/' + kind) != os.readlink('/proc/1/ns/' + kind):
+            raise SystemExit('identity CI conductor requires original namespaces')
+    guard()
+    probe_cgroup()
+    subprocess.run(['unshare', '--mount', '--net', '--propagation', 'private',
+                    shutil.which('true')], check=True, timeout=10,
+                   env={'PATH': '/usr/sbin:/usr/bin:/sbin:/bin'})
+
+
 def static_elf(raw):
     if len(raw) < 64 or raw[:6] != b'\x7fELF\x02\x01':
         raise RuntimeError('identity fixture must be little-endian ELF64')
@@ -150,8 +187,7 @@ def main():
     parser.add_argument('--gocache', type=Path, required=True)
     parser.add_argument('--gomodcache', type=Path, required=True)
     args = parser.parse_args()
-    if not sys.platform.startswith('linux') or os.getuid() != 0 or os.geteuid() != 0:
-        raise SystemExit('identity CI requires a privileged Linux runner')
+    preflight()
     account = pwd.getpwnam(args.user)
     if account.pw_uid == 0 or account.pw_gid == 0:
         raise SystemExit('identity compilation requires a non-root user/group')
@@ -295,7 +331,9 @@ def main():
 
 
 if __name__ == '__main__':
-    if len(sys.argv) == 4 and sys.argv[1] == '--inside':
+    if sys.argv[1:] == ['--preflight']:
+        preflight()
+    elif len(sys.argv) == 4 and sys.argv[1] == '--inside':
         inside(sys.argv[2], sys.argv[3])
     else:
         main()
