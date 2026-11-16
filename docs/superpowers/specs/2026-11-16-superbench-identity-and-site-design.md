@@ -191,8 +191,8 @@ landing `cb94bef`, `1c22aea` and `37c03e7`.
 ## License (decided)
 
 MIT, decided by the operator on 2026-11-16, as most of the suite. The LICENSE file lands in the
-same PR as this document. frontdoor's product entry uses `licence: 'MIT'`. SuperToolkit gets MIT
-in the same pass.
+same PR as this document. frontdoor's product entry uses `licence: 'MIT'`, which is `make()`'s
+default.
 
 ## Left to the builder
 
