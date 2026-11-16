@@ -282,6 +282,7 @@ func TestFreshIndexedMaterializerLowerFixture(t *testing.T) {
 	}
 	t.Log("LOWER_ACTUAL_MATERIALIZER_COMPLETE_AND_LEGACY_EXCLUSION_PASS")
 	assertLowerRetainedInspection(t, control, p, spec, identity, result, helper, expectedSHA)
+	assertFreshAbsentRetirement(t, control, p)
 	// A separately admitted identity denied BEFORE Begin must have zero quota,
 	// checkout and registration effects through the same actual manager path.
 	denied := identityFor("denied")

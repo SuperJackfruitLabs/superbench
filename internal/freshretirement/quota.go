@@ -1,0 +1,40 @@
+package freshretirement
+
+import (
+	"errors"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/storageproof"
+	"strconv"
+	"strings"
+)
+
+// Missing records are ambiguous, not zero. Zero hard caps may reflect an
+// interrupted initial limit setup; changed nonzero caps are never accepted.
+func unused(raw []byte, id uint32, hard uint64) error {
+	if err := storageproof.VerifyUnused(raw, id); err != nil {
+		return errors.Join(ErrRetirement, err)
+	}
+	for _, line := range strings.Split(string(raw), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 0 && fields[0] == "#"+strconv.FormatUint(uint64(id), 10) {
+			if len(fields) < 4 {
+				return ErrRetirement
+			}
+			cap, err := strconv.ParseUint(fields[3], 10, 64)
+			soft, softErr := strconv.ParseUint(fields[2], 10, 64)
+			if err != nil || softErr != nil || soft != 0 || cap != 0 && cap != hard {
+				return ErrRetirement
+			}
+		}
+	}
+	return nil
+}
+
+type reportOutput struct{ raw []byte }
+
+func (b *reportOutput) Write(raw []byte) (int, error) {
+	if len(b.raw)+len(raw) > 64<<10 {
+		return 0, ErrRetirement
+	}
+	b.raw = append(b.raw, raw...)
+	return len(raw), nil
+}

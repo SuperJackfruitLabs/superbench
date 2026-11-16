@@ -71,6 +71,7 @@ func TestArchitecture(t *testing.T) {
 				"internal/repaircontrol":        {"internal/statestore", "internal/operationcontrol"},
 				"internal/storageproof":         {"internal/quotahelper"},
 				"internal/allocationledger":     {"internal/quotapolicy"},
+				"internal/freshretirement":      {"internal/allocationledger", "internal/hoststorage", "internal/storagecustody", "internal/storageproof"},
 				"internal/hoststorage":          {"internal/allocationledger", "internal/quotaoperationjournal", "internal/storagecustody", "internal/quotapolicy", "internal/storageproof", "internal/hostlayout", "internal/hostpolicy", "internal/quotahelper", "internal/model", "internal/output"},
 				"internal/workspacebootstrap":   {"internal/hoststorage", "internal/model", "internal/operationcontrol", "internal/payloadbootstrap", "internal/quotahelper", "internal/serviceidentity", "internal/workspacecopy", "internal/workspacepolicy"},
 				"internal/payloadbootstrap":     {"internal/execution", "internal/gitcontrol", "internal/hoststorage", "internal/payloadexec", "internal/quotahelper", "internal/quotaoperation", "internal/quotaoperationjournal", "internal/serviceidentity", "internal/storagecustody", "internal/repository", "internal/workspaceplan"},
