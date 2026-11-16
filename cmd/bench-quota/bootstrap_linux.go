@@ -29,6 +29,10 @@ func runBootstrapCommand(args []string, override bool, input *os.File, output io
 		_, _, err := quotaoperationcontrol.InitializeFresh(ctx)
 		return err
 	}
+	inspection := args[0] == "inspect-bootstrap-payload"
+	if inspection && (os.Getuid() != 0 || os.Geteuid() != 0 || os.Getenv("SUDO_UID") != "") {
+		return errBootstrapCommand
+	}
 	key, identity, err := parseBootstrapCommand(args)
 	if err != nil {
 		return err
@@ -55,6 +59,13 @@ func runBootstrapCommand(args []string, override bool, input *os.File, output io
 	if err != nil {
 		return err
 	}
+	if inspection {
+		result, err := manager.Inspect(ctx, spec)
+		if err != nil {
+			return err
+		}
+		return operationOutput(output, result)
+	}
 	result, err := manager.Bootstrap(ctx, spec)
 	if err != nil {
 		return err
@@ -64,7 +75,7 @@ func runBootstrapCommand(args []string, override bool, input *os.File, output io
 
 func parseBootstrapCommand(args []string) (string, quotaoperation.Identity, error) {
 	var zero quotaoperation.Identity
-	if len(args) != 7 || args[0] != "bootstrap-payload" {
+	if len(args) != 7 || (args[0] != "bootstrap-payload" && args[0] != "inspect-bootstrap-payload") {
 		return "", zero, errBootstrapCommand
 	}
 	i := quotaoperation.Identity{OperationID: args[2], Epoch: args[3], StateIdentity: args[4], Authority: args[5], BinarySHA256: args[6]}
