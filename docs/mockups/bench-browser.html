@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SuperBench · Browser mockup</title>
+<style>
+  :root { color-scheme: light; --paper:#faf9f6; --ink:#242521; --muted:#65685f; --line:#dedfd6; --accent:#315b43; --wash:#edf2eb; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--paper); color:var(--ink); font:15px/1.5 system-ui,sans-serif; }
+  a { color:inherit; text-underline-offset:3px; }
+  button,select { font:inherit; }
+  button { cursor:pointer; }
+  :focus-visible { outline:3px solid #5885d1; outline-offset:4px; }
+  header { padding:20px 4vw; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:16px; }
+  header strong { font-size:20px; letter-spacing:-.6px; }
+  .badge { border:1px solid var(--line); border-radius:5px; padding:3px 8px; font-size:12px; }
+  .sample { margin-left:auto; color:var(--muted); }
+  main { max-width:1280px; padding:32px 4vw 64px; margin:auto; }
+  h1 { font-size:32px; line-height:1.15; font-weight:600; letter-spacing:-1px; margin:10px 0; }
+  h2 { font-size:18px; margin:0 0 16px; font-weight:600; }
+  p { margin:8px 0 20px; }
+  .muted { color:var(--muted); }
+  .eyebrow { color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:1px; }
+  .heading { display:flex; align-items:flex-end; justify-content:space-between; gap:24px; margin-bottom:24px; }
+  .heading p { margin-bottom:0; }
+  .stats { display:grid; grid-template-columns:repeat(4,1fr); border:1px solid var(--line); border-radius:8px; margin-bottom:28px; }
+  .stats div { padding:18px 20px; }
+  .stats div+div { border-left:1px solid var(--line); }
+  .stats dt { font-size:12px; color:var(--muted); }
+  .stats dd { margin:4px 0 0; font-size:21px; letter-spacing:-.4px; }
+  .card { border:1px solid var(--line); border-radius:8px; background:#fff; overflow:hidden; }
+  .table-wrap { overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; text-align:left; white-space:nowrap; }
+  th { font-size:12px; color:var(--muted); font-weight:500; background:#f3f4ef; }
+  th,td { padding:16px 20px; border-bottom:1px solid var(--line); }
+  tbody tr:last-child td { border-bottom:0; }
+  .sub { display:block; font-size:12px; color:var(--muted); margin-top:3px; }
+  .status { display:inline-flex; align-items:center; gap:7px; }
+  .status::before { content:""; width:7px; height:7px; border-radius:50%; background:#4b7958; }
+  .idle::before { background:#9d9f94; }
+  .archived::before { background:#ad8c56; }
+  .notice { padding:12px 16px; background:var(--wash); border-radius:6px; font-size:13px; margin:24px 0; }
+  .back { display:inline-block; margin-bottom:16px; }
+  .actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .actions button,.primary { min-height:44px; padding:10px 16px; border:1px solid var(--line); border-radius:5px; background:#fff; }
+  .primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+  button:disabled { cursor:default; color:var(--muted); background:#f1f1ed; }
+  .tabs { display:flex; gap:8px; border-bottom:1px solid var(--line); padding:0 16px; overflow-x:auto; }
+  .tabs button { padding:14px 12px; min-height:48px; border:0; border-bottom:2px solid transparent; background:transparent; color:var(--muted); }
+  .tabs button[aria-selected="true"] { color:var(--ink); border-bottom-color:var(--accent); font-weight:600; }
+  .panel { padding:24px; }
+  .timeline { padding:0; margin:0; list-style:none; }
+  .timeline li { border-left:2px solid var(--line); padding:0 0 24px 24px; position:relative; }
+  .timeline li::before { content:""; position:absolute; width:10px; height:10px; background:#fff; border:2px solid var(--accent); border-radius:50%; left:-6px; top:5px; }
+  .timeline li:last-child { padding-bottom:0; }
+  .timeline time { display:block; color:var(--muted); font-size:12px; margin:4px 0; }
+  code,pre { font-family:ui-monospace,SFMono-Regular,Consolas,monospace; font-size:13px; }
+  pre { white-space:pre-wrap; overflow-wrap:anywhere; margin:0; line-height:1.8; }
+  .split { display:grid; grid-template-columns:220px 1fr; padding:0; }
+  .tree { padding:16px; border-right:1px solid var(--line); background:#f7f8f3; }
+  .tree button { display:block; width:100%; text-align:left; min-height:44px; border:0; background:transparent; padding:10px; border-radius:4px; }
+  .tree button[aria-pressed="true"] { background:#e6eddf; color:var(--accent); }
+  .file { padding:24px; min-width:0; }
+  .file-title { font-size:12px; color:var(--muted); margin-bottom:16px; }
+  .added { color:#25613d; background:#edf6ed; }
+  .removed { color:#9b3f36; background:#fff0ed; }
+  .diff-line { display:block; padding:2px 12px; }
+  .log-heading { display:flex; align-items:center; gap:12px; margin-bottom:20px; flex-wrap:wrap; }
+  select { padding:8px; min-height:44px; border:1px solid var(--line); border-radius:4px; background:white; }
+  footer { margin-top:24px; color:var(--muted); font-size:12px; }
+  [hidden] { display:none !important; }
+  @media(max-width:720px) {
+    header { flex-wrap:wrap; padding:16px 5vw; }
+    .sample { width:100%; margin:0; }
+    main { padding:24px 5vw 40px; }
+    .heading { display:block; }
+    .heading .actions { margin-top:20px; }
+    h1 { font-size:27px; }
+    .stats { grid-template-columns:repeat(2,1fr); }
+    .stats div:nth-child(3) { border-left:0; border-top:1px solid var(--line); }
+    .stats div:nth-child(4) { border-top:1px solid var(--line); }
+    .split { grid-template-columns:1fr; }
+    .tree { display:flex; gap:4px; overflow-x:auto; border-right:0; border-bottom:1px solid var(--line); }
+    .tree button { width:auto; white-space:nowrap; }
+    .panel,.file { padding:20px; }
+  }
+</style>
+<header><strong>SuperBench</strong><span class="badge">Browser</span><span class="sample">Design preview · all data is illustrative</span></header>
+<main>
+  <section id="inventory" aria-labelledby="inventory-title">
+    <div class="heading"><div><div class="eyebrow">Workspace</div><h1 id="inventory-title">Benches</h1><p class="muted">A place to see the work between stages.</p></div><span class="badge">Sample host · workspace-01</span></div>
+    <dl class="stats"><div><dt>Benches</dt><dd>3</dd></div><div><dt>With a holder</dt><dd>1</dd></div><div><dt>Bench storage</dt><dd>8.4 / 40 GB</dd></div><div><dt>Latest sample observation</dt><dd>14:32 UTC</dd></div></dl>
+    <div class="card table-wrap"><table><thead><tr><th>Bench / card</th><th>State</th><th>Holder</th><th>Storage</th><th>Last checkpoint</th></tr></thead><tbody>
+      <tr><td><a href="#bench" data-open-bench>Improve search results</a><span class="sub">card/card_search01 · workspace-01</span></td><td><span class="status">In use</span></td><td>Implementation stage<span class="sub">Run 018 · lease held</span></td><td>3.2 / 10 GB</td><td><code>81b7e2a</code><span class="sub">14:24 UTC · remote confirmed</span></td></tr>
+      <tr><td>Update export format<span class="sub">card/card_export01 · workspace-01</span></td><td><span class="status idle">Ready</span></td><td>No holder</td><td>4.1 / 10 GB</td><td><code>3c92d10</code><span class="sub">13:58 UTC · remote confirmed</span></td></tr>
+      <tr><td>Document keyboard shortcuts<span class="sub">card/card_shortcuts01 · workspace-01</span></td><td><span class="status archived">Archived</span></td><td>No holder<span class="sub">Read-only grace period</span></td><td>1.1 / 10 GB</td><td><code>0e6118b</code><span class="sub">12:17 UTC · remote confirmed</span></td></tr>
+    </tbody></table></div>
+    <p class="notice">This preview shows sample observations, not a live connection. Storage, holder and checkpoint details can change independently.</p>
+  </section>
+  <section id="bench" aria-labelledby="bench-title" hidden>
+    <a class="back" href="#inventory" id="back">← All benches</a>
+    <div class="heading"><div><div class="eyebrow">workspace-01 / card/card_search01</div><h1 id="bench-title">Improve search results</h1><p class="muted">Implementation stage · Run 018 · <span class="status">Lease held</span></p></div><div class="actions"><button disabled>Watch terminal</button><button disabled>Take over</button></div></div>
+    <dl class="stats"><div><dt>Storage</dt><dd>3.2 / 10 GB</dd></div><div><dt>Repositories</dt><dd>2</dd></div><div><dt>Last checkpoint</dt><dd><code>81b7e2a</code></dd></div><div><dt>Observation</dt><dd>14:32 UTC</dd></div></dl>
+    <div class="card">
+      <div class="tabs" role="tablist" aria-label="Bench details">
+        <button role="tab" id="tab-timeline" aria-selected="true" aria-controls="timeline" tabindex="0">Timeline</button>
+        <button role="tab" id="tab-files" aria-selected="false" aria-controls="files" tabindex="-1">Files</button>
+        <button role="tab" id="tab-diff" aria-selected="false" aria-controls="diff" tabindex="-1">Diff</button>
+        <button role="tab" id="tab-logs" aria-selected="false" aria-controls="logs" tabindex="-1">Logs</button>
+      </div>
+      <section class="panel" id="timeline" role="tabpanel" aria-labelledby="tab-timeline">
+        <h2>Checkpoints and handoffs</h2><ol class="timeline">
+          <li><strong>Implementation stage acquired the bench</strong><time>14:26 UTC</time><span class="muted">Previous writer stopped. Existing files and installed dependencies retained.</span></li>
+          <li><strong>Test stage checkpoint confirmed</strong><time>14:24 UTC</time><code>app 81b7e2a · library b29fc40</code><span class="sub">Both card branches confirmed remotely; lease released.</span></li>
+          <li><strong>Test stage acquired the bench</strong><time>14:08 UTC</time><span class="muted">Warm handoff from the previous stage.</span></li>
+          <li><strong>Bench created</strong><time>14:01 UTC</time><span class="muted">Two repositories prepared on their card branches.</span></li>
+        </ol>
+      </section>
+      <section class="panel split" id="files" role="tabpanel" aria-labelledby="tab-files" hidden>
+        <nav class="tree" aria-label="Sample files"><button aria-pressed="true" data-file="search">app / search.ts</button><button aria-pressed="false" data-file="test">app / search.test.ts</button><button aria-pressed="false" data-file="readme">library / README.md</button></nav>
+        <div class="file"><div class="file-title" id="file-title">app / search.ts · checkpoint 81b7e2a · read-only sample</div><pre id="file-body">export function search(query: string, entries: string[]) {
+  const normalized = query.trim().toLowerCase();
+  return entries.filter(entry =&gt; entry.toLowerCase().includes(normalized));
+}</pre></div>
+      </section>
+      <section class="panel" id="diff" role="tabpanel" aria-labelledby="tab-diff" hidden>
+        <h2>Changes at the last checkpoint</h2><p class="muted">app · base <code>main@a140c52</code> → checkpoint <code>81b7e2a</code>. This is a saved comparison, not the current working tree.</p>
+        <div class="file-title">app / search.ts</div><pre><span class="diff-line"> export function search(query: string, entries: string[]) {</span><span class="diff-line removed">−  return entries.filter(entry =&gt; entry.includes(query));</span><span class="diff-line added">+  const normalized = query.trim().toLowerCase();</span><span class="diff-line added">+  return entries.filter(entry =&gt; entry.toLowerCase().includes(normalized));</span><span class="diff-line"> }</span></pre>
+        <p class="muted">library · base <code>main@a813c66</code> → checkpoint <code>b29fc40</code> · no file changes.</p>
+      </section>
+      <section class="panel" id="logs" role="tabpanel" aria-labelledby="tab-logs" hidden>
+        <div class="log-heading"><label for="log-kind">Saved log</label><select id="log-kind"><option value="run">Test stage · run</option><option value="setup">Test stage · setup</option></select><span class="muted">Sealed output · sample excerpt</span></div>
+        <pre id="log-body">14:22:09  Started test stage
+14:22:10  PASS search ignores surrounding whitespace
+14:22:10  PASS search matches without case sensitivity
+14:22:10  2 tests passed
+14:22:11  Process stopped; output sealed</pre>
+        <p class="notice">Saved output does not prove a current process is running or stopped. Secrets and private paths must be filtered before any live viewer is enabled.</p>
+      </section>
+    </div>
+    <p class="notice">Read-only design preview. Terminal access and taking over are unavailable here. A live takeover would require authorization, the existing writer to stop or be fenced, and a newly confirmed lease.</p>
+  </section>
+  <footer>No service calls, credentials, filesystem access or lease changes. Only the first sample bench opens. Commit labels are illustrative abbreviations.</footer>
+</main>
+<script>
+  const inventory = document.querySelector('#inventory');
+  const bench = document.querySelector('#bench');
+  function showBench(open) {
+    inventory.hidden = open; bench.hidden = !open;
+    document.querySelector(open ? '#bench-title' : '#inventory-title').setAttribute('tabindex', '-1');
+    document.querySelector(open ? '#bench-title' : '#inventory-title').focus();
+  }
+  document.querySelector('[data-open-bench]').addEventListener('click', () => showBench(true));
+  document.querySelector('#back').addEventListener('click', () => showBench(false));
+  window.addEventListener('hashchange', () => showBench(location.hash === '#bench'));
+  if (location.hash === '#bench') showBench(true);
+  const tabs = [...document.querySelectorAll('[role="tab"]')];
+  function activate(tab) {
+    tabs.forEach(item => {
+      const selected = item === tab;
+      item.setAttribute('aria-selected', String(selected)); item.tabIndex = selected ? 0 : -1;
+      document.getElementById(item.getAttribute('aria-controls')).hidden = !selected;
+    });
+  }
+  tabs.forEach((tab, index) => {
+    tab.addEventListener('click', () => activate(tab));
+    tab.addEventListener('keydown', event => {
+      const next = event.key === 'ArrowRight' ? (index + 1) % tabs.length : event.key === 'ArrowLeft' ? (index + tabs.length - 1) % tabs.length : event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : null;
+      if (next !== null) { event.preventDefault(); activate(tabs[next]); tabs[next].focus(); }
+    });
+  });
+  const files = {
+    search: ['app / search.ts', 'export function search(query: string, entries: string[]) {\n  const normalized = query.trim().toLowerCase();\n  return entries.filter(entry => entry.toLowerCase().includes(normalized));\n}'],
+    test: ['app / search.test.ts', 'it("matches without case sensitivity", () => {\n  expect(search("BENCH", ["SuperBench"])).toEqual(["SuperBench"]);\n});'],
+    readme: ['library / README.md', '# Shared library\n\nUtilities used by the application.\n\nThis is illustrative checkpoint content.'],
+  };
+  document.querySelectorAll('[data-file]').forEach(button => button.addEventListener('click', () => {
+    const [name, content] = files[button.dataset.file];
+    document.querySelector('#file-title').textContent = name + ' · saved checkpoint · read-only sample';
+    document.querySelector('#file-body').textContent = content;
+    document.querySelectorAll('[data-file]').forEach(item => item.setAttribute('aria-pressed', String(item === button)));
+  }));
+  document.querySelector('#log-kind').addEventListener('change', event => {
+    document.querySelector('#log-body').textContent = event.target.value === 'setup' ? '14:08:02  Shared package store selected\n14:08:05  Dependencies prepared\n14:08:06  Setup process stopped; output sealed' : '14:22:09  Started test stage\n14:22:10  PASS search ignores surrounding whitespace\n14:22:10  PASS search matches without case sensitivity\n14:22:10  2 tests passed\n14:22:11  Process stopped; output sealed';
+  });
+</script>
+</html>

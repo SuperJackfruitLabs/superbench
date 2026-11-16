@@ -177,14 +177,30 @@ Storage feasibility evidence is in sketchbook's `ideas/2026-11-14-superbench/res
 
 Run `sh scripts/check.sh`: formatting, zero-warning vet ratchet, architecture guards,
 race-enabled integration tests and build. This ordinary suite refuses root.
-Forge CI uses `python3 scripts/check-ci.py` as a root conductor: it copies only
-committed source into a private work directory, runs the ordinary suite as a
-non-root account, then runs the explicit root-reap refusal case from a protected
-test binary. It retains its own fixture for inspection or container disposal;
-it does not install a service or change host users or policy. The optional user
-and cache arguments support an existing isolated verification environment.
-This verifies the root deletion boundary; privileged quota, fencing and installer
-lifecycle tests remain separate and must not be inferred from skipped tests.
+Forge's ordinary job uses `python3 scripts/check-ci.py`. It copies only committed
+source into a private work directory and runs the suite as a non-root user. A
+root container drops to a separate account; an already-unprivileged runner keeps
+its current account and needs no mount or cgroup delegation. Each ordinary job
+uses two Go CPUs so two concurrent jobs fit the four-CPU runner.
+
+The separate `privileged-identity` job selects only the `superbench-privileged`
+self-hosted runner label and invokes `--privileged-only`. It requires real root,
+private mount/network namespace support and cgroup delegation, verifies the
+protected effective-root reap refusal, and runs the installed registry/helper
+identity fixtures. Missing capabilities fail; no matching runner leaves this
+proof pending. Fork PRs do not automatically run privileged self-hosted code.
+An ordinary root container also performs its effective-root refusal, but that
+alone is not the installed identity or host quota/fencing/installer proof.
+
+Both modes retain their private fixtures and do not provision a runner, install
+a service or change host users or policy. Workbench controls retain their
+separately selected budgets. Privileged evidence is never inferred from an
+ordinary pass or an opt-in test skip.
 See [code quality](docs/code-quality.md).
 SQLite is provided by the pinned pure-Go modernc.org/sqlite driver. Forge is the primary remote; the first three implementation checkpoints passed
 Forge CI. No production deployment is configured.
+
+The [reader codec and display models](web/README.md) support fixture-backed
+[static mockups](docs/mockups/README.md), not a shipped viewer. A product page and
+shared-design-system UI follow operator mockup review. Live authorization,
+content/attachment contracts and remaining Phase 2 work retain separate gates.
