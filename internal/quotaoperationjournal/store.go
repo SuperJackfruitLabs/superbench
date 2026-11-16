@@ -23,6 +23,7 @@ type journalStore struct {
 	owner        uint32
 	prepareFresh func() error
 	finishFresh  func() error
+	syncFile     func(*os.File) error
 }
 
 // create refuses any legacy evidence or interrupted indexed creation. Migration
@@ -238,6 +239,35 @@ func (s journalStore) within(ctx context.Context, create bool, fn func(*Journal)
 		}
 	}
 	j := &Journal{db: db, check: check, active: true, ctx: ctx, identity: s.Identity}
+	j.durable = func() error {
+		if err := check(); err != nil {
+			return err
+		}
+		for _, pin := range pins[len(pins)-2:] {
+			f, err := openFile(pin.path, s.owner, false)
+			if err != nil {
+				return err
+			}
+			actual, err := f.Stat()
+			if err != nil || !os.SameFile(pin.info, actual) {
+				_ = f.Close()
+				return ErrAuthority
+			}
+			if s.syncFile == nil {
+				err = f.Sync()
+			} else {
+				err = s.syncFile(f)
+			}
+			err = errors.Join(err, f.Close())
+			if err != nil {
+				return err
+			}
+			if err = check(); err != nil {
+				return err
+			}
+		}
+		return check()
+	}
 	defer func() { j.active = false }()
 	if err = j.ready(); err != nil {
 		return err

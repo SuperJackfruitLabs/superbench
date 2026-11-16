@@ -9,6 +9,7 @@ import (
 	"errors"
 	"io"
 	"regexp"
+	"sort"
 	"unicode/utf8"
 )
 
@@ -119,9 +120,14 @@ func Parse(raw []byte) (Request, error) {
 	for _, key := range s.optional {
 		allowed[key] = true
 	}
+	keys := make([]string, 0, len(fields))
 	for key := range fields {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
 		if !allowed[key] {
-			return r, invalid
+			return r, unexpectedField(r.Operation, key)
 		}
 	}
 	for _, key := range []string{"key", "request_id"} {

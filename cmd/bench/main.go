@@ -87,6 +87,15 @@ func run(args []string) error {
 	if err = f.Parse(args[1:]); err != nil {
 		return err
 	}
+	requestIDSet := false
+	f.Visit(func(option *flag.Flag) {
+		if option.Name == "request-id" {
+			requestIDSet = true
+		}
+	})
+	if requestIDSet && !protocol.Growth(args[0]) {
+		return fmt.Errorf("--request-id is unsupported for %s: only create, recover, lease, run, and setup accept replay IDs", args[0])
+	}
 	if f.NArg() > 1 && args[0] != "run" {
 		return fmt.Errorf("expected one key; flags must precede it")
 	}

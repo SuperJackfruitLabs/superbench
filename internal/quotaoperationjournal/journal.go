@@ -31,6 +31,7 @@ type Journal struct {
 	active   bool
 	ctx      context.Context
 	identity *quotaoperation.Identity
+	durable  func() error
 }
 
 func rawIdentity(i quotaoperation.Identity) ([]byte, error) {
@@ -96,7 +97,16 @@ func (j *Journal) Reserve(i quotaoperation.Identity) error {
 		return quotaoperation.ErrCancelled
 	}
 	if found {
-		return nil
+		// A prior writer may have stopped while its visible commit remained in
+		// the surviving kernel cache. Re-establish both pinned files' durability
+		// before an exact retry is allowed to invoke the fixed effect.
+		if j.durable == nil {
+			return ErrAuthority
+		}
+		if err = j.durable(); err != nil {
+			return err
+		}
+		return j.ready()
 	}
 	raw, _ := rawIdentity(i)
 	return j.write(func(tx *sql.Tx) error {
