@@ -12,6 +12,10 @@ func copyTransfer(t *model.WorkspaceTransfer) *model.WorkspaceTransfer {
 		return nil
 	}
 	c := *t
+	if c.CrossHost != nil {
+		h := *c.CrossHost
+		c.CrossHost = &h
+	}
 	if t.Recovery != nil {
 		r := *t.Recovery
 		r.Runs = slices.Clone(r.Runs)

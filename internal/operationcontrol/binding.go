@@ -51,7 +51,7 @@ func (i Intent) Valid() bool {
 		return false
 	}
 	switch i.Operation {
-	case "create", "recover", "lease", "setup", "run":
+	case "create", "recover", "lease", "setup", "run", "initialization-repair":
 		return true
 	}
 	return false

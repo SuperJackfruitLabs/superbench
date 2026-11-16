@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/handoffjournal"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/archivepolicy"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/history"
@@ -34,12 +35,22 @@ func Migrate(tx *sql.Tx, state string, pinMigratedInodes func(*model.Bench) erro
 	if version == SchemaVersion {
 		return nil
 	}
-	if version < SchemaVersion {
+	if version < 29 {
+		if err := handoffjournal.RejectHistorical(tx); err != nil {
+			return err
+		}
+	}
+	if version < 27 {
 		if err := operationcontrol.RejectCancellationAuthority(tx); err != nil {
 			return err
 		}
 	}
-	if version >= 1 && version <= 26 {
+	if version < 28 {
+		if err := initrepair.RejectOperationAuthority(tx); err != nil {
+			return err
+		}
+	}
+	if version >= 1 && version <= 28 {
 		if version >= 25 {
 			// Existing run provenance is already owned by this schema.
 		} else if version == 24 {
@@ -58,7 +69,7 @@ func Migrate(tx *sql.Tx, state string, pinMigratedInodes func(*model.Bench) erro
 			return err
 		}
 		for _, b := range records {
-			if b.Workspace != nil && (version < 26 && workspacepolicy.ValidateSchema25(b) != nil || version < 14 || version == 14 && workspacepolicy.ValidateSchema14(b) != nil || version == 15 && workspacepolicy.ValidateSchema15(b) != nil || version == 16 && workspacepolicy.ValidateSchema16(b) != nil || version == 17 && workspacepolicy.ValidateSchema17(b) != nil || (version == 18 || version == 19) && workspacepolicy.ValidateSchema19(b) != nil || version == 20 && workspacepolicy.ValidateSchema20(b) != nil || version == 21 && workspacepolicy.ValidateSchema21(b) != nil) {
+			if b.Workspace != nil && (workspacepolicy.ValidateSchema28(b) != nil || version < 28 && workspacepolicy.ValidateSchema27(b) != nil || version < 26 && workspacepolicy.ValidateSchema25(b) != nil || version < 14 || version == 14 && workspacepolicy.ValidateSchema14(b) != nil || version == 15 && workspacepolicy.ValidateSchema15(b) != nil || version == 16 && workspacepolicy.ValidateSchema16(b) != nil || version == 17 && workspacepolicy.ValidateSchema17(b) != nil || (version == 18 || version == 19) && workspacepolicy.ValidateSchema19(b) != nil || version == 20 && workspacepolicy.ValidateSchema20(b) != nil || version == 21 && workspacepolicy.ValidateSchema21(b) != nil) {
 				return errors.New("aggregate workspace cannot be adopted from an older state schema")
 			}
 			if b.Lease != nil && b.Lease.Execution != nil && b.Lease.Execution.Phase != "stopped" {
@@ -114,6 +125,12 @@ func Migrate(tx *sql.Tx, state string, pinMigratedInodes func(*model.Bench) erro
 		if err = initrepair.Schema(tx); err != nil {
 			return err
 		}
+		if err = initrepair.OperationSchema(tx); err != nil {
+			return err
+		}
+		if err = handoffjournal.Schema(tx); err != nil {
+			return err
+		}
 		if err = reftransfer.Schema(tx); err != nil {
 			return err
 		}
@@ -125,7 +142,7 @@ func Migrate(tx *sql.Tx, state string, pinMigratedInodes func(*model.Bench) erro
 		if err != nil {
 			return err
 		}
-		_, err = tx.Exec("PRAGMA user_version=27")
+		_, err = tx.Exec("PRAGMA user_version=29")
 		return err
 	}
 	if version != 0 {
@@ -165,13 +182,19 @@ func Migrate(tx *sql.Tx, state string, pinMigratedInodes func(*model.Bench) erro
 	if err = initrepair.Schema(tx); err != nil {
 		return err
 	}
+	if err = initrepair.OperationSchema(tx); err != nil {
+		return err
+	}
+	if err = handoffjournal.Schema(tx); err != nil {
+		return err
+	}
 	if err = reftransfer.Schema(tx); err != nil {
 		return err
 	}
 	if err = operationcontrol.Schema(tx); err != nil {
 		return err
 	}
-	_, err = tx.Exec("PRAGMA user_version=27")
+	_, err = tx.Exec("PRAGMA user_version=29")
 	return err
 }
 

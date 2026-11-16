@@ -67,7 +67,7 @@ func TestSchema20RetainedOrdinaryReapMigratesAndRetriesExactJournal(t *testing.T
 	}
 	if err = statestore.Within(f.manager.State, nil, func(s *statestore.Session) error {
 		return s.Update(func(tx *sql.Tx) error {
-			if _, e := tx.Exec("DROP TABLE workspace_operation_cancellations; DROP TABLE workspace_operation_runs; DROP TABLE workspace_operations; DROP TABLE workspace_ref_transfers"); e != nil {
+			if _, e := tx.Exec("DROP TABLE IF EXISTS workspace_handoff_imports; DROP TABLE IF EXISTS workspace_handoff_exports; DROP TABLE IF EXISTS workspace_handoff_offers; DROP TABLE IF EXISTS workspace_handoff_identity; DROP TABLE initialization_repair_operations; DROP TABLE workspace_operation_cancellations; DROP TABLE workspace_operation_runs; DROP TABLE workspace_operations; DROP TABLE workspace_ref_transfers"); e != nil {
 				return e
 			}
 			_, e := tx.Exec("PRAGMA user_version=20")

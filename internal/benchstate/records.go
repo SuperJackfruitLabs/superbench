@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/handoffguard"
 	"os"
 	"path/filepath"
 
@@ -16,7 +17,7 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspacepolicy"
 )
 
-const SchemaVersion = 27
+const SchemaVersion = 29
 
 type Database map[string]*model.Bench
 
@@ -112,6 +113,17 @@ func Load(r Reader) (Database, error) {
 	}
 	if err = Validate(records); err != nil {
 		return nil, err
+	}
+	var version int
+	if err = r.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
+		return nil, err
+	}
+	if version == SchemaVersion {
+		for _, b := range records {
+			if err = handoffguard.Record(r, b); err != nil {
+				return nil, err
+			}
+		}
 	}
 	return records, nil
 }

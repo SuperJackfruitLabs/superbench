@@ -12,3 +12,11 @@ func TestVerifyCommandAcceptsOnlyFixedLogicalBenchShapeBeforePolicyRead(t *testi
 		}
 	}
 }
+
+func TestInspectAllocationAcceptsOnlyReadOnlyLogicalKeyShape(t *testing.T) {
+	for _, args := range [][]string{{"inspect-allocation"}, {"inspect-allocation", "shared", "mirrors"}, {"inspect-allocation", "bench"}, {"inspect-allocation", "bench", "card", "10000"}, {"inspect-allocation", "bench", "card", "/arbitrary/path"}} {
+		if err := run(args); err == nil || !strings.Contains(err.Error(), "usage:") {
+			t.Fatalf("non-fixed allocation lookup reached policy or effects: %q: %v", args, err)
+		}
+	}
+}

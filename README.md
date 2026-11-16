@@ -142,8 +142,11 @@ atomic transaction.
 
 ## Safety boundaries and deliberate limitations
 
-- Single-repository benches and grouped workspaces on one host. No cross-host
-  lease coordination. Recovery elsewhere requires the operator to stop the old host's writer first.
+- Single-repository benches and grouped workspaces use local ownership. Reviewed
+  [cross-host administrative handoff](docs/cross-host-handoff.md) retains original
+  task refs through explicit source retirement and destination import. It adds no
+  network lease coordination or suite API; the operator must independently verify
+  the old host's writer stopped before approving import.
 - Leases are cooperative: they block other CLI acquisitions, not direct edits,
   arbitrary shells, or processes sharing the same uid. Supervised Linux runs use
   cgroup fencing; neither mode provides uid/mount isolation.

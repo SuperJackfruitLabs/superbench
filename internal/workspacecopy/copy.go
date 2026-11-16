@@ -16,6 +16,10 @@ func Copy(b *model.Bench) *model.Bench {
 		w.Members = append([]model.WorkspaceMember(nil), w.Members...)
 		if w.Transfer != nil {
 			t := *w.Transfer
+			if t.CrossHost != nil {
+				h := *t.CrossHost
+				t.CrossHost = &h
+			}
 			if t.Recovery != nil {
 				r := *t.Recovery
 				r.Runs = slices.Clone(r.Runs)
@@ -33,6 +37,10 @@ func Copy(b *model.Bench) *model.Bench {
 		}
 		if w.TransferredFrom != nil {
 			t := *w.TransferredFrom
+			if t.CrossHost != nil {
+				h := *t.CrossHost
+				t.CrossHost = &h
+			}
 			w.TransferredFrom = &t
 		}
 		if w.InitializationRepair != nil {

@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/crosshost"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/handoffjournal"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -132,6 +134,7 @@ type stagingRequest struct {
 	key, creationID string
 	transferID      string
 	identity        func() string
+	crossHost       *crosshost.Artifact
 	transferredFrom *model.WorkspaceTransferOrigin
 	explicitQuota   uint64
 	recoveredFrom   *model.WorkspaceRecovery
@@ -166,6 +169,11 @@ func (m Manager) stage(ctx context.Context, request stagingRequest) (*model.Benc
 		// Even an idempotent retry first enters migration/lookup under the host lock.
 		var found *model.Bench
 		if err := update(func(rows benchstate.Database, tx *sql.Tx) error {
+			if request.crossHost == nil {
+				if err := handoffjournal.Unreserved(tx, request.key); err != nil {
+					return err
+				}
+			}
 			if request.validate != nil {
 				if err := request.validate(rows, tx); err != nil {
 					return err

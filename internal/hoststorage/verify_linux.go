@@ -25,6 +25,16 @@ func (p Policy) VerifyStorage(ctx context.Context, key string) (StorageIdentity,
 
 // locked is private: callers must already hold the existing ledger lock.
 func (p Policy) verifyStorage(ctx context.Context, key string, locked bool, original *Assignment) (StorageIdentity, error) {
+	return p.inspectStorage(ctx, key, locked, original, false)
+}
+
+func (p Policy) InspectAllocation(ctx context.Context, key string) (AllocationObservation, error) {
+	s, err := p.inspectStorage(ctx, key, false, nil, true)
+	s.Version = "superbench.allocation-observation.v1"
+	return AllocationObservation(s), err
+}
+
+func (p Policy) inspectStorage(ctx context.Context, key string, locked bool, original *Assignment, allowAbsent bool) (StorageIdentity, error) {
 	var zero StorageIdentity
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
@@ -46,8 +56,11 @@ func (p Policy) verifyStorage(ctx context.Context, key string, locked bool, orig
 	if err := rootOwnedDirectory(p.Ledger, true); err != nil {
 		return zero, err
 	}
-	if err := rootOwnedDirectory(filepath.Join(p.Root, "benches"), false); err != nil {
-		return zero, err
+	benches := filepath.Join(p.Root, "benches")
+	if _, err := os.Lstat(benches); !allowAbsent || !errors.Is(err, syscall.ENOENT) {
+		if err := rootOwnedDirectory(benches, false); err != nil {
+			return zero, err
+		}
 	}
 	device, inode, err := physicalStorageRoot(p.Root)
 	if err != nil {
@@ -89,7 +102,7 @@ func (p Policy) verifyStorage(ctx context.Context, key string, locked bool, orig
 	var a Assignment
 	var ledgerDigest string
 	if original == nil {
-		a, ledgerDigest, err = p.verifyStorageRecords(key, raw, anchor)
+		a, ledgerDigest, err = p.inspectStorageRecords(key, raw, anchor, allowAbsent)
 	} else {
 		a, ledgerDigest, _, err = p.retirementRecords(key, raw, anchor, *original)
 	}
@@ -115,6 +128,9 @@ func (p Policy) verifyStorage(ctx context.Context, key string, locked bool, orig
 		return zero, errors.New("project quotas are not accounting and enforcing")
 	}
 	for _, unit := range []string{"-b", "-i"} {
+		if a.ProjectID == 0 {
+			break
+		}
 		command := fmt.Sprintf("report -p -n %s -N -L %d -U %d", unit, a.ProjectID, a.ProjectID)
 		report, e := storageCommand(ctx, "/usr/sbin/xfs_quota", "-x", "-c", command, p.Root)
 		if e != nil {

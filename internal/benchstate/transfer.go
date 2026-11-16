@@ -22,7 +22,7 @@ func validateTransferLinks(records Database) error {
 			continue
 		}
 		w := b.Workspace
-		if t := w.Transfer; t != nil {
+		if t := w.Transfer; t != nil && t.CrossHost == nil {
 			if targets[t.TargetKey] || targetIDs[t.TargetID] || ids[t.ID] {
 				return invalid
 			}
@@ -38,7 +38,7 @@ func validateTransferLinks(records Database) error {
 				}
 			}
 		}
-		if t := w.TransferredFrom; t != nil {
+		if t := w.TransferredFrom; t != nil && t.CrossHost == nil {
 			if source := records[t.SourceKey]; source == nil || !linkedTransfer(source, b) {
 				return invalid
 			}
@@ -52,7 +52,7 @@ func linkedTransfer(source, target *model.Bench) bool {
 		return false
 	}
 	a, b := source.Workspace.Transfer, target.Workspace.TransferredFrom
-	return a != nil && b != nil && a.Phase == "transferred" && a.ID == b.ID && a.Digest == b.Digest && a.TargetKey == target.Key && a.TargetID == target.Workspace.ID && a.CreationID == target.Workspace.CreationID && b.SourceKey == source.Key && b.SourceID == source.Workspace.ID
+	return a != nil && b != nil && a.CrossHost == nil && b.CrossHost == nil && a.Phase == "transferred" && a.ID == b.ID && a.Digest == b.Digest && a.TargetKey == target.Key && a.TargetID == target.Workspace.ID && a.CreationID == target.Workspace.CreationID && b.SourceKey == source.Key && b.SourceID == source.Workspace.ID
 }
 
 func transferTransition(old identityRecord, b *model.Bench, before IdentitySnapshot, after Database) bool {
@@ -66,6 +66,9 @@ func transferTransition(old identityRecord, b *model.Bench, before IdentitySnaps
 	if old.transfer == nil {
 		if !retirementTransition(old, next.Recovery) {
 			return false
+		}
+		if next.CrossHost != nil {
+			return old.phase == "ready" && b.Workspace.Phase == "ready" && old.archive == nil && b.Workspace.Archive == nil && old.checkpoint != nil && next.Phase == "relinquishing"
 		}
 		_, existed := before[next.TargetKey]
 		return !existed && after[next.TargetKey] == nil && old.phase == "ready" && b.Workspace.Phase == "ready" && old.archive == nil && b.Workspace.Archive == nil && old.checkpoint != nil && next.Phase == "relinquishing"
@@ -93,6 +96,9 @@ func newTransferOrigins(before IdentitySnapshot, after Database) error {
 		w, l := b.Workspace, b.Lease
 		if w.Phase != "materializing" || l == nil || l.Holder != "initialization" || l.StopRequested || l.Continuation == "" || l.Execution != nil || len(l.RetainedRuns) != 0 || w.Pending != nil || w.Checkpoint != nil || len(w.Preparation) != 0 || w.Stage != nil || w.Archive != nil || w.InitializationRepair != nil || w.Transfer != nil {
 			return errors.New("transferred destination must begin with fresh initialization authority")
+		}
+		if w.TransferredFrom.CrossHost != nil {
+			continue
 		}
 		source := after[w.TransferredFrom.SourceKey]
 		if !linkedTransfer(source, b) || source.Workspace.Checkpoint == nil || len(w.Members) != len(source.Workspace.Members) || len(source.Workspace.Checkpoint.Members) != len(source.Workspace.Members) {
