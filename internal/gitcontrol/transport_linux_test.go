@@ -265,10 +265,13 @@ func TestGitPayloadRealTransportJournalsGatesFencesAndDrains(t *testing.T) {
 			if (kind == "epoch changed before publication" || kind == "revoked before launch") && !errors.Is(err, operationcontrol.ErrAuthority) {
 				t.Fatalf("lost epoch refusal: %v", err)
 			}
-			if kind == "prepare refusal" || kind == "check refusal" {
+			if kind == "prepare refusal" || kind == "check refusal" || kind == "fence failure" {
 				if !errors.Is(err, refusal) {
 					t.Fatalf("lost exact refusal: %v", err)
 				}
+			}
+			if kind == "missing transport" && (err == nil || !strings.Contains(err.Error(), "Git payload transport missing")) {
+				t.Fatalf("lost missing transport refusal: %v", err)
 			}
 			if kind == "pump failure" && !errors.Is(err, io.ErrShortBuffer) {
 				t.Fatalf("lost pump failure: %v", err)

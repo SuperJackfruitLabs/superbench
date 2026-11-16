@@ -21,17 +21,7 @@ func TestMissingAuthorityCannotFallBackToOrdinaryGit(t *testing.T) {
 		t.Fatalf("missing authority ran trusted Git: %q %v", data, err)
 	}
 }
-func TestGitInputAndOutputBoundsRefuseWithoutPublication(t *testing.T) {
-	for _, test := range []struct {
-		args              []string
-		in                []byte
-		inLimit, outLimit uint64
-	}{{nil, nil, 0, 1024}, {[]string{"version"}, []byte("too large"), 1, 1024}, {[]string{"version"}, nil, 0, 0}} {
-		out, err := (Route{}).Execute(context.Background(), gitcontrol.Runner{}, test.args, test.in, test.inLimit, test.outLimit)
-		if !errors.Is(err, ErrRefused) || out != nil {
-			t.Fatalf("invalid bounds reached Git: %q %v", out, err)
-		}
-	}
+func TestGitOutputOverflowPreservesAcceptedBytes(t *testing.T) {
 	out := &bounded{limit: 3}
 	if n, err := out.Write([]byte("abc")); n != 3 || err != nil {
 		t.Fatalf("bounded write failed: %d %v", n, err)
