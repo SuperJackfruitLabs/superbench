@@ -20,7 +20,7 @@ func RefusalCode(err error) string {
 	var refusal *refusalError
 	if errors.As(err, &refusal) && refusal != nil {
 		switch refusal.phase {
-		case "caller", "policy", "stdio", "descriptors", "frame", "inspection", "scope", "layout", "boundary", "environment", "executable", "credentials", "exec":
+		case "caller", "policy", "stdio", "descriptors", "frame", "inspection", "preparation", "scope", "layout", "boundary", "environment", "executable", "credentials", "exec":
 			return refusal.phase
 		}
 	}

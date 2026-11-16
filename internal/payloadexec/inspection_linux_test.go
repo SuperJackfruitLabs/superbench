@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/registeredinspection"
 	"io"
 	"os"
 	"reflect"
@@ -111,5 +112,36 @@ func TestInspectionOutputTimeoutRestoresFlags(t *testing.T) {
 	after, _, e := syscall.Syscall(syscall.SYS_FCNTL, w.Fd(), syscall.F_GETFL, 0)
 	if e != 0 || before != after {
 		t.Fatalf("output flags changed: %x %x %v", before, after, e)
+	}
+}
+
+func TestPreparationFrameNeverFallsBackToExecution(t *testing.T) {
+	original := inspectionRequest()
+	request := registeredinspection.PreparationRequest{Version: registeredinspection.PreparationVersion, Key: original.Key, LayoutID: original.LayoutID, PolicyDigest: original.PolicyDigest, Member: "web"}
+	raw, err := request.Bytes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	framed := make([]byte, 4)
+	binary.BigEndian.PutUint32(framed, uint32(len(raw)))
+	framed = append(framed, raw...)
+	inspection, preparation, execution, err := readAnyInvocation(framePipe(t, framed), time.Second)
+	if err != nil || inspection != nil || preparation == nil || *preparation != request || !reflect.DeepEqual(execution, Request{}) {
+		t.Fatalf("invalid preparation dispatch: %v %v", preparation, err)
+	}
+	if _, _, err = readInvocation(framePipe(t, framed), time.Second); !errors.Is(err, ErrFrame) {
+		t.Fatalf("legacy invocation accepted preparation: %v", err)
+	}
+	for _, bad := range [][]byte{append(append([]byte(nil), framed...), 'x'), framed[:len(framed)-1]} {
+		_, preparation, _, err = readAnyInvocation(framePipe(t, bad), time.Second)
+		if preparation != nil || !errors.Is(err, ErrFrame) {
+			t.Fatalf("malformed preparation accepted: %v", err)
+		}
+	}
+}
+
+func TestInspectionLeafPreservesBoundaryErrorIdentity(t *testing.T) {
+	if ErrBoundary != registeredinspection.ErrBoundary {
+		t.Fatal("shared boundary sentinel identity changed")
 	}
 }

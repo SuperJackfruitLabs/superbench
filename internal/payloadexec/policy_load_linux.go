@@ -4,6 +4,7 @@ package payloadexec
 
 import (
 	"errors"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/registeredinspection"
 	"io"
 	"os"
 	"path/filepath"
@@ -67,7 +68,4 @@ func openPolicyFile(parent *os.File, name string) (*os.File, os.FileInfo, error)
 	return opened, info, nil
 }
 
-func samePolicyFile(a, b os.FileInfo) bool {
-	left, right := a.Sys().(*syscall.Stat_t), b.Sys().(*syscall.Stat_t)
-	return os.SameFile(a, b) && a.Mode() == b.Mode() && a.Size() == b.Size() && left.Uid == right.Uid && left.Gid == right.Gid && left.Nlink == right.Nlink && left.Mtim == right.Mtim && left.Ctim == right.Ctim
-}
+func samePolicyFile(a, b os.FileInfo) bool { return registeredinspection.SamePolicyFile(a, b) }

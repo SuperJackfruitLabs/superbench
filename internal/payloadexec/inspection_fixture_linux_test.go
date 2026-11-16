@@ -126,7 +126,7 @@ func TestInstalledReadOnlyRegistrationInspectionFixture(t *testing.T) {
 			t.Fatal(e)
 		}
 		st := info.Sys().(*syscall.Stat_t)
-		return Node{uint64(st.Dev), st.Ino}
+		return Node{Device: uint64(st.Dev), Inode: st.Ino}
 	}
 	sha, err := policyDigest(p)
 	if err != nil {
@@ -134,7 +134,7 @@ func TestInstalledReadOnlyRegistrationInspectionFixture(t *testing.T) {
 	}
 	l := Layout{Version: LayoutVersion, Key: "example", ID: strings.Repeat("a", 32), PolicyDigest: sha, Root: node("."), RootHome: node(".superbench-runtime/.root/home"), RootTemp: node(".superbench-runtime/.root/tmp")}
 	for _, name := range []string{"api", "web"} {
-		l.Members = append(l.Members, LayoutMember{name, node(name), node(".superbench-git/" + name), node(".superbench-runtime/" + name + "/home"), node(".superbench-runtime/" + name + "/tmp")})
+		l.Members = append(l.Members, LayoutMember{Name: name, Checkout: node(name), Admin: node(".superbench-git/" + name), Home: node(".superbench-runtime/" + name + "/home"), Temp: node(".superbench-runtime/" + name + "/tmp")})
 	}
 	raw, err := l.Bytes(p)
 	if err != nil {

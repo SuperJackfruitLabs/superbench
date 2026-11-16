@@ -109,7 +109,7 @@ func TestDescriptorExecHelper(t *testing.T) {
 			if err := syscall.Fstat(fd, &st); err != nil {
 				t.Fatal(err)
 			}
-			private = append(private, Node{uint64(st.Dev), st.Ino})
+			private = append(private, Node{Device: uint64(st.Dev), Inode: st.Ino})
 		}
 		raw, _ := json.Marshal(private)
 		if err := descriptorsCloseOnExec(); err != nil {
@@ -150,7 +150,7 @@ func TestDescriptorExecHelper(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, want := range private {
-			if (Node{uint64(st.Dev), st.Ino}) == want {
+			if (Node{Device: uint64(st.Dev), Inode: st.Ino}) == want {
 				t.Fatalf("private descriptor survived exec on fd%d", fd)
 			}
 		}

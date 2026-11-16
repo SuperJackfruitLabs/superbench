@@ -43,13 +43,17 @@ func Exec() (err error) {
 		return err
 	}
 	phase = "frame"
-	inspection, r, err := readInvocation(os.Stdin, frameTimeout)
+	inspection, preparation, r, err := readAnyInvocation(os.Stdin, frameTimeout)
 	if err != nil {
 		return err
 	}
 	if inspection != nil {
 		phase = "inspection"
 		return inspectInstalled(binding, *inspection)
+	}
+	if preparation != nil {
+		phase = "preparation"
+		return inspectPreparation(binding, *preparation)
 	}
 	phase = "scope"
 	scope, err := VerifyScope(p, r)

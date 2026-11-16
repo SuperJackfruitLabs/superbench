@@ -1,7 +1,9 @@
 package payloadexec
 
 import (
+	"bytes"
 	"errors"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/registeredinspection/layout"
 	"math"
 	"strings"
 	"testing"
@@ -19,9 +21,9 @@ func layoutFixture(t *testing.T, scalar bool) (Policy, Layout) {
 	if scalar {
 		name = ""
 	}
-	l := Layout{Version: LayoutVersion, Key: "card", ID: strings.Repeat("a", 32), PolicyDigest: digest, Scalar: scalar, Root: node, Members: []LayoutMember{{Name: name, Checkout: Node{8, 43}, Admin: Node{8, 44}, Home: Node{8, 45}, Temp: Node{8, 46}}}}
+	l := Layout{Version: LayoutVersion, Key: "card", ID: strings.Repeat("a", 32), PolicyDigest: digest, Scalar: scalar, Root: node, Members: []LayoutMember{{Name: name, Checkout: Node{Device: 8, Inode: 43}, Admin: Node{Device: 8, Inode: 44}, Home: Node{Device: 8, Inode: 45}, Temp: Node{Device: 8, Inode: 46}}}}
 	if !scalar {
-		l.RootHome, l.RootTemp = Node{8, 47}, Node{8, 48}
+		l.RootHome, l.RootTemp = Node{Device: 8, Inode: 47}, Node{Device: 8, Inode: 48}
 	}
 	return p, l
 }
@@ -46,7 +48,7 @@ func TestPrivateLayoutKeepsAdminAndRuntimeOutsideCheckoutInsideAllocation(t *tes
 func TestLargestValidLayoutFitsEnvelopeAndBindsPolicy(t *testing.T) {
 	p, l := layoutFixture(t, false)
 	l.Root = Node{Device: math.MaxUint64, Inode: math.MaxUint64}
-	l.RootHome, l.RootTemp = Node{math.MaxUint64, math.MaxUint64 - 200}, Node{math.MaxUint64, math.MaxUint64 - 201}
+	l.RootHome, l.RootTemp = Node{Device: math.MaxUint64, Inode: math.MaxUint64 - 200}, Node{Device: math.MaxUint64, Inode: math.MaxUint64 - 201}
 	l.Members = nil
 	for i := 0; i < 32; i++ {
 		name := string(rune('A'+i)) + strings.Repeat("x", 79)
@@ -54,7 +56,7 @@ func TestLargestValidLayoutFitsEnvelopeAndBindsPolicy(t *testing.T) {
 		if i >= 26 {
 			name = string(rune('a'+i-26)) + strings.Repeat("x", 79)
 		}
-		l.Members = append(l.Members, LayoutMember{Name: name, Checkout: Node{math.MaxUint64, math.MaxUint64 - uint64(4*i+1)}, Admin: Node{math.MaxUint64, math.MaxUint64 - uint64(4*i+2)}, Home: Node{math.MaxUint64, math.MaxUint64 - uint64(4*i+3)}, Temp: Node{math.MaxUint64, math.MaxUint64 - uint64(4*i+4)}})
+		l.Members = append(l.Members, LayoutMember{Name: name, Checkout: Node{Device: math.MaxUint64, Inode: math.MaxUint64 - uint64(4*i+1)}, Admin: Node{Device: math.MaxUint64, Inode: math.MaxUint64 - uint64(4*i+2)}, Home: Node{Device: math.MaxUint64, Inode: math.MaxUint64 - uint64(4*i+3)}, Temp: Node{Device: math.MaxUint64, Inode: math.MaxUint64 - uint64(4*i+4)}})
 	}
 	raw, err := l.Bytes(p)
 	if err != nil {
@@ -79,5 +81,25 @@ func TestLayoutRejectsAliasedRootOrMemberRoles(t *testing.T) {
 	l.Members[0].Home = l.Members[0].Admin
 	if _, err := l.Bytes(p); !errors.Is(err, ErrPolicy) {
 		t.Fatalf("Git admin reused as HOME: %v", err)
+	}
+}
+
+func TestLayoutLeafPreservesCanonicalWireAndErrorIdentity(t *testing.T) {
+	p, l := layoutFixture(t, false)
+	raw, err := l.Bytes(p)
+	golden := `{"Version":"superbench.payload-layout.v1","Key":"card","ID":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","PolicyDigest":"282d30de1cf9043d4cceb68fcd14cd40adaa535016dffa87eb3a86b31adbb372","Scalar":false,"Root":{"Device":8,"Inode":42},"RootHome":{"Device":8,"Inode":47},"RootTemp":{"Device":8,"Inode":48},"Members":[{"Name":"api","Checkout":{"Device":8,"Inode":43},"Admin":{"Device":8,"Inode":44},"Home":{"Device":8,"Inode":45},"Temp":{"Device":8,"Inode":46}}]}`
+	if err != nil || string(raw) != golden {
+		t.Fatal("existing layout wire changed", string(raw), err)
+	}
+	pure, err := layout.Layout(l).Bytes(p)
+	if err != nil || !bytes.Equal(raw, pure) {
+		t.Fatal("compatibility wrapper differs", err)
+	}
+	if ErrPolicy != layout.ErrPolicy {
+		t.Fatal("shared sentinel identity changed")
+	}
+	l.RootHome = l.Root
+	if err = l.Validate(p); !errors.Is(err, ErrPolicy) {
+		t.Fatal("aliased physical node accepted", err)
 	}
 }

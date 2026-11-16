@@ -28,7 +28,7 @@ func TestCompleteDaemonOwnedLayoutCannotBeAdoptedAsPayloadLayout(t *testing.T) {
 			t.Fatal(err)
 		}
 		st := info.Sys().(*syscall.Stat_t)
-		nodes = append(nodes, Node{uint64(st.Dev), st.Ino})
+		nodes = append(nodes, Node{Device: uint64(st.Dev), Inode: st.Ino})
 	}
 	l.Root, l.RootHome, l.RootTemp = nodes[0], nodes[5], nodes[6]
 	l.Members[0].Checkout, l.Members[0].Admin, l.Members[0].Home, l.Members[0].Temp = nodes[1], nodes[2], nodes[3], nodes[4]
@@ -56,7 +56,7 @@ func TestCompleteDaemonOwnedLayoutCannotBeAdoptedAsPayloadLayout(t *testing.T) {
 			t.Fatal(err)
 		}
 		st := info.Sys().(*syscall.Stat_t)
-		if (Node{uint64(st.Dev), st.Ino}) != nodes[i] || st.Uid != p.DaemonUID || info.Mode().Perm() != 0700 {
+		if (Node{Device: uint64(st.Dev), Inode: st.Ino}) != nodes[i] || st.Uid != p.DaemonUID || info.Mode().Perm() != 0700 {
 			t.Fatalf("refusal changed existing layout at %s", path)
 		}
 	}
