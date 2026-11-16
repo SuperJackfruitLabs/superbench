@@ -29,6 +29,13 @@ establish an end-to-end card result:
   the Hermes adapter through the real supervised worker path. The adapter is
   merged in AgentPod #902; its source and codec tests do not establish this
   provider-backed lifecycle.
+- Add and verify an operator release or reconciliation path for Fresh allocations
+  before enabling `proposedFreshPayload`. A failed or cancelled one-shot bootstrap
+  can leave an allocation without a committed ProjectID; legacy apply and release
+  refuse Fresh entries. Retain that allocation and its journals for explicit
+  recovery. Retrying a committed assignment does not recover this earlier gap.
+  Enablement must also distinguish validated Fresh completions from legacy
+  allocated records; changing modes cannot adopt an incomplete legacy checkout.
 - Publish an operator-approved AgentPod release containing the coordinator wiring,
   adapter and compatible worker. Re-pin the installed Node and worker binaries and
   registry after that upgrade; v0.1.129 does not contain these changes.

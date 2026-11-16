@@ -8,6 +8,7 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/statestore"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspace"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspacearchive"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspacebootstrap"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspaceinit"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspaceprep"
 )
@@ -30,6 +31,9 @@ func (s Store) StageWorkspaceContext(ctx context.Context, creationID string, spe
 	}
 	m := workspace.Manager{State: s.State, Data: s.Data, Timeout: s.MirrorTimeout, Admit: s.admit, Allocate: s.allocateWorkspace}
 	m.Within, m.Git = s.workspaceWithin, s.workspaceGit
+	if s.proposedFreshPayload {
+		m.Fresh = workspacebootstrap.New(s.State, s.Data)
+	}
 	return m.Stage(ctx, creationID, spec)
 }
 
@@ -124,6 +128,9 @@ func (s Store) StageWorkspaceRecoveryContext(ctx context.Context, creationID str
 	}
 	m := workspace.Manager{State: s.State, Data: s.Data, Timeout: s.MirrorTimeout,
 		Within: s.workspaceWithin, Git: s.workspaceGit, Admit: s.admit, Allocate: s.allocateWorkspace}
+	if s.proposedFreshPayload {
+		m.Fresh = workspacebootstrap.New(s.State, s.Data)
+	}
 	return m.StageRecovery(ctx, creationID, spec)
 }
 

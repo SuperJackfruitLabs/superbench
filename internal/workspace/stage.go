@@ -17,6 +17,7 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/repository"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/statepath"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspacecopy"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspaceplan"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspacepolicy"
 )
 
@@ -33,6 +34,7 @@ type Manager struct {
 	Git         func(context.Context, string, ...string) (string, error)
 	Admit       func() error
 	Allocate    func(*model.Bench) error
+	Fresh       func(context.Context, *model.Bench) error
 }
 
 // ValidateStage checks request shape without filesystem or repository effects.
@@ -62,14 +64,6 @@ func privateRecord(b *model.Bench) *model.Bench { return workspacecopy.Copy(b) }
 
 // Clone owns all mutable workspace and lease slices returned to lifecycle callers.
 func Clone(b *model.Bench) *model.Bench { return privateRecord(b) }
-
-func stagedPlan(b *model.Bench) Plan {
-	p := Plan{Key: b.Key, Root: b.Path, QuotaBytes: b.RequestedQuotaBytes, CheckpointRepository: b.Workspace.CheckpointRepository}
-	for _, v := range b.Workspace.Members {
-		p.Members = append(p.Members, Member{Name: v.Name, Repository: v.Repository, Branch: v.Branch, Base: v.Base, Path: v.Path, Mirror: v.Mirror, Source: v.Source, ObjectFormat: v.ObjectFormat, RepositoryQuotaBytes: v.RequestedQuotaBytes})
-	}
-	return p
-}
 
 func matchesRequest(b *model.Bench, creationID string, spec Spec, data string) bool {
 	if b == nil || b.Workspace == nil || b.Workspace.RecoveredFrom != nil || workspacepolicy.Validate(b) != nil {
@@ -293,7 +287,19 @@ func (m Manager) stage(ctx context.Context, request stagingRequest) (*model.Benc
 				return err
 			}
 		}
-		if err := m.Allocate(allocated); err != nil {
+		if m.Fresh != nil {
+			// A durable assignment follows a validated completed bootstrap. Retry
+			// the same pinned owner/vector through the gate without allocating again.
+			// An effect without a committed assignment still needs reconciliation.
+			if committed.ProjectID == 0 {
+				if err := m.Fresh(ctx, allocated); err != nil {
+					return err
+				}
+				if allocated.ProjectID < 10000 || allocated.QuotaBytes == 0 || allocated.QuotaInodes == 0 {
+					return errors.New("fresh workspace returned no verified allocation")
+				}
+			}
+		} else if err := m.Allocate(allocated); err != nil {
 			return err
 		}
 		if committed.ProjectID != 0 && (allocated.ProjectID != committed.ProjectID || allocated.QuotaBytes != committed.QuotaBytes || allocated.QuotaInodes != committed.QuotaInodes) {
@@ -320,7 +326,7 @@ func (m Manager) stage(ctx context.Context, request stagingRequest) (*model.Benc
 				if err := ctx.Err(); err != nil {
 					return err
 				}
-				if !reflect.DeepEqual(rows[request.key], committed) || !reflect.DeepEqual(stagedPlan(committed), plan) {
+				if !reflect.DeepEqual(rows[request.key], committed) || !reflect.DeepEqual(workspaceplan.FromRecord(committed), plan) {
 					return errors.New("workspace initialization ownership or pinned vector changed")
 				}
 				return m.stageTransferCheck(gateCtx, tx, rows[request.key])
@@ -342,8 +348,12 @@ func (m Manager) stage(ctx context.Context, request stagingRequest) (*model.Benc
 			return err
 		}
 		committed = privateRecord(allocated)
-		plan := stagedPlan(committed)
-		if err := (Materializer{Git: m.Git, Gate: gate, Timeout: timeout}).Materialize(ctx, plan); err != nil {
+		plan := workspaceplan.FromRecord(committed)
+		if m.Fresh == nil {
+			if err := (Materializer{Git: m.Git, Gate: gate, Timeout: timeout}).Materialize(ctx, plan); err != nil {
+				return err
+			}
+		} else if err := gate(ctx, plan); err != nil {
 			return err
 		}
 		finished := privateRecord(committed)

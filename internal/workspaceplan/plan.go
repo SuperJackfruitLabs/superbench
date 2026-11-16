@@ -173,3 +173,12 @@ func (p Planner) selectMember(ctx context.Context, timeout time.Duration, root s
 	}
 	return Member{Name: r.Name, Repository: r.Repository, Branch: r.Branch, Base: r.Base, Path: filepath.Join(root, r.Name), Mirror: mirror, Source: source, ObjectFormat: format, RepositoryQuotaBytes: quota}, nil
 }
+
+// FromRecord copies the pinned source vector without selecting new sources or granting authority.
+func FromRecord(b *model.Bench) Plan {
+	p := Plan{Key: b.Key, Root: b.Path, QuotaBytes: b.RequestedQuotaBytes, CheckpointRepository: b.Workspace.CheckpointRepository}
+	for _, v := range b.Workspace.Members {
+		p.Members = append(p.Members, Member{Name: v.Name, Repository: v.Repository, Branch: v.Branch, Base: v.Base, Path: v.Path, Mirror: v.Mirror, Source: v.Source, ObjectFormat: v.ObjectFormat, RepositoryQuotaBytes: v.RequestedQuotaBytes})
+	}
+	return p
+}
