@@ -30,7 +30,7 @@ func TestLedgerConversionPreservesAssignmentsAndClosesLegacyReader(t *testing.T)
 	}
 	identity, next, root := l.VolumeID, l.Next, l.Root
 	p.bindLedger(&l)
-	if l.FormatVersion != 2 || l.FilesystemUUID != identity || l.VolumeID != "" || l.filesystem() != identity || l.Next != next || l.Root != root {
+	if l.FormatVersion != 2 || l.FilesystemUUID != identity || l.VolumeID != "" || l.Filesystem() != identity || l.Next != next || l.Root != root {
 		t.Fatal("ledger identity changed during metadata conversion", l)
 	}
 	if l.Binding == nil || *l.Binding != p.binding() {
@@ -142,7 +142,7 @@ func TestVersionedLedgerIdentityAndBindingCannotBeAmbiguous(t *testing.T) {
 			case "missing-binding":
 				l.Binding = nil
 			case "future-version":
-				l.FormatVersion = 3
+				l.FormatVersion = 4
 			case "unknown-version":
 				l.FormatVersion = 1
 			case "legacy-new-identity":

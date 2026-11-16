@@ -159,27 +159,38 @@ func (p Policy) applyRequested(kind, key string, requested uint64, initialize fu
 	if e = p.checkLedger(l); e != nil {
 		return zero, e
 	}
-	if l.filesystem() != volumeID {
+	if l.Filesystem() != volumeID {
 		return zero, errors.New("filesystem UUID differs from the allocation ledger; explicit recovery required")
 	}
 	if e = p.anchor(); e != nil {
 		return zero, e
 	}
-	if l.FormatVersion != 2 || p.upgradingInodes {
+	if l.FormatVersion < 2 || p.upgradingInodes {
 		p.bindLedger(&l)
 		if e = save(p.Ledger, filepath.Join(p.Ledger, "assignments.json"), l); e != nil {
 			return zero, e
 		}
 	}
 
+	return p.applyLedger(l, kind, key, name, path, requested, size, inodes, fixed, fs, initialize)
+}
+
+// applyLedger runs only after the caller holds the validated allocation lock.
+func (p Policy) applyLedger(l ledger, kind, key, name, path string, requested, size, inodes uint64, fixed uint32, fs syscall.Statfs_t, initialize func(Assignment) error) (Assignment, error) {
+	var zero Assignment
+	var e error
+
 	a, known := l.Assignments[name]
+	if initialize != nil && known {
+		return zero, ErrFreshAllocation
+	}
 	if kind == "bench" {
+		if _, fresh := l.Fresh[name]; fresh {
+			return zero, ErrRegisteredAllocation
+		}
 		if err := p.refuseRegisteredAllocation(key); err != nil {
 			return zero, err
 		}
-	}
-	if initialize != nil && known {
-		return zero, ErrFreshAllocation
 	}
 	reserved := p.StoreInodes + p.MirrorInodes + p.ReserveInodes
 	for key, assignment := range l.Assignments {
@@ -249,6 +260,13 @@ func (p Policy) applyRequested(kind, key string, requested uint64, initialize fu
 		}
 		a = Assignment{Path: path, ProjectID: id, Bytes: size, Inodes: inodes}
 		l.Assignments[name] = a
+		if initialize != nil {
+			l.FormatVersion = 3
+			if l.Fresh == nil {
+				l.Fresh = map[string]uint32{}
+			}
+			l.Fresh[name] = a.ProjectID
+		}
 		// Persist allocation before filesystem effects. A retry uses the same ID.
 		if e = save(p.Ledger, filepath.Join(p.Ledger, "assignments.json"), l); e != nil {
 			return zero, e
