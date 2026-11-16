@@ -43,15 +43,12 @@ export async function inventoryModel(
   if (response.operation !== "inventory") throw new Error("inventory_required");
   return {
     ...timing(response, now),
-    snapshot: response.snapshot,
     complete: response.result.complete,
     writable: false,
     cards: response.result.items.map((item) => ({
       key: item.key,
-      benchId: item.bench_id,
       kind: item.kind,
       host: item.host.label,
-      hostId: item.host.id,
       phase: item.phase,
       availability: item.availability,
       transferState: item.transfer_state,

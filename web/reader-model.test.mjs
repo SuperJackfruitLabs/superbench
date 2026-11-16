@@ -30,7 +30,7 @@ for (const c of corpus.lexical)
   test(`proposed reader lexical refuses ${c.name}`, async () =>
     assert.rejects(parseObservation(c.raw, c.kind)));
 test("consumer copies and portable codecs match exact proposed source pins", () => {
-  assert.equal(pin.revision, "31f5a332702de1179e187616f58d01b096d0f4ab");
+  assert.equal(pin.revision, "c169ffa94d40e86ecf369fc02d9964622854f388");
   for (const entry of Object.values(pin.files))
     assert.equal(
       createHash("sha256")
@@ -68,6 +68,16 @@ test("inventory exposes observed host/size/checkpoint/holder; zero and unavailab
   assert.equal(model.cards[0].availability, "unleased");
   assert.equal(model.cards[0].token, undefined);
   assert.equal(model.cards[0].path, undefined);
+  assert.equal(Object.hasOwn(model, "snapshot"), false);
+  for (const card of model.cards) {
+    assert.equal(Object.hasOwn(card, "benchId"), false);
+    assert.equal(Object.hasOwn(card, "hostId"), false);
+  }
+  // The validated source keeps its full protocol identity; only projection drops it.
+  const source = await parseObservation(JSON.stringify(c.body), "response", c.request, c.status);
+  assert.equal(source.snapshot, c.body.snapshot);
+  assert.equal(source.result.items[0].bench_id, c.body.result.items[0].bench_id);
+  assert.equal(source.result.items[0].host.id, c.body.result.items[0].host.id);
 });
 test("transfer source remains blocked and stale observation never offers write authority", async () => {
   const c = named("transferred_source_blocked");

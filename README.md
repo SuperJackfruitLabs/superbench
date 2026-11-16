@@ -189,8 +189,7 @@ See [code quality](docs/code-quality.md).
 SQLite is provided by the pinned pure-Go modernc.org/sqlite driver. Forge is the primary remote; the first three implementation checkpoints passed
 Forge CI. No production deployment is configured.
 
-The [proposed reader candidate](web/README.md) is a disabled, fixture-backed web
-inventory and confirmed-checkpoint view. It makes no daemon connection or live
-authorization claim. The original [browser mockup](docs/mockups/README.md), real
-content/attachment contracts and remaining Phase 2 work retain their separate
-verification requirements.
+The [reader codec and display models](web/README.md) support fixture-backed
+[static mockups](docs/mockups/README.md), not a shipped viewer. A product page and
+shared-design-system UI follow operator mockup review. Live authorization,
+content/attachment contracts and remaining Phase 2 work retain separate gates.

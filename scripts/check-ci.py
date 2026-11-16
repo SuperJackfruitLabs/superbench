@@ -28,6 +28,9 @@ def main():
     go = shutil.which('go')
     if go is None:
         raise SystemExit('the workflow must provide its pinned Go toolchain')
+    node = shutil.which('node')
+    if node is None:
+        raise SystemExit('the workflow must provide its pinned development Node toolchain')
     for name in ('superbench-check-bin', 'superbench-check-quota', 'superbench-check-daemon'):
         if os.path.lexists('/tmp/' + name):
             raise SystemExit('CI binary output already exists; use an isolated job tmp directory')
@@ -63,10 +66,10 @@ def main():
         os.setgid(account.pw_gid)
         os.setuid(account.pw_uid)
 
-    env = {'PATH': str(Path(go).parent) + ':/usr/local/bin:/usr/bin:/bin',
+    env = {'PATH': str(Path(go).parent) + ':' + str(Path(node).parent) + ':/usr/local/bin:/usr/bin:/bin',
            'HOME': str(task_home), 'TMPDIR': str(task_tmp), 'GOCACHE': str(build_cache),
-           'GOMODCACHE': str(module_cache), 'GOTOOLCHAIN': 'local', 'GOFLAGS': '-p=1',
-           'GOMAXPROCS': '2', 'CI': 'true'}
+           'GOMODCACHE': str(module_cache), 'GOTOOLCHAIN': 'local', 'GOFLAGS': '-p=8',
+           'GOMAXPROCS': '8', 'CI': 'true'}
     for name in ('GOPROXY', 'GOSUMDB', 'GOMEMLIMIT'):
         if name in os.environ:
             env[name] = os.environ[name]

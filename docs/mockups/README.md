@@ -23,10 +23,10 @@ terminal must not grant write access. Taking over must follow verified stopping
 or fencing and lease acquisition. These are implementation work, not functions
 of this mockup.
 
-The subsequent [disabled reader candidate](../../web/README.md) uses a pinned
-proposed observation corpus for its actual JavaScript viewmodel. It adds no live
-reader/authentication boundary and does not establish browser rendering proof for
-this design. Its inventory/history subset leaves the full Phase 2 work explicit.
+The [reader codec and models](../../web/README.md) use a pinned proposed
+observation corpus. They add no product page, styles, activation entry point or
+live authentication boundary. A product UI is deferred until operator mockup
+review and use of the shared design system. The full Phase 2 work remains open.
 
 ## Fixture-backed reader states
 

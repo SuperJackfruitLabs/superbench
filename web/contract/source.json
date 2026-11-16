@@ -1,15 +1,15 @@
 {
   "status": "PROPOSED contract; fixture-only consumer; no runtime authority proof",
   "repository": "https://forge.superjackfruit.com/SuperJackfruitLabs/treaty",
-  "revision": "31f5a332702de1179e187616f58d01b096d0f4ab",
+  "revision": "c169ffa94d40e86ecf369fc02d9964622854f388",
   "files": {
     "schemas/superbench/observation-request.v1.json": {
       "file": "observation-request.v1.json",
-      "sha256": "5c1fb99a3c010b9d477163b9ec7b5ebf1d22a9d94aba421fb25b47da901525ea"
+      "sha256": "b68b62cd5de1b2a169eff2995ed962cd3bdf8c2e9cfd1181d716d63879a419ef"
     },
     "schemas/superbench/observation-response.v1.json": {
       "file": "observation-response.v1.json",
-      "sha256": "5b8a21b52b7842a7b8b3225232764dacf534d974de7a9d05f9beb9a6705824c9"
+      "sha256": "284bce5ec4bfd1370340f9f9e6d24128c2696a5188458b2867f592324d66ded0"
     },
     "fixtures/superbench-api/observations.json": {
       "file": "observations.json",
