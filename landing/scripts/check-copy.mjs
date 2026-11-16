@@ -1,30 +1,26 @@
-// Run after `npm run build`: the page may say only what is true today. SuperBench is not released,
-// so the page must say so and point at the source, and it must never offer an install, name a
-// version, claim more than the claims ledger allows, or name a local host or agent.
+// Run after `npm run build`: the site may say only what is true today. SuperBench is not released,
+// so the home page must say so and point at the source, and nothing it publishes may offer an
+// install, name a version, claim more than the claims ledger allows, or name a local host or agent.
 //
-//   node scripts/check-copy.mjs              checks dist/index.html
-//   node scripts/check-copy.mjs <file.html>  checks that file instead
+//   node scripts/check-copy.mjs               checks dist/index.html, dist/404.html, dist/llms.txt
+//   node scripts/check-copy.mjs <file>…       checks those files instead
+//
+// Every file gets the forbidden checks. HTML files other than 404.html must also carry the status
+// ("Experimental", "not released yet") and a link to the repository. A .txt file is scanned whole.
+//
+// At the first release the suite frame renders "Releases · vX.Y.Z" on the page, and this check
+// fails on purpose: that is when the page should be revised, not when the check should loosen.
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { basename, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const REPO = 'https://github.com/SuperJackfruitLabs/superbench';
+const dist = (name) => fileURLToPath(new URL(`../dist/${name}`, import.meta.url));
+const files = process.argv.length > 2 ? process.argv.slice(2).map((f) => resolve(f)) : ['index.html', '404.html', 'llms.txt'].map(dist);
 
-const file = process.argv[2] ? resolve(process.argv[2]) : new URL('../dist/index.html', import.meta.url);
-const html = readFileSync(file, 'utf8');
-
-// What a reader or a crawler sees: the markup without styles or client scripts. Attribute values
-// stay in (meta descriptions, alt text, labels), and so does the JSON-LD, which states the page.
-const shown = html
-  .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-  .replace(/<script(?![^>]*application\/ld\+json)[\s\S]*?<\/script>/gi, ' ');
-// The words alone, for the phrases the page must carry.
-const text = shown.replace(/<[^>]*>/g, ' ').replace(/&middot;|&#183;/g, '·').replace(/\s+/g, ' ');
-
-const fail = [];
-for (const phrase of ['Experimental', 'not released yet']) if (!text.includes(phrase)) fail.push(`missing "${phrase}"`);
-if (!new RegExp(`href="${REPO.replace(/[.]/g, '\\.')}/?"`).test(html)) fail.push(`missing a link to ${REPO}`);
-
-const forbidden = [
+// Matched against everything a reader or crawler is given: for HTML, the markup without styles or
+// client scripts (attribute values and JSON-LD stay in).
+const FORBIDDEN = [
   [/production-ready/i, 'production-ready'],
   [/secure isolation/i, 'secure isolation'],
   [/npm install/i, 'npm install'],
@@ -34,10 +30,40 @@ const forbidden = [
   // Local names as words, so "infrastructure" is not a hit.
   [/\b(guild|workbench|foundry|ashram|infra)\b/i, 'a local name'],
 ];
-for (const [re, what] of forbidden) {
-  const m = shown.match(re);
-  if (m) fail.push(`contains ${what}: "${shown.slice(Math.max(0, m.index - 30), m.index + m[0].length + 30).replace(/\s+/g, ' ')}"`);
-}
+// Matched against the words alone (tags stripped), where a URL or an asset path cannot trip them.
+const FORBIDDEN_IN_TEXT = [
+  [/\bproduction\b/i, 'the word "production"'],
+  [/\b\d+\.\d+\.\d+\b/, 'a bare version number'],
+];
 
-if (fail.length) { console.error(`check-copy: ${file}\n` + fail.join('\n')); process.exit(1); }
-console.log('check-copy: ok');
+const context = (s, m) => s.slice(Math.max(0, m.index - 30), m.index + m[0].length + 30).replace(/\s+/g, ' ');
+const spaces = (s) => s.replace(/&nbsp;|&#160;|&#xa0;|\u00a0/gi, ' ');
+
+let failed = false;
+for (const file of files) {
+  const raw = readFileSync(file, 'utf8');
+  const isHtml = /\.html?$/i.test(file);
+  const shown = spaces(
+    isHtml
+      ? raw.replace(/<style[\s\S]*?<\/style>/gi, ' ').replace(/<script(?![^>]*application\/ld\+json)[\s\S]*?<\/script>/gi, ' ')
+      : raw,
+  );
+  const text = (isHtml ? shown.replace(/<[^>]*>/g, ' ') : shown).replace(/&middot;|&#183;/g, '·').replace(/\s+/g, ' ');
+
+  const fail = [];
+  if (isHtml && basename(file) !== '404.html') {
+    for (const phrase of ['Experimental', 'not released yet']) if (!text.includes(phrase)) fail.push(`missing "${phrase}"`);
+    if (!new RegExp(`href="${REPO.replace(/[.]/g, '\\.')}/?"`).test(raw)) fail.push(`missing a link to ${REPO}`);
+  }
+  for (const [re, what] of FORBIDDEN) {
+    const m = shown.match(re);
+    if (m) fail.push(`contains ${what}: "${context(shown, m)}"`);
+  }
+  for (const [re, what] of FORBIDDEN_IN_TEXT) {
+    const m = text.match(re);
+    if (m) fail.push(`contains ${what}: "${context(text, m)}"`);
+  }
+  if (fail.length) { failed = true; console.error(`check-copy: ${file}\n  ` + fail.join('\n  ')); }
+}
+if (failed) process.exit(1);
+console.log(`check-copy: ok (${files.map((f) => basename(f)).join(', ')})`);

@@ -40,7 +40,7 @@ const ACCENT_CSS = `:root { ${vars(AD)} }
 @media (prefers-color-scheme: light) { :root:not([data-theme='dark']) { ${vars(AL)} } }`;
 const TITLE = 'SuperBench — one task, one bench';
 const DESCRIPTION =
-  "A bench is one task's git worktree, kept warm, fenced and checkpointed between agents' turns. Experimental, single host, not released yet. MIT.";
+  'A bench is one task\'s git worktree, leased to one holder and checkpointed to the remote between turns. Experimental single-host prototype for trusted repositories; not released yet. MIT.';
 
 // Structured data for search and agents; every value is one the page already states.
 const JSON_LD = {
@@ -61,22 +61,22 @@ const STEPS = [
   {
     verb: 'create',
     h: 'Create',
-    p: <>A bench is a git worktree for one task, on its own branch.</>,
+    p: "A bench is a git worktree for one task, on its own branch.",
   },
   {
     verb: 'lease',
     h: 'Lease',
-    p: <>One holder at a time. Of many simultaneous lease requests, one wins; a restart keeps the lease, and a wrong or old token is refused.</>,
+    p: "One holder at a time. Of many simultaneous lease requests, one wins; a restart keeps the lease, and a wrong or old token is refused.",
   },
   {
     verb: 'checkpoint',
     h: 'Checkpoint',
-    p: <>Pushes the bench's existing HEAD to its branch, never with force, then confirms the remote has exactly that commit. It never makes a commit for you: a dirty or untracked tree is refused.</>,
+    p: "Pushes the bench's existing HEAD to its branch, never with force, then confirms the remote has exactly that commit. It never makes a commit for you: a dirty or untracked tree is refused.",
   },
   {
     verb: 'release',
     h: 'Release',
-    p: <>Release needs a checkpoint. The next holder finds the work where the last one left it.</>,
+    p: "Release needs a checkpoint. The next holder finds the work where the last one left it.",
   },
 ];
 ---
@@ -340,6 +340,8 @@ const STEPS = [
                 <strong>Local and reviewed.</strong> Archive and reap are administrative commands
                 on the machine itself. A repository can opt in to archiving after a merged
                 checkpoint, but nothing is deleted without a reviewed plan.
+                Automatic log retention is off until an operator turns it on, and retiring a
+                bench's quota during reap applies only on managed Linux hosts.
               </p>
             </div>
             <!-- SB-07, limited: Linux cgroup fencing, not uid or mount isolation. -->

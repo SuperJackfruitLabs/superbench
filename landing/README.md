@@ -12,6 +12,10 @@ npm run build   # -> dist/, then checks the frame and the copy
 
 Astro 7 needs Node 22.23.4 or newer.
 
+`package-lock.json` and `public/og.png` are added in phase B, once vibekit-frame 0.0.17 and
+vibekit-ui 0.0.19 are published: the lockfile from the first `npm install`, the image from
+frontdoor's renderer (see `og/README.md`). Until then `npm ci` and the build cannot run.
+
 ## How it deploys
 
 A Cloudflare Worker with static assets named `superbench-site`, configured by
@@ -35,7 +39,12 @@ The comment at the top of `src/pages/index.astro` says how the copy maps to the 
 **The copy is checked.** `scripts/check-copy.mjs` fails the build when the page lacks
 "Experimental", "not released yet" or a link to the repository, or when it contains an install
 command, a version number, "production-ready", "secure isolation" or a local host or agent name.
-Run it on any built HTML file with `node scripts/check-copy.mjs <file>`.
+It scans `dist/index.html`, `dist/404.html` and `dist/llms.txt`; run it on other files with
+`node scripts/check-copy.mjs <file>…`.
+
+**It will fail on purpose at the first release.** Once SuperBench tags a release, the suite frame
+renders `Releases · vX.Y.Z` on this page and `check-copy` fails on the version number. That is
+the moment to revise the page from "follow" to "try", not to loosen the check.
 
 **Cyan is vibekit's.** SuperBench's colour is vibekit's cyan (OKLCH hue 173), named by
 `PRODUCT_ACCENTS.superbench`. `src/accent.ts` reads its Daylight tokens for light and dark from the
