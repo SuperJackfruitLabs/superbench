@@ -30,7 +30,7 @@ func TestHelperRejectsGitWithoutPolicyOrWithLeadingOverride(t *testing.T) {
 }
 
 func TestManagedGitConfigAndAlternatesRefuseBeforeCommand(t *testing.T) {
-	for _, kind := range []string{"clean", "filter", "diff-driver", "textconv", "alias", "alternates", "http-alternates", "foreign-admin"} {
+	for _, kind := range []string{"clean", "filter-clean", "filter-process", "filter-smudge", "diff-driver", "textconv", "alias", "alternates", "http-alternates", "foreign-admin"} {
 		t.Run(kind, func(t *testing.T) {
 			root := t.TempDir()
 			checkout, admin := filepath.Join(root, "checkout"), filepath.Join(root, "admin")
@@ -44,8 +44,12 @@ func TestManagedGitConfigAndAlternatesRefuseBeforeCommand(t *testing.T) {
 			}
 			must("init", "--separate-git-dir="+admin, checkout)
 			switch kind {
-			case "filter":
+			case "filter-clean":
 				must("-C", checkout, "config", "filter.fixture.clean", "touch forbidden")
+			case "filter-process":
+				must("-C", checkout, "config", "filter.fixture.process", "touch forbidden")
+			case "filter-smudge":
+				must("-C", checkout, "config", "filter.fixture.smudge", "touch forbidden")
 			case "diff-driver":
 				must("-C", checkout, "config", "diff.fixture.command", "touch forbidden")
 			case "textconv":
