@@ -8,12 +8,15 @@ import (
 	"fmt"
 	"os/exec"
 	"sync/atomic"
+	"time"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/execution"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/output"
 )
 
 var ErrAmbiguousStart = errors.New("execution start callbacks are ambiguous")
+
+const transportDrainTimeout = 5 * time.Second
 
 type Plan struct {
 	Execution         *execution.Execution
@@ -159,7 +162,12 @@ func (r Runner) Run(ctx context.Context, plan Plan) (*Result, error) {
 	}
 	result.Execution = stopped
 	if transport != nil {
-		if drainErr := transport.Drain(ctx, r.Backend); drainErr != nil {
+		// Cancellation has already fenced the run and joined its monitor. Finish
+		// bounded cleanup independently so cancellation cannot randomly skip sealing.
+		drainCtx, drainCancel := context.WithTimeout(context.WithoutCancel(ctx), transportDrainTimeout)
+		drainErr := transport.Drain(drainCtx, r.Backend)
+		drainCancel()
+		if drainErr != nil {
 			r.Cancel()
 			return result, fmt.Errorf("command IO failed; stopped lease retained: %w", drainErr)
 		}

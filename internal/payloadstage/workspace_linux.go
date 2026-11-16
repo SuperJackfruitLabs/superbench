@@ -11,6 +11,7 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/payloadlaunch"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/serviceidentity"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/stageexec"
+	"io"
 	"os/exec"
 	"path/filepath"
 	"reflect"
@@ -19,10 +20,24 @@ import (
 
 type transport struct {
 	*payloadlaunch.Bridge
-	check func() error
+	command        *exec.Cmd
+	environment    []string
+	stdin          io.Reader
+	stdout, stderr io.Writer
+	check          func() error
 }
 
-func (t *transport) Check() error { return t.check() }
+func preparedTransport(bridge *payloadlaunch.Bridge, cmd *exec.Cmd, check func() error) *transport {
+	return &transport{Bridge: bridge, command: cmd, environment: append([]string(nil), cmd.Env...), stdin: cmd.Stdin, stdout: cmd.Stdout, stderr: cmd.Stderr, check: check}
+}
+
+func (t *transport) Check() error {
+	cmd := t.command
+	if cmd == nil || cmd.Path != "/usr/bin/sudo" || !reflect.DeepEqual(cmd.Args, []string{"sudo", "-n", "--", payloadlaunch.Helper}) || cmd.Dir != "/" || len(cmd.ExtraFiles) != 0 || cmd.SysProcAttr != nil || !reflect.DeepEqual(cmd.Env, t.environment) || cmd.Stdin != t.stdin || cmd.Stdout != t.stdout || cmd.Stderr != t.stderr {
+		return ErrRegistration
+	}
+	return t.check()
+}
 func (t *transport) Drain(ctx context.Context, backend interface {
 	Fence(*execution.Execution) error
 }) error {
@@ -81,12 +96,12 @@ func workspace(authority serviceidentity.Authority, b *model.Bench, member strin
 		if err != nil {
 			return nil, err
 		}
-		return &transport{Bridge: bridge, check: func() error {
+		return preparedTransport(bridge, cmd, func() error {
 			current, err := authority.Policy()
 			if err != nil {
 				return err
 			}
-			if current != policy || cmd.Path != "/usr/bin/sudo" || !reflect.DeepEqual(cmd.Args, []string{"sudo", "-n", "--", payloadlaunch.Helper}) || cmd.Dir != "/" || len(cmd.ExtraFiles) != 0 || cmd.SysProcAttr != nil {
+			if current != policy {
 				return ErrRegistration
 			}
 			now, err := payloadexec.LoadLayout(current, request)
@@ -94,6 +109,6 @@ func workspace(authority serviceidentity.Authority, b *model.Bench, member strin
 				return errors.Join(ErrRegistration, err)
 			}
 			return nil
-		}}, nil
+		}), nil
 	}
 }

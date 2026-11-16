@@ -45,11 +45,23 @@ func (b *realBridge) StartIO() error {
 }
 func (b *realBridge) Drain(ctx context.Context, f interface {
 	Fence(*execution.Execution) error
-}) error { return b.Bridge.Drain(ctx, f) }
+}) error {
+	if ctx.Err() != nil {
+		return fmt.Errorf("cleanup inherited cancellation: %w", ctx.Err())
+	}
+	deadline, ok := ctx.Deadline()
+	if !ok || time.Until(deadline) > 5*time.Second || ctx.Value(bridgeContextKey{}) != "preserved" {
+		return errors.New("cleanup lost bound or context value")
+	}
+	return b.Bridge.Drain(ctx, f)
+}
+
+type bridgeContextKey struct{}
 
 type bridgeFence struct {
 	mu     sync.Mutex
 	holder *exec.Cmd
+	leader *exec.Cmd
 	calls  int
 }
 
@@ -57,6 +69,10 @@ func (f *bridgeFence) Fence(*execution.Execution) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls++
+	if f.leader != nil {
+		_ = f.leader.Process.Kill()
+		f.leader = nil // WaitLeader owns reaping.
+	}
 	if f.holder == nil {
 		return nil
 	}
@@ -79,18 +95,30 @@ type brokenBridgeSink struct{}
 func (brokenBridgeSink) Write([]byte) (int, error) { return 0, bridgePumpFault }
 
 func TestRealBridgeRunnerFencesSetsidPipeHolderBeforeDrainAndSeal(t *testing.T) {
-	runRealBridge(t, true, false)
+	runRealBridge(t, true, false, false)
 }
-func TestRealBridgeRunnerPumpFailureRevokesAndNeverSeals(t *testing.T) { runRealBridge(t, false, true) }
+func TestRealBridgeRunnerPumpFailureRevokesAndNeverSeals(t *testing.T) {
+	runRealBridge(t, false, true, false)
+}
+
+func TestRealBridgeRunnerCancellationStillDrainsAndSeals(t *testing.T) {
+	runRealBridge(t, false, false, true)
+}
 
 // Only this test binary substitutes the fixed sudo command AFTER asserting its
 // exact invocation. This proves real Bridge/Runner composition, not sudo/root
 // credential drop, installed registration authority or kernel cgroup fencing.
-func runRealBridge(t *testing.T, withHolder, failPump bool) {
+func runRealBridge(t *testing.T, withHolder, failPump, cancelRun bool) {
 	t.Helper()
 	dir := t.TempDir()
 	scope := &execution.Execution{ID: strings.Repeat("1", 32), Root: dir, HostID: strings.Repeat("2", 64), BootID: "00000000-0000-0000-0000-000000000001", Phase: "starting", Log: filepath.Join(dir, "run.log"), LogLimitBytes: 4096}
 	var held, sealed, cancelled atomic.Bool
+	var cancelCount, sealCount atomic.Int32
+	watchdog, watchdogCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer watchdogCancel()
+	ctx, cancel := context.WithCancel(context.WithValue(watchdog, bridgeContextKey{}, "preserved"))
+	defer cancel()
+	ready := filepath.Join(dir, "ready")
 	fence := &bridgeFence{}
 	t.Cleanup(func() { _ = fence.Fence(scope) })
 	runner := stageexec.Runner{Backend: fence}
@@ -129,12 +157,40 @@ func runRealBridge(t *testing.T, withHolder, failPump bool) {
 	runner.StartPrepared = func(_ context.Context, cmd *exec.Cmd, _ *execution.Execution, launch stageexec.Launch) error {
 		held.Store(true)
 		defer held.Store(false)
-		return launch(func() error {
+		err := launch(func() error {
 			cmd.Path = os.Args[0]
 			cmd.Args = []string{os.Args[0], "-test.run=^TestBridgeRunnerOwnedProcess$", "-test.timeout=30s"}
-			cmd.Env = append(cmd.Env, "SUPERBENCH_BRIDGE_RUNNER_ROLE=leader")
-			return cmd.Start()
+			role := "leader"
+			if cancelRun {
+				role = "cancelled-leader"
+			}
+			cmd.Env = append(cmd.Env, "SUPERBENCH_BRIDGE_RUNNER_ROLE="+role)
+			if cancelRun {
+				cmd.Env = append(cmd.Env, "SUPERBENCH_BRIDGE_READY="+ready)
+			}
+			if err := cmd.Start(); err != nil {
+				return err
+			}
+			if cancelRun {
+				fence.mu.Lock()
+				fence.leader = cmd
+				fence.mu.Unlock()
+			}
+			return nil
 		})
+		if err == nil && cancelRun {
+			for {
+				if _, readyErr := os.Stat(ready); readyErr == nil {
+					cancel()
+					break
+				}
+				if watchdog.Err() != nil {
+					return watchdog.Err()
+				}
+				time.Sleep(time.Millisecond)
+			}
+		}
+		return err
 	}
 	runner.Stop = func() (*execution.Execution, error) {
 		if err := fence.Fence(scope); err != nil {
@@ -144,20 +200,23 @@ func runRealBridge(t *testing.T, withHolder, failPump bool) {
 		copy.Phase = "stopped"
 		return &copy, nil
 	}
-	runner.Cancel = func() { cancelled.Store(true) }
-	runner.Seal = func(*output.Capture, *int, bool) error { sealed.Store(true); return nil }
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	runner.Cancel = func() { cancelled.Store(true); cancelCount.Add(1) }
+	runner.Seal = func(*output.Capture, *int, bool) error { sealed.Store(true); sealCount.Add(1); return nil }
 	result, err := runner.Run(ctx, stageexec.Plan{Execution: scope, Dir: dir, Args: []string{"payload", "known-argument"}, Environment: []string{"LANG=C"}})
-	if ctx.Err() != nil {
-		t.Fatalf("leader waited for held output instead of reaching fence: %v", ctx.Err())
+	if watchdog.Err() != nil {
+		t.Fatalf("leader waited for held output instead of reaching fence: %v", watchdog.Err())
 	}
 	if failPump {
 		if !errors.Is(err, bridgePumpFault) || sealed.Load() || !cancelled.Load() {
 			t.Fatalf("real pump fault did not retain/revoke unsealed owner: %v sealed=%v cancelled=%v", err, sealed.Load(), cancelled.Load())
 		}
 	} else {
-		if err != nil || result == nil || result.ExitCode != 0 || !sealed.Load() {
+		var exitErr *exec.ExitError
+		goodExit := err == nil && result != nil && result.ExitCode == 0
+		if cancelRun {
+			goodExit = errors.As(err, &exitErr) && ctx.Err() == context.Canceled && cancelCount.Load() == 1
+		}
+		if !goodExit || result == nil || !sealed.Load() || sealCount.Load() != 1 {
 			t.Fatalf("real bridge composition failed: %v %+v sealed=%v", err, result, sealed.Load())
 		}
 		raw, readErr := os.ReadFile(scope.Log)
@@ -182,7 +241,7 @@ func TestBridgeRunnerOwnedProcess(t *testing.T) {
 			time.Sleep(time.Hour)
 		}
 	}
-	if role != "leader" {
+	if role != "leader" && role != "cancelled-leader" {
 		t.Fatal("unknown owned subprocess role")
 	}
 	var header [4]byte
@@ -207,6 +266,14 @@ func TestBridgeRunnerOwnedProcess(t *testing.T) {
 	}
 	if _, err := io.WriteString(os.Stdout, "real-bridge-output\n"); err != nil {
 		t.Fatal(err)
+	}
+	if role == "cancelled-leader" {
+		if err := os.WriteFile(os.Getenv("SUPERBENCH_BRIDGE_READY"), []byte("ready"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		for {
+			time.Sleep(time.Hour)
+		}
 	}
 	os.Exit(0)
 }
