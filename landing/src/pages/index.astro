@@ -1,0 +1,412 @@
+---
+/**
+ * superbench.dev — the public page.
+ *
+ * One page, no framework; the suite frame owns the header, footer and theme toggle. Its job before
+ * the first release is "follow, not try": say what SuperBench is and why it matters, say plainly
+ * that it is not released, and give a developer two ways to follow it, the GitHub repository and
+ * its release feed. There is nothing to install and no app to sign in to, so the page offers
+ * neither: no install command, no version number, no download.
+ *
+ * This directory is deliberately outside the Go module and has its own npm lockfile: nothing in
+ * `cmd/` or `internal/` shares a dependency tree with it.
+ *
+ * Every capability sentence rests on one claim in the SuperBench section of the suite's claims
+ * ledger (SB-01 to SB-08), and every claim that is `limited` there carries its caveat beside it
+ * here. The comment beside each block names the claim. Roadmap items (payload isolation,
+ * multi-host, release binaries, suite integration, the pilot) appear only under "What's not done
+ * yet", worded as not done. scripts/check-copy.mjs fails the build on install commands, version
+ * numbers, "production-ready", "secure isolation" and local names. If the product changes, this
+ * page is wrong until the ledger and the copy change with it.
+ *
+ * No scenes on this first page. Cyan is SuperBench's own accent in vibekit (PRODUCT_ACCENTS:
+ * cyan, hue 173), its Daylight tokens for light and dark, read from the package at build time
+ * (src/accent.ts). It is spent on the status of a bench's steps and the calls to follow.
+ */
+import ShareMeta from '../components/ShareMeta.astro';
+import { productAccent } from '../accent';
+import SuiteHead from '@superjackfruitlabs/vibekit-frame/components/SuiteHead.astro';
+import Frame from '@superjackfruitlabs/vibekit-frame/components/Frame.astro';
+
+const SITE = 'https://superbench.dev';
+const REPO = 'https://github.com/SuperJackfruitLabs/superbench';
+const FEED = 'https://github.com/SuperJackfruitLabs/superbench/releases.atom';
+// vibekit's cyan: --cyan is the accent, --cyan-text body-size text, --cyan-tint its pale ground,
+// --cyan-ink text on the accent. The light set also answers the system when nothing is chosen.
+const { light: AL, dark: AD } = productAccent('superbench');
+const vars = (t: typeof AL) => `--cyan: ${t.accent}; --cyan-text: ${t.text}; --cyan-tint: ${t.wash}; --cyan-ink: ${t.fg};`;
+const ACCENT_CSS = `:root { ${vars(AD)} }
+:root[data-theme='light'] { ${vars(AL)} }
+@media (prefers-color-scheme: light) { :root:not([data-theme='dark']) { ${vars(AL)} } }`;
+const TITLE = 'SuperBench — one task, one bench';
+const DESCRIPTION =
+  'A bench is one task\'s git worktree, leased to one holder and checkpointed to the remote between turns. Experimental single-host prototype for trusted repositories; not released yet. MIT.';
+
+// Structured data for search and agents; every value is one the page already states.
+const JSON_LD = {
+  '@context': 'https://schema.org',
+  '@type': 'SoftwareApplication',
+  name: 'SuperBench',
+  description: DESCRIPTION,
+  url: SITE,
+  applicationCategory: 'DeveloperApplication',
+  license: 'https://opensource.org/licenses/MIT',
+  sameAs: [REPO],
+  publisher: { '@type': 'Organization', name: 'Super Jackfruit Labs', url: 'https://superjackfruit.com' },
+};
+
+// A bench's four steps. SB-01 (limited: cooperative leases, no automatic expiry) and SB-02
+// (verified: checkpoint pushes the existing HEAD, no force, confirmed on the remote).
+const STEPS = [
+  {
+    verb: 'create',
+    h: 'Create',
+    p: "A bench is a git worktree for one task, on its own branch.",
+  },
+  {
+    verb: 'lease',
+    h: 'Lease',
+    p: "One holder at a time. Of many simultaneous lease requests, one wins; a restart keeps the lease, and a wrong or old token is refused.",
+  },
+  {
+    verb: 'checkpoint',
+    h: 'Checkpoint',
+    p: "Pushes the bench's existing HEAD to its branch, never with force, then confirms the remote has exactly that commit. It never makes a commit for you: a dirty or untracked tree is refused.",
+  },
+  {
+    verb: 'release',
+    h: 'Release',
+    p: "Release needs a checkpoint. The next holder finds the work where the last one left it.",
+  },
+];
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{TITLE}</title>
+    <meta name="description" content={DESCRIPTION} />
+    <meta name="theme-color" content="#0d1214" />
+    <SuiteHead product="superbench" />
+    <ShareMeta title={TITLE} description={DESCRIPTION} />
+    <link rel="alternate" type="application/atom+xml" title="SuperBench releases" href={FEED} />
+    <script type="application/ld+json" set:html={JSON.stringify(JSON_LD)} />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap"
+    />
+    <style is:inline set:html={ACCENT_CSS}></style>
+    <style>
+      /* The cyan tokens come from vibekit (ACCENT_CSS above); only the grounds are this page's,
+         the same grounds as SuperDispatch's page. Contrast is measured on the built page against
+         vibekit's Daylight cyan once vibekit-ui 0.0.19 exists; record the ratios here then. */
+      :root {
+        --bg: #0d1214; --surface: #141b1e; --inset: #080c0d; --line: rgba(255,255,255,.08);
+        --text: #e7eeee; --muted: #8c979c;
+        --warn: #f4a526; --warn-tint: rgba(244,165,38,.15);
+        --display: 'Space Grotesk', 'IBM Plex Sans', system-ui, sans-serif; --sans: 'IBM Plex Sans', system-ui, sans-serif;
+        --mono: 'IBM Plex Mono', ui-monospace, monospace;
+        color-scheme: dark light;
+      }
+      /* Light tokens: chosen by the toggle (data-theme="light"), or by the system when the
+         visitor has not chosen. */
+      :root[data-theme='light'] {
+        --bg: #f6f8f7; --surface: #ffffff; --inset: #ecf1f0; --line: rgba(13,18,20,.1);
+        --text: #101618; --muted: #52605f;
+        --warn: #8a5a06; --warn-tint: rgba(244,165,38,.18);
+        color-scheme: light;
+      }
+      :root[data-theme='dark'] { color-scheme: dark; }
+      @media (prefers-color-scheme: light) {
+        :root:not([data-theme='dark']) {
+          --bg: #f6f8f7; --surface: #ffffff; --inset: #ecf1f0; --line: rgba(13,18,20,.1);
+          --text: #101618; --muted: #52605f;
+          --warn: #8a5a06; --warn-tint: rgba(244,165,38,.18);
+          color-scheme: light;
+        }
+      }
+
+      * { box-sizing: border-box; }
+      html { -webkit-text-size-adjust: 100%; }
+      body {
+        margin: 0; background: var(--bg); color: var(--text);
+        font-family: var(--sans); font-size: 17px; line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+      }
+      a { color: inherit; }
+      a:focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; border-radius: 4px; }
+      code { font-family: var(--mono); font-size: .86em; }
+
+      .wrap { width: 100%; max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+
+      /* ── hero ─────────────────────────────────────────────────── */
+      .hero { overflow-x: clip; }
+      .hero .wrap {
+        display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 56px; align-items: center;
+        min-height: calc(100svh - 108px); padding-top: 56px; padding-bottom: 72px;
+      }
+      .hero .wrap > * { min-width: 0; }
+      .status {
+        display: inline-flex; align-items: center; gap: 8px; margin: 0 0 22px;
+        font-family: var(--mono); font-size: 12.5px; color: var(--muted);
+        border: 1px solid var(--line); border-radius: 14px; padding: 4px 12px 4px 10px; line-height: 1.5;
+      }
+      .status i { width: 7px; height: 7px; border-radius: 50%; background: var(--warn); flex: none; }
+      h1 {
+        font-family: var(--display); font-weight: 700;
+        font-size: clamp(40px, 5.2vw, 66px); line-height: 1.04;
+        letter-spacing: -0.03em; margin: 0; max-width: 13ch; text-wrap: balance;
+      }
+      h1 em { font-style: normal; color: var(--cyan); }
+      .lede { color: var(--muted); font-size: 18px; line-height: 1.55; margin: 20px 0 14px; max-width: 34em; }
+      .limits { color: var(--muted); font-size: 15.5px; margin: 0 0 28px; max-width: 36em; }
+
+      .cta { display: flex; gap: 12px; flex-wrap: wrap; }
+      .btn {
+        display: inline-flex; align-items: center; border-radius: 10px;
+        min-height: 46px; padding: 0 20px; font: 600 15px var(--sans); text-decoration: none;
+        border: 1px solid transparent; transition: filter .15s, border-color .15s;
+      }
+      .btn-primary { background: var(--cyan); color: var(--cyan-ink); }
+      .btn-primary:hover { filter: brightness(1.08); }
+      .btn-ghost { background: transparent; border-color: var(--line); color: var(--text); }
+      .btn-ghost:hover { border-color: var(--cyan); }
+
+      .mark-wrap { position: relative; margin: 0; justify-self: center; }
+      .mark-wrap::before {
+        content: ''; position: absolute; inset: -40px; z-index: 0; pointer-events: none;
+        background: radial-gradient(closest-side, var(--cyan-tint), transparent 75%); opacity: .6;
+      }
+      .mark-wrap img { position: relative; z-index: 1; display: block; width: 100%; max-width: 320px; height: auto; }
+
+      /* ── bands ────────────────────────────────────────────────── */
+      section.band { border-top: 1px solid var(--line); }
+      section.band .wrap { padding-top: 88px; padding-bottom: 88px; }
+      h2 {
+        font-family: var(--display); font-weight: 700;
+        font-size: clamp(28px, 3vw, 36px); line-height: 1.15; letter-spacing: -0.025em;
+        margin: 0 0 12px; text-wrap: balance;
+      }
+      .sub { color: var(--muted); margin: 0 0 32px; max-width: 640px; font-size: 17px; line-height: 1.6; }
+      .sub + .sub { margin-top: -16px; }
+      .cell { min-width: 0; }
+      .cell h3 { font-family: var(--display); font-weight: 600; font-size: 19px; letter-spacing: -0.01em; margin: 8px 0 6px; }
+      .cell p { margin: 0; color: var(--muted); font-size: 15.5px; }
+      .cell p + p { margin-top: 10px; }
+      .cell .verb { font-family: var(--mono); font-size: 13px; color: var(--cyan-text); }
+      .caveat { font-size: 14.5px !important; }
+      .caveat strong { color: var(--text); font-weight: 500; }
+
+      .steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 28px; }
+      .steps li { border-top: 2px solid var(--cyan); padding-top: 14px; }
+      .after { margin: 24px 0 0; color: var(--muted); font-size: 15.5px; max-width: 760px; }
+      .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 36px 48px; margin-top: 56px; }
+
+      ul.facts { list-style: none; margin: 22px 0 0; padding: 0; display: grid; gap: 12px; max-width: 720px; }
+      ul.facts li { position: relative; padding-left: 22px; }
+      ul.facts li::before {
+        content: ''; position: absolute; left: 2px; top: .62em; width: 8px; height: 8px;
+        border: 1.5px solid var(--cyan); border-radius: 50%;
+      }
+      ul.facts strong { font-weight: 600; }
+      .after a, .sub a, .facts a, .cell a { color: var(--cyan-text); text-underline-offset: 3px; }
+
+      @media (max-width: 899px) {
+        .hero .wrap { grid-template-columns: 1fr; gap: 40px; min-height: auto; padding-top: 40px; padding-bottom: 56px; }
+        .mark-wrap { order: -1; justify-self: start; }
+        .mark-wrap img { max-width: 120px; }
+        .mark-wrap::before { inset: -24px; }
+        section.band .wrap { padding-top: 64px; padding-bottom: 64px; }
+        .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .grid { grid-template-columns: 1fr; gap: 28px; margin-top: 44px; }
+      }
+      @media (max-width: 520px) {
+        .steps { grid-template-columns: 1fr; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        * { transition: none !important; animation: none !important; }
+      }
+    </style>
+  </head>
+  <body>
+    <Frame product="superbench" cta={{ label: 'Watch on GitHub', href: REPO }}>
+    <main>
+      <section class="hero">
+        <div class="wrap">
+          <div>
+            <p class="status"><i aria-hidden="true"></i>Experimental · not released yet</p>
+            <h1>One task, <em>one bench.</em></h1>
+            <!-- SB-01, SB-02, SB-04, SB-07; their caveats follow in .limits and further down. -->
+            <p class="lede">
+              A bench is one task's git worktree, kept warm, fenced and checkpointed between
+              agents' turns. SuperBench creates them, leases each to one holder at a time, and
+              checks the work is on the remote before the next one picks it up.
+            </p>
+            <p class="limits">
+              It is an experimental prototype for one machine and trusted repositories. Leases are
+              cooperative, and nothing in it isolates untrusted code.
+            </p>
+            <div class="cta">
+              <a class="btn btn-primary" href={REPO}>Watch on GitHub</a>
+              <a class="btn btn-ghost" href={FEED}>Release feed</a>
+            </div>
+          </div>
+          <figure class="mark-wrap">
+            <img src="/mark.svg" alt="" width="320" height="320" />
+          </figure>
+        </div>
+      </section>
+
+      <section class="band" aria-labelledby="problem">
+        <div class="wrap">
+          <h2 id="problem">Checkouts pile up, and handoffs lose work</h2>
+          <p class="sub">
+            Give every task its own checkout and they multiply: one per card, per agent, per
+            retry. Nobody cleans them up, because nobody is sure which are safe to delete, until a
+            disk fills and the work in flight stops with it.
+          </p>
+          <p class="sub">
+            And when one agent hands a task to another, whatever the first left uncommitted, or
+            committed and never pushed, is easy to lose.
+          </p>
+        </div>
+      </section>
+
+      <section class="band" aria-labelledby="how">
+        <div class="wrap">
+          <h2 id="how">How a bench works</h2>
+          <p class="sub">
+            A command-line tool, <code>bench</code>, and a local daemon take each bench through four
+            steps.
+          </p>
+          <!-- SB-01 (create, lease, release; limited) and SB-02 (checkpoint; verified). -->
+          <ol class="steps">
+            {STEPS.map((s) => (
+              <li class="cell">
+                <span class="verb">bench {s.verb}</span>
+                <h3>{s.h}</h3>
+                <p>{s.p}</p>
+              </li>
+            ))}
+          </ol>
+          <p class="after caveat">
+            <strong>Leases are cooperative.</strong> A lease stops other <code>bench</code> acquisitions; it does not stop direct edits, other shells, or other processes running
+            as the same user. Leases never expire on their own, so a crashed holder's lease waits
+            for someone to inspect it.
+          </p>
+
+          <div class="grid">
+            <!-- SB-03, limited: managed XFS Linux hosts only. -->
+            <div class="cell">
+              <h3>A quota for each bench</h3>
+              <p>
+                Each bench gets its own byte and inode caps on a dedicated XFS mount, so a bench
+                that runs out of room is refused writes while the shared store stays writable.
+              </p>
+              <p class="caveat">
+                <strong>Managed Linux hosts only.</strong> Quotas need a dedicated XFS mount, a
+                root-owned policy and a privileged helper, set up by an operator. On macOS and on
+                other hosts a quota is recorded, not enforced.
+              </p>
+            </div>
+            <!-- SB-04, limited: shared mirrors and caches. -->
+            <div class="cell">
+              <h3>Shared mirrors and caches</h3>
+              <p>
+                Benches start from shared git mirrors, and each repository chooses shared or
+                checkout-local caches, so a new bench starts warm instead of cloning and installing
+                from scratch.
+              </p>
+              <p class="caveat">
+                <strong>Limits:</strong> the shared package store is part of the managed XFS setup
+                above and shares its limits. If refreshing the shared mirror fails, the lease is
+                refused. Collecting old shared caches is not built yet.
+              </p>
+            </div>
+            <!-- SB-05, limited: after review, locally. -->
+            <div class="cell">
+              <h3>Archive and reap only after review</h3>
+              <p>
+                Only a released, clean bench whose checkpoint the remote has confirmed can be
+                archived, as a read-only tree. Deleting it waits out a grace period, seven days by
+                default, and a person approves the exact list of files first.
+              </p>
+              <p class="caveat">
+                <strong>Local and reviewed.</strong> Archive and reap are administrative commands
+                on the machine itself. A repository can opt in to archiving after a merged
+                checkpoint, but nothing is deleted without a reviewed plan.
+                Automatic log retention is off until an operator turns it on, and retiring a
+                bench's quota during reap applies only on managed Linux hosts.
+              </p>
+            </div>
+            <!-- SB-07, limited: Linux cgroup fencing, not uid or mount isolation. -->
+            <div class="cell">
+              <h3>Supervised runs, fenced</h3>
+              <p>
+                <code>bench run</code> puts a process tree in its own cgroup and stops all of it,
+                detached children too, before the bench is checkpointed and released. A run that
+                fails keeps its lease.
+              </p>
+              <p class="caveat">
+                <strong>Linux only, and fencing, not isolation.</strong> It needs a delegated
+                cgroup v2. It does not run the task as a separate user or isolate its mounts, so
+                use it with trusted repositories only.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="band" aria-labelledby="standalone">
+        <div class="wrap">
+          <h2 id="standalone">Standalone first</h2>
+          <!-- SB-06, verified; SB-08, limited: source-inspected. -->
+          <p class="sub">
+            SuperBench is a CLI and a local daemon that talk over a Unix socket. The daemon checks
+            who is connecting with the kernel's peer credentials, and it opens no TCP listener.
+            That last part is a reading of the source today; no test asserts it yet.
+          </p>
+          <p class="sub">
+            It depends on no other suite product, and an architecture test fails any import outside
+            its allowlist. When the suite integrates it, the suite calls SuperBench; SuperBench
+            never calls the suite. That integration is not built yet.
+          </p>
+        </div>
+      </section>
+
+      <section class="band" aria-labelledby="not-yet">
+        <div class="wrap">
+          <h2 id="not-yet">What's not done yet</h2>
+          <!-- The ledger's roadmap items, each worded as not done. -->
+          <ul class="facts">
+            <li><strong>Payload isolation.</strong> Running a task's payload as a separate user is in progress. Today there is no user or mount isolation, so SuperBench is for trusted repositories only.</li>
+            <li><strong>One host.</strong> Leases are coordinated on a single machine. Moving a bench to another host is a reviewed administrative step, not network coordination.</li>
+            <li><strong>No release.</strong> There are no tags, no binaries and no installer yet.</li>
+            <li><strong>Linux for supervised runs and quotas.</strong> Fenced runs need Linux with cgroup v2, and enforced quotas need a managed Linux host with XFS.</li>
+            <li><strong>No automatic lease expiry, no remote authentication, no web interface and no suite integration.</strong></li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="band" aria-labelledby="follow">
+        <div class="wrap">
+          <h2 id="follow">Follow along</h2>
+          <p class="sub">
+            There is nothing to install yet. Watch or star the repository on GitHub, or subscribe
+            to its release feed, and you will hear when the first release is out.
+          </p>
+          <div class="cta">
+            <a class="btn btn-primary" href={REPO}>Watch on GitHub</a>
+            <a class="btn btn-ghost" href={FEED}>Release feed</a>
+          </div>
+          <p class="after">MIT licensed. The source is on <a href={REPO}>GitHub</a>.</p>
+        </div>
+      </section>
+    </main>
+    </Frame>
+  </body>
+</html>

@@ -1,0 +1,19 @@
+{
+  "name": "@superbench/landing",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev --port 4510",
+    "build": "astro build && node scripts/check-frame.mjs && node scripts/check-copy.mjs",
+    "preview": "astro preview --port 4510",
+    "check:frame": "node scripts/check-frame.mjs",
+    "check:copy": "node scripts/check-copy.mjs"
+  },
+  "dependencies": {
+    "@astrojs/sitemap": "^3.7.4",
+    "@superjackfruitlabs/vibekit-frame": "^0.0.17",
+    "@superjackfruitlabs/vibekit-ui": "^0.0.19",
+    "astro": "^7.3.2"
+  }
+}
