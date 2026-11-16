@@ -14,6 +14,28 @@ boundary is enforced. Do not make Node-private worker contexts readable to the
 payload account to work around an adapter refusal. Installation success and matching
 hashes are not evidence of a successful card or writer fencing.
 
+## Current gaps
+
+AgentPod v0.1.129 cannot complete a card through the separate payload-identity
+path. The following work must land and be verified before the rehearsal can
+establish an end-to-end card result:
+
+- Wire the coordinator to launch the registered worker with its exact retained
+  input and consume its separate, binding-validated result after fencing and drain.
+- Add the Hermes worker-protocol adapter, including prompt/result conversion and
+  explicit provider configuration in the isolated payload home.
+- Land the SuperBench #47–#54 payload-identity stack and complete its fresh-layout
+  bootstrap, restricted RUN/setup/Git, installer and sudo integration. Merging
+  those foundations alone does not activate every required route.
+- Publish an operator-approved AgentPod release containing the coordinator wiring,
+  adapter and compatible worker. Re-pin the installed Node and worker binaries and
+  registry after that upgrade; v0.1.129 does not contain these changes.
+
+The empty bridge-profile fix is merged in AgentPod #900, but it does not close
+these gaps. Keep checkpoint flags off until the enablement gates and actual
+lifecycle checks pass. Configuration, matching hashes and a successful install
+are not evidence that a card can complete.
+
 ## 1. Prepare and install the standalone service
 
 Use a fresh, disposable staging Linux host with systemd, delegated cgroup v2,
