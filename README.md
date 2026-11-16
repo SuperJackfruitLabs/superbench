@@ -188,3 +188,8 @@ lifecycle tests remain separate and must not be inferred from skipped tests.
 See [code quality](docs/code-quality.md).
 SQLite is provided by the pinned pure-Go modernc.org/sqlite driver. Forge is the primary remote; the first three implementation checkpoints passed
 Forge CI. No production deployment is configured.
+
+The [reader codec and display models](web/README.md) support fixture-backed
+[static mockups](docs/mockups/README.md), not a shipped viewer. A product page and
+shared-design-system UI follow operator mockup review. Live authorization,
+content/attachment contracts and remaining Phase 2 work retain separate gates.
