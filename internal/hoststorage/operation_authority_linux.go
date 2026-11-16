@@ -7,35 +7,17 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/storagecustody"
 	"os"
 	"path/filepath"
 	"syscall"
 	"time"
 )
 
-type operationRoot struct {
-	Device, Inode  uint64
-	Mode, UID, GID uint32
-}
+type operationRoot = storagecustody.OperationRoot
 
 func operationRootInfo(path string, private bool) (operationRoot, error) {
-	var zero operationRoot
-	if err := rootOwnedDirectory(path, private); err != nil {
-		return zero, err
-	}
-	device, inode, err := physicalStorageRoot(path)
-	if err != nil {
-		return zero, err
-	}
-	info, err := os.Lstat(path)
-	if err != nil {
-		return zero, err
-	}
-	st := info.Sys().(*syscall.Stat_t)
-	if device != uint64(st.Dev) || inode != st.Ino {
-		return zero, errors.New("operation storage identity changed")
-	}
-	return operationRoot{device, inode, uint32(info.Mode()), st.Uid, st.Gid}, nil
+	return storagecustody.OperationRootInfo(path, private)
 }
 
 // OperationAuthority reads only existing protected policy/ledger/anchor and the

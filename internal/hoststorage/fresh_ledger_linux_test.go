@@ -99,11 +99,20 @@ func TestFreshReservationPersistsBeforeEffectsAndBlocksEveryRetry(t *testing.T) 
 	if err != nil || string(after) != string(raw) || calls != 0 || reservations != 2 {
 		t.Fatalf("refusal changed ledger or initialized: %v calls=%d", err, calls)
 	}
+	if !saved.FreshBench(key) {
+		t.Fatal("legacy release accepted active Fresh reservation")
+	}
+	if (ledger{}).FreshBench(key) || saved.FreshBench("ordinary") {
+		t.Fatal("legacy release refused ordinary allocation")
+	}
 	// Retirement and rebinding must keep both the marker and format-3 fence.
 	a := saved.Assignments[name]
 	a.Bytes, a.Inodes = 0, 0
 	saved.Assignments[name] = a
 	p.bindLedger(&saved)
+	if !saved.FreshBench(key) {
+		t.Fatal("legacy release accepted retired Fresh reservation")
+	}
 	if saved.FormatVersion != 3 || saved.Fresh[name] != 10000 {
 		t.Fatal("rebinding lost fresh exclusion")
 	}

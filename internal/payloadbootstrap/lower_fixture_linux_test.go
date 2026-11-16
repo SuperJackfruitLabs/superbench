@@ -280,6 +280,56 @@ func TestFreshIndexedMaterializerLowerFixture(t *testing.T) {
 	if got := mustLowerInfo(t, root).Sys().(*syscall.Stat_t).Uid; got != private.PayloadUID {
 		t.Fatal("legacy path changed payload ownership")
 	}
+	beforeRelease, err := os.ReadFile(filepath.Join(p.Ledger, "assignments.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = control.Run(t.Context(), func() error { _, err := p.Release(spec.Key, result.Allocation.ProjectID); return err })
+	if !errors.Is(err, hoststorage.ErrRegisteredAllocation) {
+		t.Fatalf("legacy release bypassed Fresh allocation custody: %v", err)
+	}
+	assertLowerBytes(t, filepath.Join(p.Ledger, "assignments.json"), beforeRelease)
+	if got := mustLowerInfo(t, root).Sys().(*syscall.Stat_t).Uid; got != private.PayloadUID {
+		t.Fatal("legacy release changed payload ownership")
+	}
+	t.Log("LOWER_LEGACY_RELEASE_FRESH_REFUSAL_PASS")
+	var ordinary hoststorage.Assignment
+	err = control.Run(t.Context(), func() error {
+		var err error
+		ordinary, err = p.ApplyRequested("bench", "ordinary-release", 4<<20)
+		return err
+	})
+	if err != nil {
+		t.Fatal("ordinary allocation setup", err)
+	}
+	err = control.Run(t.Context(), func() error {
+		released, err := p.Release("ordinary-release", ordinary.ProjectID)
+		if err == nil && (released.Path != ordinary.Path || released.ProjectID != ordinary.ProjectID || released.Bytes != 0 || released.Inodes != 0) {
+			return errors.New("ordinary release changed identity or retained caps")
+		}
+		return err
+	})
+	if err != nil {
+		t.Fatal("ordinary release compatibility", err)
+	}
+	if _, err := os.Lstat(ordinary.Path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("ordinary release retained leaf", err)
+	}
+	currentReleaseLedger, err := os.ReadFile(filepath.Join(p.Ledger, "assignments.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var currentReleaseRows struct {
+		Assignments map[string]hoststorage.Assignment
+	}
+	if err := json.Unmarshal(currentReleaseLedger, &currentReleaseRows); err != nil || currentReleaseRows.Assignments["bench:"+spec.Key] != result.Allocation {
+		t.Fatal("ordinary release changed Fresh reservation", err)
+	}
+	if got := mustLowerInfo(t, root).Sys().(*syscall.Stat_t).Uid; got != private.PayloadUID {
+		t.Fatal("ordinary release changed Fresh ownership")
+	}
+	t.Log("LOWER_LEGACY_RELEASE_ORDINARY_COMPATIBILITY_PASS")
+
 	t.Log("LOWER_ACTUAL_MATERIALIZER_COMPLETE_AND_LEGACY_EXCLUSION_PASS")
 	assertLowerRetainedInspection(t, control, p, spec, identity, result, helper, expectedSHA)
 	assertFreshAbsentRetirement(t, control, p)

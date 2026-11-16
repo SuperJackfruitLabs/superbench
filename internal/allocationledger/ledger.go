@@ -32,6 +32,11 @@ type Binding struct {
 	BenchInodes, StoreInodes, MirrorInodes, ReserveInodes uint64
 }
 
+func (l Ledger) FreshBench(key string) bool {
+	_, exists := l.Fresh["bench:"+key]
+	return exists
+}
+
 func (l Ledger) Filesystem() string {
 	if l.FormatVersion >= 2 {
 		return l.FilesystemUUID
