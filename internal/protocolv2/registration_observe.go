@@ -104,7 +104,7 @@ func ParseRegistrationObserveResponse(raw []byte, status int, request Registrati
 		return zero, ErrResponse
 	}
 	v := r.Result
-	if v.Key != request.Key || v.BenchID != request.BenchID || v.LayoutVersion != "superbench.payload-layout.v1" || !digestPattern.MatchString(v.PolicySHA256) || len(v.RootPath) > 4096 || !utf8.ValidString(v.RootPath) || strings.ContainsRune(v.RootPath, 0) || !filepath.IsAbs(v.RootPath) || filepath.Clean(v.RootPath) != v.RootPath || v.RootPath == "/" || len(v.Members) < 1 || len(v.Members) > 32 {
+	if v.Key != request.Key || v.BenchID != request.BenchID || v.LayoutVersion != "superbench.payload-layout.v1" || !digestPattern.MatchString(v.PolicySHA256) || len(v.RootPath) > 4096 || !utf8.ValidString(v.RootPath) || strings.ContainsRune(v.RootPath, 0) || !filepath.IsAbs(v.RootPath) || filepath.Clean(v.RootPath) != v.RootPath || !strings.HasSuffix(v.RootPath, "/benches/"+request.Key) || len(v.Members) < 1 || len(v.Members) > 32 {
 		return zero, ErrResponse
 	}
 	seen := map[RegistrationNode]bool{}
