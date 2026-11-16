@@ -69,8 +69,8 @@ func (m *Manager) Materialize(ctx context.Context, s Spec) error {
 		if err != nil {
 			return err
 		}
-		if i.Phase != "begun" {
-			return ErrBootstrap
+		if err = i.requireMaterializePhase(); err != nil {
+			return err
 		}
 		if err = m.checkRoot(i, m.policy.DaemonUID); err != nil {
 			return err
