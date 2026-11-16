@@ -143,6 +143,9 @@ def main():
         subprocess.run([sys.executable, str(source / 'scripts/check-identity-ci.py'),
                         '--source', str(checkout), '--user', args.user, '--go', go,
                         '--gocache', str(build_cache), '--gomodcache', str(module_cache)], check=True)
+        subprocess.run([sys.executable, str(source / 'scripts/check-payload-exec-ci.py'),
+                        '--source', str(checkout), '--user', args.user, '--go', go,
+                        '--gocache', str(build_cache), '--gomodcache', str(module_cache)], check=True)
     else:
         print('PASS: ordinary unprivileged suite; installed identity requires the separate privileged job', flush=True)
 

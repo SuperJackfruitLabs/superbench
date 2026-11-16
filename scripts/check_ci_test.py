@@ -1,5 +1,7 @@
 """Conductor characterization: no compilation, privileges or fixture execution."""
+import ast
 import contextlib
+import re
 import importlib.util
 import io
 import os
@@ -96,9 +98,49 @@ class RunnerSeparation(unittest.TestCase):
         self.assertIn('runs-on: ubuntu-latest', text)
         self.assertIn('runs-on: [self-hosted, superbench-privileged]', text)
         self.assertIn('python3 scripts/check-ci.py --privileged-only', text)
-        self.assertIn('head.repo.fork == false', text)
+        self.assertNotIn('head.repo.fork == false', text)
         self.assertNotIn('continue-on-error', text)
         self.assertEqual(text.count('timeout-minutes: 60'), 2)
+
+
+class PrivilegedTrustGate(unittest.TestCase):
+    def test_actual_workflow_gate_rejects_untrusted_events_and_missing_metadata(self):
+        text = (SOURCE.parent.parent / '.forgejo/workflows/ci.yml').read_text()
+        job = text.split('  privileged-identity:', 1)[1]
+        expression = re.search(r'^    if: (.+)$', job, re.MULTILINE).group(1)
+        # Evaluate the actual closed expression, with unknown context failing closed.
+        # No YAML dependency or shell evaluation is needed for this scalar condition.
+        expression = expression.replace('&&', ' and ').replace('||', ' or ')
+
+        def permitted(event, ref, protected=None):
+            values = {'github.event_name': event, 'github.ref': ref,
+                      'needs.check.outputs.trusted_ref': protected}
+            resolved = re.sub(r'(?:github|needs)(?:\.[A-Za-z_]+)+',
+                              lambda match: repr(values.get(match.group())), expression)
+            tree = ast.parse(resolved, mode='eval')
+            allowed = (ast.Expression, ast.BoolOp, ast.And, ast.Or, ast.Compare,
+                       ast.Eq, ast.NotEq, ast.Constant)
+            self.assertTrue(all(isinstance(node, allowed) for node in ast.walk(tree)))
+            return eval(compile(tree, '<workflow trust gate>', 'eval'), {'__builtins__': {}})
+
+        self.assertIn('needs: check', job)
+        self.assertNotIn('ref_protected', expression)
+        self.assertIn('trusted_ref: ${{ steps.trusted_ref.outputs.trusted_ref }}', text)
+        self.assertTrue(permitted('push', 'refs/heads/main', 'true'))
+        for event, ref, protected in (
+            ('push', 'refs/heads/main', False),
+            ('push', 'refs/heads/main', None),
+            ('push', 'refs/heads/main', True),
+            ('push', 'refs/heads/main', 'false'),
+            ('push', 'refs/heads/topic', 'true'),
+            ('push', 'refs/tags/v0.0.1', 'true'),
+            ('pull_request', 'refs/heads/main', 'true'),
+            ('pull_request', 'refs/pull/47/head', 'true'),
+            ('pull_request_target', 'refs/heads/main', 'true'),
+            ('workflow_dispatch', 'refs/heads/main', 'true'),
+        ):
+            with self.subTest(event=event, ref=ref, protected=protected):
+                self.assertFalse(permitted(event, ref, protected))
 
 
 if __name__ == '__main__':
