@@ -17,33 +17,46 @@ import (
 // function must never be called inside a daemon or reusable server process.
 // It consumes a bounded request frame from stdin, retaining only Git's subsequent
 // ordinary stdin. It does not create or convert any layout or change ownership.
-func Exec() error {
+func Exec() (err error) {
+	phase := "caller"
+	defer func() {
+		if err != nil {
+			err = &refusalError{phase: phase, cause: err}
+		}
+	}()
 	if os.Getuid() != 0 || os.Geteuid() != 0 {
 		return ErrBoundary
 	}
+	phase = "policy"
 	p, err := LoadFixedPolicy()
 	if err != nil {
 		return errors.Join(ErrBoundary, err)
 	}
+	phase = "stdio"
 	if err := verifyStdio(p); err != nil {
 		return err
 	}
+	phase = "descriptors"
 	if err := descriptorsCloseOnExec(); err != nil {
 		return err
 	}
+	phase = "frame"
 	r, err := readFrame(os.Stdin, frameTimeout)
 	if err != nil {
 		return err
 	}
+	phase = "scope"
 	scope, err := VerifyScope(p, r)
 	if err != nil {
 		return err
 	}
 	defer scope.Close()
+	phase = "layout"
 	l, err := LoadLayout(p, r)
 	if err != nil {
 		return err
 	}
+	phase = "boundary"
 	b, err := openBoundary(p, r, l)
 	if err != nil {
 		return err
@@ -53,10 +66,12 @@ func Exec() error {
 	if err != nil {
 		return err
 	}
+	phase = "environment"
 	environment, err := Environment(home, tmp, os.Environ())
 	if err != nil {
 		return err
 	}
+	phase = "executable"
 	if err := verifyCommandDirectories(); err != nil {
 		return err
 	}
@@ -67,13 +82,16 @@ func Exec() error {
 	}
 	// The framed input and immutable registration must still name the same
 	// scope/layout at the last privileged boundary. No SQL or callbacks run here.
+	phase = "layout"
 	current, err := LoadLayout(p, r)
 	if err != nil || !reflect.DeepEqual(current, l) {
 		return errors.Join(ErrBoundary, err)
 	}
+	phase = "boundary"
 	if err := b.check(); err != nil {
 		return err
 	}
+	phase = "scope"
 	currentScope, err := VerifyScope(p, r)
 	if err != nil {
 		return err
@@ -84,24 +102,30 @@ func Exec() error {
 	if aErr != nil || cErr != nil || !os.SameFile(a, c) {
 		return errors.Join(ErrBoundary, aErr, cErr)
 	}
+	phase = "policy"
 	currentPolicy, err := LoadFixedPolicy()
 	if err != nil || currentPolicy != p {
 		return errors.Join(ErrBoundary, err)
 	}
+	phase = "stdio"
 	if err := verifyStdio(p); err != nil {
 		return err
 	}
+	phase = "descriptors"
 	if err := descriptorsCloseOnExec(); err != nil {
 		return err
 	}
+	phase = "credentials"
 	if err := dropCredentials(p); err != nil {
 		return err
 	}
+	phase = "boundary"
 	if err := syscall.Fchdir(int(b.cwd.Fd())); err != nil {
 		return errors.Join(ErrBoundary, err)
 	}
 	// Lookup is deliberately after the credential drop. It uses a reconstructed
 	// fixed PATH; neither daemon secrets nor loader/sudo/Git overrides survive.
+	phase = "environment"
 	os.Clearenv()
 	for _, item := range environment {
 		key, value, _ := strings.Cut(item, "=")
@@ -109,6 +133,7 @@ func Exec() error {
 			return errors.Join(ErrBoundary, err)
 		}
 	}
+	phase = "executable"
 	path := "/usr/bin/git"
 	if r.Kind != "git" {
 		path, err = exec.LookPath(r.Arguments[0])
@@ -116,9 +141,11 @@ func Exec() error {
 			return errors.Join(ErrBoundary, err)
 		}
 	}
+	phase = "descriptors"
 	if err := descriptorsCloseOnExec(); err != nil {
 		return err
 	}
+	phase = "exec"
 	return syscall.Exec(path, r.Arguments, environment)
 }
 
