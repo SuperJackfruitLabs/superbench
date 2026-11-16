@@ -34,8 +34,8 @@ func TestClassificationPromotionCannotStealFullNormalSlot(t *testing.T) {
 	}
 	c := &peerConn{Conn: a, slot: classifiers, normal: normal}
 	defer c.Close()
-	if err := c.promote(); err == nil {
-		t.Fatal("promoted past normal connection ceiling")
+	if err := c.promote(); err == nil || err.Error() != "connection class limit reached" {
+		t.Fatal("normal connection ceiling did not refuse promotion", err)
 	}
 	if len(normal) != 64 || len(classifiers) != 1 {
 		t.Fatal("failed promotion changed reservation")
