@@ -109,6 +109,8 @@ func TestArchitecture(t *testing.T) {
 				"cmd/benchd":                    {"internal/bench", "internal/service"},
 				"cmd/bench-payload":             {"internal/payloadexec"},
 				"cmd/bench-quota":               {"internal/hoststorage", "internal/quotahelper", "internal/quotaoperation"},
+
+				"internal/quotaoperationjournal": {"internal/quotaoperation"},
 			}
 			allowed := !strings.Contains(strings.Split(p, "/")[0], ".")
 			for _, target := range edges[rel] {
@@ -116,7 +118,7 @@ func TestArchitecture(t *testing.T) {
 					allowed = true
 				}
 			}
-			if p == "modernc.org/sqlite" && (rel == "internal/statestore" && filepath.Base(path) == "sqlite.go" || rel == "internal/operationreceipts" && filepath.Base(path) == "receipts.go") {
+			if p == "modernc.org/sqlite" && (rel == "internal/statestore" && filepath.Base(path) == "sqlite.go" || rel == "internal/operationreceipts" && filepath.Base(path) == "receipts.go" || rel == "internal/quotaoperationjournal" && filepath.Base(path) == "store.go") {
 				allowed = true
 			}
 			if p == "github.com/pelletier/go-toml/v2" && rel == "internal/setup" && filepath.Base(path) == "config.go" {
