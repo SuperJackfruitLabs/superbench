@@ -168,3 +168,58 @@ func TestOperationFreezesRealIdentity(t *testing.T) {
 		t.Fatalf("identity changed:%+v %v", proof, err)
 	}
 }
+
+// This fixture models a fixed-value, identity-keyed idempotent effect. It does
+// not prove XFS effects: real quota fixtures separately verify stable project IDs.
+func TestExactIdentityRetryRepeatsEffectButForeignStateCannotAdopt(t *testing.T) {
+	s := initializedFixture(t)
+	dir := t.TempDir()
+	result := []byte("fixed allocation result: project=10000 bytes=32768 inodes=4096")
+	calls := 0
+	effect := func(state string) func() error {
+		return func() error {
+			calls++
+			path := filepath.Join(dir, state)
+			if saved, err := os.ReadFile(path); err == nil {
+				if string(saved) != string(result) {
+					return ErrAuthority
+				}
+				return nil
+			} else if !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
+			return os.WriteFile(path, result, 0600)
+		}
+	}
+	if err := s.Apply(context.Background(), effect(s.identity.StateIdentity)); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, s.identity.StateIdentity)
+	original, err := os.Lstat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.Apply(context.Background(), effect(s.identity.StateIdentity)); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := os.ReadFile(path)
+	current, statErr := os.Lstat(path)
+	if err != nil || statErr != nil || calls != 2 || string(saved) != string(result) || !os.SameFile(original, current) || original.ModTime() != current.ModTime() {
+		t.Fatalf("exact retry changed fixed result: calls=%d %q %v %v", calls, saved, err, statErr)
+	}
+	foreign := *s
+	foreign.identity.StateIdentity = strings.Repeat("f", 64)
+	foreign.verify = func(quotaoperation.Identity) error { return nil }
+	if err = foreign.Apply(context.Background(), effect(foreign.identity.StateIdentity)); !errors.Is(err, ErrAuthority) || calls != 2 {
+		t.Fatalf("foreign state adopted original identity: %d %v", calls, err)
+	}
+	if _, err = os.Lstat(filepath.Join(dir, foreign.identity.StateIdentity)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("foreign result created: %v", err)
+	}
+	if _, err = s.Cancel(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.Apply(context.Background(), effect(s.identity.StateIdentity)); !errors.Is(err, quotaoperation.ErrCancelled) || calls != 2 {
+		t.Fatalf("denied retry escaped: %d %v", calls, err)
+	}
+}

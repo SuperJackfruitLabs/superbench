@@ -94,7 +94,33 @@ func TestInstalledIndexedPolicyRefusesMissingHistory(t *testing.T) {
 	missingHistory(err)
 	err = runIndexedOperation(context.Background(), p, operationRequest{command: "operation-info"}, "", "", &output)
 	missingHistory(err)
-	missingHistory(run([]string{"apply", "bench", "fresh"}))
+	for _, args := range [][]string{{"apply", "bench", "fresh"}, {"release", "bench", "fresh", "10000"}} {
+		if err := run(args); !errors.Is(err, errUnscopedIndexed) {
+			t.Fatalf("unscoped indexed mutation: %v", err)
+		}
+	}
+	// The actual CLI must completely validate stdin BEFORE even opening missing
+	// indexed history. Moving the read back inside Run changes this precise error
+	// to the missing-format failure above, so the ordering regression goes red.
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = writer.Write([]byte("{")); err != nil {
+		t.Fatal(err)
+	}
+	if err = writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	originalInput := os.Stdin
+	os.Stdin = reader
+	err = run([]string{"retire-approved", "bench", "fresh"})
+	os.Stdin = originalInput
+	reader.Close()
+	if !errors.Is(err, io.ErrUnexpectedEOF) {
+		t.Fatalf("retirement acquired control before input validation: %v", err)
+	}
+	t.Log("INSTALLED_RETIREMENT_INPUT_VALIDATED_BEFORE_CONTROL_OPEN")
 	if effects != 0 || output.Len() != 0 {
 		t.Fatal("missing indexed history fell back or published output", effects, output.String())
 	}

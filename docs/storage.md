@@ -60,6 +60,14 @@ not setuid or sudo callers. The [Linux installer](install.md) supplies the servi
 sudo rule in managed mode. It never installs a privileged daemon or starts a
 service automatically.
 
+An explicitly installed `OperationJournal: "indexed-v2"` policy requires original
+operation identity for allocation effects. Unscoped `apply` and `release` refuse;
+`apply-operation` retains the original state identity and epoch. An exact retry
+may repeat its fixed idempotent storage effect: the journal records reservation
+and denial, not successful completion. Reviewed retirement remains a separate
+approval-bound operation. This mode does not initialize missing history or enable
+a service; legacy policy mode retains its existing command behavior.
+
 ## Configure a fresh managed host
 
 Pass the same state/data paths on every CLI call:

@@ -9,17 +9,30 @@ import (
 )
 
 func runRetirement(p hoststorage.Policy, operation, key string, input io.Reader, output io.Writer) error {
-	raw, err := io.ReadAll(io.LimitReader(input, hoststorage.MaxRetirementApproval+1))
+	approval, err := readRetirementApproval(key, input)
 	if err != nil {
 		return err
+	}
+	return runRetirementApproval(p, operation, approval, output)
+}
+
+func readRetirementApproval(key string, input io.Reader) (hoststorage.RetirementApproval, error) {
+	raw, err := io.ReadAll(io.LimitReader(input, hoststorage.MaxRetirementApproval+1))
+	if err != nil {
+		return hoststorage.RetirementApproval{}, err
 	}
 	approval, err := hoststorage.ParseRetirementApproval(raw)
 	if err != nil {
-		return err
+		return hoststorage.RetirementApproval{}, err
 	}
 	if approval.Key != key {
-		return errors.New("retirement approval belongs to another logical bench")
+		return hoststorage.RetirementApproval{}, errors.New("retirement approval belongs to another logical bench")
 	}
+	return approval, nil
+}
+
+func runRetirementApproval(p hoststorage.Policy, operation string, approval hoststorage.RetirementApproval, output io.Writer) error {
+	var err error
 	var assignment hoststorage.Assignment
 	switch operation {
 	case "retire-approved":
@@ -34,7 +47,7 @@ func runRetirement(p hoststorage.Policy, operation, key string, input io.Reader,
 	if err != nil {
 		return err
 	}
-	raw, err = json.Marshal(assignment)
+	raw, err := json.Marshal(assignment)
 	if err != nil {
 		return err
 	}

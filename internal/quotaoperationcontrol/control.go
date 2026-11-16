@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"os"
-	"reflect"
 	"syscall"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage"
@@ -27,47 +26,11 @@ func Open(ctx context.Context) (*quotaoperationjournal.Control, hoststorage.Poli
 	if os.Getuid() != 0 || os.Geteuid() != 0 {
 		return nil, zero, ErrPolicy
 	}
-	info, err := os.Lstat(PolicyPath)
+	pin, p, err := installedPolicy()
 	if err != nil {
 		return nil, zero, err
 	}
-	if !policyFile(info) {
-		return nil, zero, ErrPolicy
-	}
-	p, err := hoststorage.Load(PolicyPath)
-	if err != nil {
-		return nil, zero, err
-	}
-	if p.OperationJournal != "indexed-v2" {
-		return nil, zero, ErrPolicy
-	}
-	check := func(ctx context.Context) error {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		if os.Getuid() != 0 || os.Geteuid() != 0 {
-			return ErrPolicy
-		}
-		now, err := os.Lstat(PolicyPath)
-		if err != nil {
-			return err
-		}
-		if !policyFile(now) || !os.SameFile(info, now) || info.Mode() != now.Mode() {
-			return ErrPolicy
-		}
-		actual, err := hoststorage.Load(PolicyPath)
-		if err != nil {
-			return err
-		}
-		if !reflect.DeepEqual(actual, p) {
-			return ErrPolicy
-		}
-		end, err := os.Lstat(PolicyPath)
-		if err != nil || !policyFile(end) || !os.SameFile(info, end) || end.Mode() != info.Mode() {
-			return ErrPolicy
-		}
-		return ctx.Err()
-	}
+	check := pin.check
 	c, err := quotaoperationjournal.OpenExisting(ctx, quotaoperationjournal.Config{
 		Directory: p.Ledger, CheckControl: check,
 		CheckReady: func(ctx context.Context) (string, error) {
@@ -85,6 +48,7 @@ func Open(ctx context.Context) (*quotaoperationjournal.Control, hoststorage.Poli
 		},
 	})
 	if err != nil {
+		pin.close()
 		return nil, zero, err
 	}
 	return c, p, nil

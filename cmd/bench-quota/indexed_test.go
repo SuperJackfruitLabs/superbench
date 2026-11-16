@@ -86,3 +86,43 @@ func TestIndexedPolicyFencesLegacyStrictDecoderAndDefaultEncoding(t *testing.T) 
 		}
 	}
 }
+
+func TestBufferedQuotaWithholdsSuccessfulEffectAfterFinalAuthorityFailure(t *testing.T) {
+	finalErr := errors.New("actual final authority check failed")
+	effects := 0
+	var out bytes.Buffer
+	effect := func(w io.Writer) error {
+		effects++
+		_, err := io.WriteString(w, "private completed effect")
+		return err
+	}
+	// The enclosing control checks authority AFTER the actual effect succeeds.
+	err := bufferedQuotaOutput(func(fn func() error) error {
+		if err := fn(); err != nil {
+			return err
+		}
+		return finalErr
+	}, effect, &out)
+	if !errors.Is(err, finalErr) || effects != 1 || out.Len() != 0 {
+		t.Fatalf("unverified bytes escaped: %q %d %v", out.String(), effects, err)
+	}
+	if err = bufferedQuotaOutput(func(fn func() error) error { return fn() }, effect, &out); err != nil || effects != 2 || out.String() != "private completed effect" {
+		t.Fatalf("verified publication changed: %q %d %v", out.String(), effects, err)
+	}
+}
+
+func TestIndexedUnscopedMutationsRequireOriginalProvenance(t *testing.T) {
+	for _, command := range []string{"apply", "release"} {
+		if err := checkIndexedCommand(hoststorage.Policy{OperationJournal: "indexed-v2"}, command); !errors.Is(err, errUnscopedIndexed) {
+			t.Fatalf("%s: %v", command, err)
+		}
+		if err := checkIndexedCommand(hoststorage.Policy{}, command); err != nil {
+			t.Fatalf("legacy %s changed: %v", command, err)
+		}
+	}
+	for _, command := range []string{"apply-operation", "cancel-operation", "retire-approved", "verify-retired", "verify", "inspect-allocation"} {
+		if err := checkIndexedCommand(hoststorage.Policy{OperationJournal: "indexed-v2"}, command); err != nil {
+			t.Fatalf("typed/reviewed %s refused: %v", command, err)
+		}
+	}
+}

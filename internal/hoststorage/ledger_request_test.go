@@ -51,6 +51,14 @@ func TestLedgerConversionPreservesAssignmentsAndClosesLegacyReader(t *testing.T)
 	if e = json.Unmarshal(raw, &legacy); e != nil || legacy.VolumeID != "" {
 		t.Fatal("legacy decoder still received an acceptable identity", legacy, e)
 	}
+	// An alternate legacy policy cannot reinterpret an indexed-bound header.
+	indexed := p
+	indexed.OperationJournal = "indexed-v2"
+	indexed.bindLedger(&l)
+	if e = p.checkLedger(l); e == nil || e.Error() != "quota policy differs from the pinned ledger; explicit migration required" {
+		t.Fatalf("legacy policy accepted indexed authority: %v", e)
+	}
+	p.bindLedger(&l)
 	// Encoding is stable on another bind, so a retry cannot move identity or IDs.
 	p.bindLedger(&l)
 	retry, e := json.Marshal(l)

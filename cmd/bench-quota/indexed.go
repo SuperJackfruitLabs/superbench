@@ -13,6 +13,15 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotaoperationcontrol"
 )
 
+var errUnscopedIndexed = errors.New("indexed operation policy requires original typed operation identity; unscoped apply/release refused")
+
+func checkIndexedCommand(p hoststorage.Policy, command string) error {
+	if p.OperationJournal != "" && (command == "apply" || command == "release") {
+		return errUnscopedIndexed
+	}
+	return nil
+}
+
 // Generic indexed helper actions share the operation barrier. Output is kept
 // private until the final authority checks pass, including for read-only calls.
 func runFixedPolicy(ctx context.Context, path string, p hoststorage.Policy, effect func(io.Writer) error, output io.Writer) error {
@@ -29,8 +38,14 @@ func runFixedPolicy(ctx context.Context, path string, p hoststorage.Policy, effe
 	if !reflect.DeepEqual(p, installed) {
 		return quotaoperationcontrol.ErrPolicy
 	}
+	return bufferedQuotaOutput(func(fn func() error) error { return c.Run(ctx, fn) }, effect, output)
+}
+
+// Publication is separate from effect completion: the retained control performs
+// final authority checks after the effect returns and before these bytes escape.
+func bufferedQuotaOutput(run func(func() error) error, effect func(io.Writer) error, output io.Writer) error {
 	var pending quotaOutput
-	if err = c.Run(ctx, func() error { return effect(&pending) }); err != nil {
+	if err := run(func() error { return effect(&pending) }); err != nil {
 		return err
 	}
 	return writeQuotaOutput(output, pending.buffer.Bytes())

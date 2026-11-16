@@ -52,9 +52,21 @@ func run(args []string) error {
 	if migrating && p.OperationJournal != "" {
 		return fmt.Errorf("indexed operation policy does not permit inode migration")
 	}
+	if err := checkIndexedCommand(p, f.Arg(0)); err != nil {
+		return err
+	}
+	var approval hoststorage.RetirementApproval
+	if retirement {
+		var err error
+		// Complete bounded input validation before acquiring operations.lock.
+		approval, err = readRetirementApproval(f.Arg(2), os.Stdin)
+		if err != nil {
+			return err
+		}
+	}
 	return runFixedPolicy(context.Background(), *policy, p, func(output io.Writer) error {
 		if retirement {
-			return runRetirement(p, f.Arg(0), f.Arg(2), os.Stdin, output)
+			return runRetirementApproval(p, f.Arg(0), approval, output)
 		}
 		if allocation {
 			observation, err := p.InspectAllocation(context.Background(), f.Arg(2))
