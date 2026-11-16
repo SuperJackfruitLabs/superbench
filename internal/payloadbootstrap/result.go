@@ -30,7 +30,7 @@ func (r Result) Validate(p payloadexec.Policy, s Spec) error {
 		}
 	}
 	a := r.Allocation
-	if a.Path != filepath.Join(p.DataRoot, "benches", s.Key) || a.ProjectID < 10000 || a.Bytes < 1024 || a.Bytes > 1<<50 || a.Bytes%1024 != 0 || a.Inodes == 0 || a.Inodes > 1<<50 || s.QuotaBytes != 0 && a.Bytes != s.QuotaBytes {
+	if a.Path != filepath.Join(p.DataRoot, "benches", s.Key) || a.ProjectID < 10000 || a.Bytes < 1024 || a.Bytes > 1<<50 || a.Bytes%1024 != 0 || a.Inodes == 0 || a.Inodes > 1<<40 || s.QuotaBytes != 0 && a.Bytes != s.QuotaBytes {
 		return ErrBootstrap
 	}
 	return nil

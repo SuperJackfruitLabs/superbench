@@ -47,7 +47,7 @@ func TestBootstrapResultBindsOriginalAllocationAndGroupedRegistration(t *testing
 		"shared-project": func(r *Result) { r.Allocation.ProjectID = 100 },
 		"request-cap":    func(r *Result) { r.Allocation.Bytes *= 2 },
 		"zero-inodes":    func(r *Result) { r.Allocation.Inodes = 0 },
-		"inode-overflow": func(r *Result) { r.Allocation.Inodes = 1 << 51 },
+		"inode-overflow": func(r *Result) { r.Allocation.Inodes = 1 << 41 },
 	} {
 		t.Run(name, func(t *testing.T) {
 			r := valid
