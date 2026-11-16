@@ -15,6 +15,10 @@ const Version = "superbench.payload.v1"
 // It does not enlarge command, setup, wire or kernel execution limits.
 const MaxRequest = 16 << 20
 
+// MaxPayloadInput bounds decoded opaque stdin. Its base64 encoding also counts
+// against MaxRequest; the limit is fixed here, never selected by a payload.
+const MaxPayloadInput = 1 << 20
+
 var ErrRequest = errors.New("invalid managed payload launch request")
 var logical = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$`)
 var identity = regexp.MustCompile(`^[a-f0-9]{32}$`)
@@ -32,9 +36,15 @@ type Request struct {
 	Root                                               bool
 	Scope                                              Scope
 	Arguments                                          []string
+	// Input is optional private transport data, not an execution authority.
+	// Omission preserves the existing payload EOF and Git streaming encodings.
+	Input []byte `json:",omitempty"`
 }
 
 func (r Request) Validate() error {
+	if len(r.Input) > MaxPayloadInput || len(r.Input) != 0 && r.Kind != "payload" {
+		return ErrRequest
+	}
 	if r.Version != Version || !hostIdentity.MatchString(r.PolicyDigest) || r.Kind != "payload" && r.Kind != "git" || r.Root && (r.Member != "" || r.Kind != "payload") || !logical.MatchString(r.Key) || !identity.MatchString(r.LayoutID) || r.Member != "" && !logical.MatchString(r.Member) || !identity.MatchString(r.Scope.ID) || !hostIdentity.MatchString(r.Scope.HostID) || !bootIdentity.MatchString(r.Scope.BootID) || len(r.Arguments) == 0 || r.Arguments[0] == "" {
 		return ErrRequest
 	}

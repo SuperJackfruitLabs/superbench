@@ -68,14 +68,33 @@ type Bridge struct {
 // Prepare mutates the SAME unstarted Cmd, preserving its context/Cancel and
 // WaitDelay. Input must be explicit; a preexisting Cmd.Stdin is not adopted.
 // Sinks remain daemon-side only. Non-file sinks must be trusted bounded writers.
-func Prepare(cmd *exec.Cmd, t Target, e *execution.Execution, input GitInput) (b *Bridge, err error) {
+func Prepare(cmd *exec.Cmd, t Target, e *execution.Execution, input GitInput) (*Bridge, error) {
+	return prepare(cmd, t, e, input, nil)
+}
+
+// PayloadInput is explicit finite opaque stdin. Limit comes from trusted caller
+// policy, never from payload data; it cannot exceed the helper's fixed maximum.
+type PayloadInput struct {
+	Bytes []byte
+	Limit uint64
+}
+
+// PreparePayloadInput is proposed internal transport only, not a public RUN API.
+// It never adopts Cmd.Stdin or parses the bytes. Empty input preserves EOF.
+func PreparePayloadInput(cmd *exec.Cmd, t Target, e *execution.Execution, input PayloadInput) (*Bridge, error) {
+	if t.Kind != "payload" || input.Limit == 0 || input.Limit > payloadexec.MaxPayloadInput || uint64(len(input.Bytes)) > input.Limit {
+		return nil, ErrTransport
+	}
+	return prepare(cmd, t, e, GitInput{}, bytes.Clone(input.Bytes))
+}
+func prepare(cmd *exec.Cmd, t Target, e *execution.Execution, input GitInput, payload []byte) (b *Bridge, err error) {
 	if cmd == nil || cmd.Process != nil || cmd.SysProcAttr != nil || len(cmd.ExtraFiles) != 0 || cmd.Stdin != nil || e == nil || e.Phase != "starting" || !filepath.IsAbs(e.Root) || filepath.Clean(e.Root) != e.Root || e.Root == "/" {
 		return nil, ErrTransport
 	}
 	if t.Kind != "git" && (len(input.Bytes) != 0 || input.Limit != 0) || uint64(len(input.Bytes)) > input.Limit {
 		return nil, ErrTransport
 	}
-	r := payloadexec.Request{Version: payloadexec.Version, Key: t.Key, LayoutID: t.LayoutID, Member: t.Member, PolicyDigest: t.PolicyDigest, Kind: t.Kind, Root: t.Root, Scope: payloadexec.Scope{ID: e.ID, HostID: e.HostID, BootID: e.BootID}, Arguments: append([]string(nil), cmd.Args...)}
+	r := payloadexec.Request{Version: payloadexec.Version, Key: t.Key, LayoutID: t.LayoutID, Member: t.Member, PolicyDigest: t.PolicyDigest, Kind: t.Kind, Root: t.Root, Scope: payloadexec.Scope{ID: e.ID, HostID: e.HostID, BootID: e.BootID}, Arguments: append([]string(nil), cmd.Args...), Input: payload}
 	raw, err := r.Bytes()
 	if err != nil {
 		return nil, errors.Join(ErrTransport, err)

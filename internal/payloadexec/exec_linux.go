@@ -115,6 +115,14 @@ func Exec() (err error) {
 	if err := descriptorsCloseOnExec(); err != nil {
 		return err
 	}
+	phase = "input"
+	input, err := openPayloadInput(r)
+	if err != nil {
+		return err
+	}
+	if input != nil {
+		defer input.Close()
+	}
 	phase = "credentials"
 	if err := dropCredentials(p); err != nil {
 		return err
@@ -144,6 +152,12 @@ func Exec() (err error) {
 	phase = "descriptors"
 	if err := descriptorsCloseOnExec(); err != nil {
 		return err
+	}
+	phase = "input"
+	if input != nil {
+		if err := bindPayloadInput(input); err != nil {
+			return err
+		}
 	}
 	phase = "exec"
 	return syscall.Exec(path, r.Arguments, environment)
