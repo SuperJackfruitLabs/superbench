@@ -6,8 +6,11 @@ import runpy
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
+import subprocess
+import sys
 
 ROOT = Path(__file__).resolve().parents[2]
+CONDUCTOR = runpy.run_path(str(ROOT / 'scripts/check-ci.py'), run_name='conductor_policy_test')
 IDENTITY = runpy.run_path(str(ROOT / 'scripts/check-identity-ci.py'), run_name='identity_policy_test')
 
 
@@ -45,6 +48,55 @@ class CIPolicy(unittest.TestCase):
         self.assertEqual(environment.get('GOMAXPROCS'), '8')
         self.assertNotIn('UNRELATED_AMBIENT_CREDENTIAL', environment)
         self.assertEqual(environment['SUPERBENCH_IDENTITY_FIXTURE'], '1')
+
+    def test_readonly_cgroup_refuses_before_ordinary_execution(self):
+        refusal = subprocess.CalledProcessError(1, ['identity', '--preflight'])
+        with patch.object(sys, 'argv', ['check-ci.py']), patch('os.geteuid', return_value=0), \
+                patch('subprocess.run', side_effect=refusal) as execute, \
+                patch('tempfile.mkdtemp', side_effect=AssertionError('ordinary fixture started before runner admission')) as temporary, \
+                patch('shutil.disk_usage', return_value=SimpleNamespace(free=4 << 30)), \
+                patch('shutil.which', return_value='/usr/bin/go'), patch('os.path.lexists', return_value=False), \
+                patch('pwd.getpwnam') as account:
+            with self.assertRaises(subprocess.CalledProcessError) as caught:
+                CONDUCTOR['main']()
+        self.assertIs(caught.exception, refusal)
+        self.assertEqual(execute.call_count, 1)
+        self.assertEqual(execute.call_args.args[0][-1], '--preflight')
+        temporary.assert_not_called()
+        account.assert_not_called()
+
+    def test_cgroup_probe_removes_only_its_unchanged_empty_child_on_failure(self):
+        probe = IDENTITY.get('probe_cgroup')
+        self.assertIsNotNone(probe)
+        from unittest.mock import MagicMock
+        group = MagicMock()
+        leaf = MagicMock()
+        group.__truediv__.return_value = leaf
+        group.stat.return_value = SimpleNamespace(st_dev=1, st_ino=2)
+        leaf.read_text.return_value = 'populated 0'
+        leaf.write_text.side_effect = OSError('fixture budget write refused')
+        parent = MagicMock()
+        parent.__truediv__.return_value = group
+        with patch.dict(probe.__globals__, {'Path': lambda unused: parent}):
+            with self.assertRaisesRegex(OSError, 'fixture budget write refused'):
+                probe()
+        group.mkdir.assert_called_once_with()
+        group.rmdir.assert_called_once_with()
+
+    def test_readonly_cgroup_creation_does_not_attempt_cleanup_or_budget_writes(self):
+        import errno
+        from unittest.mock import MagicMock
+        probe = IDENTITY['probe_cgroup']
+        parent, group = MagicMock(), MagicMock()
+        parent.__truediv__.return_value = group
+        refusal = OSError(errno.EROFS, 'read-only cgroup')
+        group.mkdir.side_effect = refusal
+        with patch.dict(probe.__globals__, {'Path': lambda unused: parent}):
+            with self.assertRaises(OSError) as caught:
+                probe()
+        self.assertIs(caught.exception, refusal)
+        group.rmdir.assert_not_called()
+        group.__truediv__.assert_not_called()
 
 
 if __name__ == '__main__':

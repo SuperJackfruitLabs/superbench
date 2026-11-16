@@ -8,6 +8,7 @@ import pwd
 import shutil
 import stat
 import subprocess
+import sys
 import tempfile
 
 
@@ -19,12 +20,15 @@ def main():
     args = parser.parse_args()
     if os.geteuid() != 0:
         raise SystemExit('CI conductor requires root; the ordinary suite must not run as root')
+    source = Path(__file__).resolve().parent.parent
+    # Refuse unsupported privilege/delegation before any ordinary fixture or build.
+    subprocess.run([sys.executable, str(source / 'scripts/check-identity-ci.py'),
+                    '--preflight'], check=True, timeout=30)
     account = pwd.getpwnam(args.user)
     if account.pw_uid == 0 or account.pw_gid == 0:
         raise SystemExit('ordinary CI requires a distinct non-root user and group')
     if shutil.disk_usage('/var/tmp').free < 2 << 30:
         raise SystemExit('at least 2 GiB free is required before CI compilation')
-    source = Path(__file__).resolve().parent.parent
     go = shutil.which('go')
     if go is None:
         raise SystemExit('the workflow must provide its pinned Go toolchain')
