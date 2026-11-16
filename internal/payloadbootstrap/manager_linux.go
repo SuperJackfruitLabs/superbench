@@ -21,7 +21,8 @@ import (
 
 // Manager has no caller-supplied filesystem or Git authority. Open reads both
 // installed policies and binds an actual existing indexed operation barrier.
-// The zero value cannot bootstrap. No CLI or service route enables this API.
+// The zero value cannot bootstrap or inspect. Commands use the fixed helper;
+// there is no service route that enables fresh payload materialization.
 type Manager struct {
 	policy    payloadexec.Policy
 	storage   hoststorage.Policy
