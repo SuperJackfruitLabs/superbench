@@ -49,11 +49,11 @@ class CIPolicy(unittest.TestCase):
         self.assertNotIn('UNRELATED_AMBIENT_CREDENTIAL', environment)
         self.assertEqual(environment['SUPERBENCH_IDENTITY_FIXTURE'], '1')
 
-    def test_readonly_cgroup_refuses_before_ordinary_execution(self):
+    def test_readonly_cgroup_refuses_before_privileged_fixture_execution(self):
         refusal = subprocess.CalledProcessError(1, ['identity', '--preflight'])
-        with patch.object(sys, 'argv', ['check-ci.py']), patch('os.geteuid', return_value=0), \
+        with patch.object(sys, 'argv', ['check-ci.py', '--privileged-only']), patch('os.geteuid', return_value=0), \
                 patch('subprocess.run', side_effect=refusal) as execute, \
-                patch('tempfile.mkdtemp', side_effect=AssertionError('ordinary fixture started before runner admission')) as temporary, \
+                patch('tempfile.mkdtemp', side_effect=AssertionError('privileged fixture started before runner admission')) as temporary, \
                 patch('shutil.disk_usage', return_value=SimpleNamespace(free=4 << 30)), \
                 patch('shutil.which', return_value='/usr/bin/go'), patch('os.path.lexists', return_value=False), \
                 patch('pwd.getpwnam') as account:

@@ -193,7 +193,7 @@ An ordinary root container also performs its effective-root refusal, but that
 alone is not the installed identity or host quota/fencing/installer proof.
 
 Both modes retain their private fixtures and do not provision a runner, install
-a service or change host users or policy. Workbench controls retain their
+a service or change host users or policy. Operator-run verification uses
 separately selected budgets. Privileged evidence is never inferred from an
 ordinary pass or an opt-in test skip.
 See [code quality](docs/code-quality.md).
