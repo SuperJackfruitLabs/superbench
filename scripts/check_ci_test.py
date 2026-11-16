@@ -111,13 +111,11 @@ class PrivilegedTrustGate(unittest.TestCase):
         # Evaluate the actual closed expression, with unknown context failing closed.
         # No YAML dependency or shell evaluation is needed for this scalar condition.
         expression = expression.replace('&&', ' and ').replace('||', ' or ')
-        expression = re.sub(r'\btrue\b', 'True', expression)
-        expression = re.sub(r'\bfalse\b', 'False', expression)
 
         def permitted(event, ref, protected=None):
             values = {'github.event_name': event, 'github.ref': ref,
-                      'github.ref_protected': protected}
-            resolved = re.sub(r'github(?:\.[A-Za-z_]+)+',
+                      'needs.check.outputs.trusted_ref': protected}
+            resolved = re.sub(r'(?:github|needs)(?:\.[A-Za-z_]+)+',
                               lambda match: repr(values.get(match.group())), expression)
             tree = ast.parse(resolved, mode='eval')
             allowed = (ast.Expression, ast.BoolOp, ast.And, ast.Or, ast.Compare,
@@ -125,18 +123,21 @@ class PrivilegedTrustGate(unittest.TestCase):
             self.assertTrue(all(isinstance(node, allowed) for node in ast.walk(tree)))
             return eval(compile(tree, '<workflow trust gate>', 'eval'), {'__builtins__': {}})
 
-        self.assertTrue(permitted('push', 'refs/heads/main', True))
+        self.assertIn('needs: check', job)
+        self.assertNotIn('ref_protected', expression)
+        self.assertIn('trusted_ref: ${{ steps.trusted_ref.outputs.trusted_ref }}', text)
+        self.assertTrue(permitted('push', 'refs/heads/main', 'true'))
         for event, ref, protected in (
             ('push', 'refs/heads/main', False),
             ('push', 'refs/heads/main', None),
-            ('push', 'refs/heads/main', 'true'),
-            ('push', 'refs/heads/topic', False),
-            ('push', 'refs/heads/topic', True),
-            ('push', 'refs/tags/v0.0.1', True),
-            ('pull_request', 'refs/heads/main', True),
-            ('pull_request', 'refs/pull/47/head', True),
-            ('pull_request_target', 'refs/heads/main', True),
-            ('workflow_dispatch', 'refs/heads/main', True),
+            ('push', 'refs/heads/main', True),
+            ('push', 'refs/heads/main', 'false'),
+            ('push', 'refs/heads/topic', 'true'),
+            ('push', 'refs/tags/v0.0.1', 'true'),
+            ('pull_request', 'refs/heads/main', 'true'),
+            ('pull_request', 'refs/pull/47/head', 'true'),
+            ('pull_request_target', 'refs/heads/main', 'true'),
+            ('workflow_dispatch', 'refs/heads/main', 'true'),
         ):
             with self.subTest(event=event, ref=ref, protected=protected):
                 self.assertFalse(permitted(event, ref, protected))

@@ -4,8 +4,20 @@ jobs:
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    outputs:
+      trusted_ref: ${{ steps.trusted_ref.outputs.trusted_ref }}
     steps:
       - uses: actions/checkout@v4
+      - id: trusted_ref
+        name: Verify protected current main through the server API
+        env:
+          CI_GATE_EVENT: ${{ github.event_name }}
+          CI_GATE_REF: ${{ github.ref }}
+          CI_GATE_API_URL: ${{ github.api_url }}
+          CI_GATE_REPOSITORY: ${{ github.repository }}
+          CI_GATE_SHA: ${{ github.sha }}
+          CI_GATE_TOKEN: ${{ github.token }}
+        run: python3 scripts/check-trusted-ref.py
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26.4'
@@ -16,9 +28,10 @@ jobs:
 
   privileged-identity:
     # Privileged proof is separate from ordinary CI. Only protected main pushes qualify;
-    # missing/false protection metadata disables this job, including every PR and tag.
+    # missing/false API protection evidence disables it, including every PR and tag.
     # Runner admission must also enforce trusted source outside branch-editable YAML.
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.ref_protected == true
+    needs: check
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.check.outputs.trusted_ref == 'true'
     runs-on: [self-hosted, superbench-privileged]
     timeout-minutes: 60
     steps:
