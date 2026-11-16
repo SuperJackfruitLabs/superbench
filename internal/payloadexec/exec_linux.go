@@ -77,6 +77,9 @@ func Exec() (err error) {
 	if err != nil {
 		return err
 	}
+	if r.Kind == "git" {
+		environment = append(environment, "GIT_TERMINAL_PROMPT=0", "GIT_ATTR_NOSYSTEM=1")
+	}
 	phase = "executable"
 	if err := verifyCommandDirectories(); err != nil {
 		return err
@@ -161,6 +164,12 @@ func Exec() (err error) {
 	phase = "input"
 	if input != nil {
 		if err := bindPayloadInput(input); err != nil {
+			return err
+		}
+	}
+	if r.Kind == "git" {
+		phase = "git-policy"
+		if err := verifyManagedGit(r, b.admin, environment); err != nil {
 			return err
 		}
 	}

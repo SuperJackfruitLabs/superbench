@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/gitpolicy"
 	"io"
 	"os/exec"
 	"path/filepath"
@@ -76,7 +77,10 @@ func New(authority serviceidentity.Authority, b *model.Bench, member string) (Ro
 // Caller-specific author/config/credential environment is deliberately absent;
 // such commands must refuse at their adapter until explicitly supported.
 func (r Route) Execute(ctx context.Context, runner gitcontrol.Runner, args []string, input []byte, inputLimit, outputLimit uint64) ([]byte, error) {
-	if len(args) == 0 || outputLimit == 0 || uint64(len(input)) > inputLimit {
+	if !gitpolicy.Subcommand(args) {
+		return nil, errors.Join(ErrRefused, gitpolicy.ErrPolicy)
+	}
+	if outputLimit == 0 || uint64(len(input)) > inputLimit {
 		return nil, ErrRefused
 	}
 	p, err := r.authority.Policy()
@@ -86,7 +90,7 @@ func (r Route) Execute(ctx context.Context, runner gitcontrol.Runner, args []str
 	r.input = payloadlaunch.GitInput{Bytes: bytes.Clone(input), Limit: inputLimit}
 	out := &bounded{limit: outputLimit}
 	stderr := &bounded{limit: outputLimit}
-	cmd := gitcontrol.Command(ctx, r.directory, args...)
+	cmd := gitcontrol.ManagedCommand(ctx, r.directory, args...)
 	cmd.Env = []string{}
 	cmd.Stdout = out
 	cmd.Stderr = stderr

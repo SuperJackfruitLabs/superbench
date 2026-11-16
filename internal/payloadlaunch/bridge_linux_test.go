@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/gitpolicy"
 	"io"
 	"os"
 	"os/exec"
@@ -127,7 +128,7 @@ func TestRegularLogSurvivesCallerCloseAndNeverBecomesChildStdio(t *testing.T) {
 }
 
 func TestGitFrameAndBinaryInputAreExactAndOwned(t *testing.T) {
-	cmd := exec.Command("git", "hash-object", "--stdin")
+	cmd := exec.Command("git", gitpolicy.Arguments("hash-object", "--stdin")[1:]...)
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	data := []byte{0, 255, 10, 0, 13, 4}
@@ -168,7 +169,7 @@ func TestGitFrameAndBinaryInputAreExactAndOwned(t *testing.T) {
 		t.Fatal("frame length")
 	}
 	req, err := payloadexec.ParseRequest(raw[4 : 4+n])
-	if err != nil || req.Kind != "git" || req.Scope.ID != oldScope.ID || !reflect.DeepEqual(req.Arguments, []string{"git", "hash-object", "--stdin"}) || !bytes.Equal(raw[4+n:], wantData) {
+	if err != nil || req.Kind != "git" || req.Scope.ID != oldScope.ID || !reflect.DeepEqual(req.Arguments, gitpolicy.Arguments("hash-object", "--stdin")) || !bytes.Equal(raw[4+n:], wantData) {
 		t.Fatalf("frame or Git bytes changed: %v", err)
 	}
 }
@@ -258,7 +259,7 @@ func TestConsumedPumpNotificationCannotBecomeSuccessfulDrain(t *testing.T) {
 }
 
 func TestFiniteGitInputFailureCannotSeal(t *testing.T) {
-	cmd := exec.Command("git", "fixture")
+	cmd := exec.Command("git", gitpolicy.Arguments("fixture")[1:]...)
 	input := bytes.Repeat([]byte{1}, 1<<20)
 	b, err := Prepare(cmd, targetFixture("git"), scopeFixture(), GitInput{Bytes: input, Limit: uint64(len(input))})
 	if err != nil {

@@ -162,7 +162,7 @@ func TestInstalledReadOnlyRegistrationInspectionFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	request := InspectionRequest{InspectionVersion, l.Key, l.ID, l.PolicyDigest}
+	request := InspectionRequest{Version: InspectionVersion, Key: l.Key, LayoutID: l.ID, PolicyDigest: l.PolicyDigest}
 	run := func(t *testing.T, r InspectionRequest, pipeUID int) ([]byte, string, error) {
 		t.Helper()
 		body, e := r.Bytes()

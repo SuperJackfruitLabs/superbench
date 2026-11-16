@@ -8,10 +8,12 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/gitpolicy"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -182,7 +184,7 @@ func TestGitPayloadOwnedChild(t *testing.T) {
 		t.Fatal(err)
 	}
 	request, err := payloadexec.ParseRequest(frame)
-	if err != nil || request.Kind != "git" || len(request.Arguments) != 2 || request.Arguments[1] != "fixture" {
+	if err != nil || request.Kind != "git" || !slices.Equal(request.Arguments, gitpolicy.Arguments("fixture")) {
 		t.Fatalf("wrong frame: %+v %v", request, err)
 	}
 	input, err := io.ReadAll(io.LimitReader(os.Stdin, 65))
@@ -244,7 +246,7 @@ func TestGitPayloadRealTransportJournalsGatesFencesAndDrains(t *testing.T) {
 			case "fence failure":
 				h.failFence = refusal
 			}
-			cmd := exec.Command("git", "fixture")
+			cmd := exec.Command("git", gitpolicy.Arguments("fixture")[1:]...)
 			cmd.Env = []string{}
 			cmd.Stdout = &output
 			cmd.Stderr = io.Discard
