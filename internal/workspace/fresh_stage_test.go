@@ -70,3 +70,53 @@ func TestFreshStageRetainsOriginalOwnerOnFailedOrInvalidEffect(t *testing.T) {
 		})
 	}
 }
+
+func TestFreshStageRetriesCommittedAllocationAfterGateFailure(t *testing.T) {
+	f := newStaging(t)
+	calls := 0
+	f.manager.Fresh = func(_ context.Context, b *model.Bench) error {
+		calls++
+		if calls != 1 {
+			t.Fatal("retry repeated one-shot bootstrap")
+		}
+		b.ProjectID, b.QuotaBytes, b.QuotaInodes = 10000, 1<<30, 1000
+		return nil
+	}
+	realWithin := f.manager.Within
+	gateFailure := errors.New("interrupted after allocation commit before initialization")
+	allocatedCommitted, interrupted := false, false
+	f.manager.Within = func(fn func(Update) error) error {
+		return realWithin(func(update Update) error {
+			return fn(func(change Change) error {
+				if allocatedCommitted && !interrupted {
+					interrupted = true
+					return gateFailure
+				}
+				if err := update(change); err != nil {
+					return err
+				}
+				stored := f.read(t)
+				allocatedCommitted = stored != nil && stored.ProjectID != 0 && stored.Workspace.Phase == "materializing"
+				return nil
+			})
+		})
+	}
+	b, err := f.manager.Stage(context.Background(), "fresh-request", f.spec)
+	if !errors.Is(err, gateFailure) || !interrupted || b == nil || b.ProjectID != 10000 || b.Workspace.Phase != "materializing" || calls != 1 {
+		t.Fatalf("missed durable allocation crash window: bench=%+v calls=%d interrupted=%v err=%v", b, calls, interrupted, err)
+	}
+	persisted := f.read(t)
+	if !reflect.DeepEqual(persisted, b) {
+		t.Fatal("interruption did not retain the committed allocation")
+	}
+	f.manager.Within = realWithin
+	retried, err := f.manager.Stage(context.Background(), "fresh-request", f.spec)
+	if err != nil || retried == nil || retried.Workspace.Phase != "initializing" || calls != 1 || f.allocations != 0 {
+		t.Fatalf("retry failed to resume committed fresh allocation: bench=%+v calls=%d legacy=%d err=%v", retried, calls, f.allocations, err)
+	}
+	expected := privateRecord(persisted)
+	expected.Workspace.Phase = "initializing"
+	if !reflect.DeepEqual(retried, expected) || !reflect.DeepEqual(f.read(t), expected) {
+		t.Fatal("retry changed allocation, initialization owner or pinned member vector")
+	}
+}

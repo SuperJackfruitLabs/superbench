@@ -18,10 +18,11 @@ import (
 type Lease = model.Lease
 type Bench = model.Bench
 type Store struct {
-	State, Data          string
-	CgroupRoot           string
-	MirrorTimeout        time.Duration
-	controls             context.Context
+	State, Data   string
+	CgroupRoot    string
+	MirrorTimeout time.Duration
+	controls      context.Context
+	// Enable only after Fresh allocations have a verified operator release/reconcile path.
 	proposedFreshPayload bool
 	reapAfterDelete      func() error
 	collectAfterDelete   func() error
