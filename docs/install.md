@@ -124,8 +124,8 @@ reconciliation on restart. Never infer release from systemd status alone. See
 
 To upgrade, stop the service, reconcile outstanding executions with the installed
 binary, back up state and review schema compatibility. A plain rerun refuses
-differing installed files. `--upgrade --previous SHA256SUMS --backup DIR` replaces
-only the four executables. Each must be the previous reviewed build, as a plain
+differing installed files. `--upgrade --previous SHA256SUMS --sums SHA256SUMS --backup DIR`
+replaces only the four executables, with the bytes the new build's `--sums` lists. Each must be the previous reviewed build, as a plain
 root-owned file. It is backed up to the new directory and then replaced
 atomically, while the unit is stopped. Every other installed file must stay
 identical ([pilot installation](pilot-installation.md#upgrade-the-executables)).

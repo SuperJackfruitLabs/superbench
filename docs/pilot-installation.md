@@ -36,8 +36,24 @@ end-to-end card result:
     setting (`no payload cache transport`). Use an explicit `[setup]` command.
 
   A checkpoint copies new commits from the payload checkout into the daemon's
-  mirror as a Git bundle. The bundle holds only the commits the mirror lacks,
-  at most 64 MiB per member.
+  mirror as a Git bundle. The bundle holds only the commits the mirror lacks:
+  - The daemon checks the bundle's header.
+  - It unbundles the bundle with `index-pack --strict` into a private
+    quarantine repository in its state directory. Every Git process there runs
+    with no system or global config, one thread, a 1 GiB address-space limit
+    and a timeout.
+  - It checks that the quarantined commit is the inspected HEAD.
+  - Only then does it fetch the objects reachable from that commit into the
+    mirror. A refused bundle leaves the mirror unchanged.
+
+  The cap is 64 MiB of new objects per member and checkpoint. A larger one fails
+  with `fresh checkpoint export exceeds the 64 MiB per-member bundle cap`, and
+  a retry cannot succeed. Keep large generated or binary files out of the
+  checkpointed branches.
+- **Fresh benches are not yet reclaimable; release keeps the allocation.**
+  Release returns the lease but keeps the bench's full reservation, and archive
+  and reap refuse a Fresh workspace. Size the volume for every Fresh bench you
+  will create until a reclaim path exists.
 - **Harness configuration in the payload home.** The payload helper sets `HOME`
   from each bench's Fresh layout. Nothing yet places a harness's provider
   configuration there, and the harness adapter refuses to provision credentials.
@@ -264,6 +280,7 @@ is the one mode that replaces them:
 systemctl stop superbench.service
 python3 deploy/linux/install.py --bin-dir /absolute/build/bin --root / --managed \
   --upgrade --previous /absolute/previous-build/bin/SHA256SUMS \
+  --sums /absolute/build/bin/SHA256SUMS \
   --backup /var/lib/superbench-upgrade/<previous-revision>
 ```
 
@@ -276,7 +293,8 @@ python3 deploy/linux/install.py --bin-dir /absolute/build/bin --root / --managed
   root-owned file, mode 0755 with one link, whose SHA-256 is the one `--previous`
   lists for it. `--previous` is the previous build's `sha256sum` output. A locally
   patched binary, a symlink, a hard link, a changed mode, or an executable that
-  `--previous` does not list refuses, before any effect.
+  `--previous` does not list refuses, before any effect. Each incoming
+  executable in `--bin-dir` must match the new build's reviewed `--sums`.
 - **When it runs.** On the live root, `systemctl show` must report the unit
   `inactive` or `failed`, with no main process.
 - **Backups.** `--backup` must be a new directory. The installer creates it
@@ -288,7 +306,8 @@ python3 deploy/linux/install.py --bin-dir /absolute/build/bin --root / --managed
   Executables that already match are skipped, and the rest still match
   `--previous`.
 - **Rollback.** Stop the unit and run the same command with the backup's
-  binaries as `--bin-dir` and the new build's `SHA256SUMS` as `--previous`.
+  binaries as `--bin-dir`, the backup's `SHA256SUMS` as `--sums`, and the new
+  build's `SHA256SUMS` as `--previous`.
 - **Other flags.** `--upgrade` combines with the flags of the original install
   (`--prepare`, `--identity`, `--activation`, `--storage`). They keep their own
   rules, and only the executables get upgrade semantics.
