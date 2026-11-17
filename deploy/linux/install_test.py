@@ -9,10 +9,13 @@ import struct
 from types import SimpleNamespace
 import unittest
 
+import subprocess
+
 from install import (ACTIVATION_FILE, ACTIVATION_SWITCHES, CGROUP_ROOT, POLICY_FILE, REGISTRY_FILE,
-                     MissingAccount, account_ids, activation_document, apply, checked_path,
-                     identity_documents, install, installed_identity, main, payload, preflight_identity,
-                     static_helper)
+                     QUOTA_HELPER, STORAGE_FILE, UNIT_FILE, MissingAccount, account_ids,
+                     activation_document, apply, checked_path, identity_documents, install,
+                     installed_identity, main, payload, preflight_identity, read_budgets, static_helper,
+                     storage_document, storage_state)
 
 # The exact canonical bytes internal/payloadpolicy and internal/serviceidentity
 # accept for these IDs (cross-checked in Go by TestInstallerDocumentsAreCanonical).
@@ -329,6 +332,130 @@ class Main(unittest.TestCase):
         self.assertEqual((target / REGISTRY_FILE).read_bytes(),
                          installed_identity(CGROUP_ROOT, lookup=ready)[REGISTRY_FILE][0])
         self.assertTrue((target / "usr/lib/sysusers.d/superbench-payload.conf").exists())
+
+
+BUDGETS = {"BenchBytes": 1 << 30, "StoreBytes": 2 << 30, "MirrorBytes": 1 << 30, "ReserveBytes": 1 << 30,
+           "BenchInodes": 100000, "StoreInodes": 1000000, "MirrorInodes": 500000, "ReserveInodes": 100000}
+
+
+class IndexedStorage(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(prefix="sb-storage-", dir="/tmp")
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name).resolve()
+        self.target = self.root / "host"
+        self.target.mkdir()
+        (self.target / "var/lib/superbench-quota").mkdir(parents=True, mode=0o700)
+        self.budgets = self.root / "budgets.json"
+        self.budgets.write_text(json.dumps(BUDGETS))
+        self.bins = binaries(self.root / "bin")
+        self.commands = []
+        self.fail_initialize = False
+
+    def args(self, **overrides):
+        values = dict(bin_dir=self.bins, root=self.target, managed=True, prepare=False, identity=True,
+                      activation=True, cgroup_root=CGROUP_ROOT, storage=self.budgets)
+        values.update(overrides)
+        return SimpleNamespace(**values)
+
+    def run_command(self, command, check):
+        self.assertTrue(check)
+        self.commands.append(command)
+        if command == [QUOTA_HELPER, "initialize-indexed"]:
+            unit = self.target / UNIT_FILE
+            # The helper's installation gate needs the masked unit and the indexed policy.
+            self.assertTrue(unit.is_symlink())
+            self.assertEqual(os.readlink(unit), "/dev/null")
+            self.assertIn(b'"OperationJournal": "indexed-v2"', (self.target / STORAGE_FILE).read_bytes())
+            self.assertIn(["systemctl", "daemon-reload"], self.commands[:-1])
+            if self.fail_initialize:
+                raise subprocess.CalledProcessError(1, command)
+            quota = self.target / "var/lib/superbench-quota"
+            (quota / "ledger.format-v2").write_bytes(b"anchor")
+            (quota / "ledger").mkdir()
+
+    def apply(self, **overrides):
+        apply(self.args(**overrides), run=self.run_command, lookup=accounts())
+
+    def test_budgets_are_checked_as_the_go_policy_checks_them(self):
+        self.assertEqual(read_budgets(self.budgets), BUDGETS)
+        for bad in ['[["BenchBytes", 1024]]', '{"BenchBytes": 1024}',
+                    json.dumps(dict(BUDGETS, BenchBytes=1000)), json.dumps(dict(BUDGETS, BenchInodes=0)),
+                    json.dumps(dict(BUDGETS, StoreBytes=True)), json.dumps(dict(BUDGETS, Root="/srv")),
+                    json.dumps(BUDGETS)[:-1] + ', "BenchBytes": 2048}']:
+            self.budgets.write_text(bad)
+            with self.assertRaises(ValueError, msg=bad):
+                read_budgets(self.budgets)
+
+    def test_fresh_install_writes_the_indexed_policy_and_initializes_once(self):
+        self.apply()
+        self.assertEqual(self.commands.count([QUOTA_HELPER, "initialize-indexed"]), 1)
+        unit = self.target / UNIT_FILE
+        self.assertFalse(unit.is_symlink(), "the service stayed masked")
+        self.assertEqual(unit.read_bytes(), (Path(__file__).resolve().parent / "superbench.service").read_bytes())
+        self.assertEqual(self.commands[-1], ["systemctl", "daemon-reload"])
+        policy = json.loads((self.target / STORAGE_FILE).read_bytes())
+        self.assertEqual(policy["OperationJournal"], "indexed-v2")
+        self.assertEqual(policy["Ledger"], "/var/lib/superbench-quota/ledger")
+        self.assertEqual((policy["OwnerUID"], policy["OwnerGID"]), (977, 977))
+        self.assertEqual((self.target / STORAGE_FILE).stat().st_mode & 0o777, 0o644)
+        self.assertEqual(storage_state(self.target), "initialized")
+        # Rerunning the same command never initializes again.
+        self.commands.clear()
+        self.apply()
+        self.assertNotIn([QUOTA_HELPER, "initialize-indexed"], self.commands)
+
+    def test_failed_initialization_keeps_the_service_masked_and_can_be_retried(self):
+        self.fail_initialize = True
+        with self.assertRaisesRegex(ValueError, "stays masked"):
+            self.apply()
+        unit = self.target / UNIT_FILE
+        self.assertTrue(unit.is_symlink())
+        self.assertEqual(storage_state(self.target), "fresh")
+        self.fail_initialize = False
+        self.apply()
+        self.assertFalse(unit.is_symlink())
+        self.assertEqual(storage_state(self.target), "initialized")
+
+    def test_legacy_or_partial_ledgers_refuse_before_any_effect(self):
+        quota = self.target / "var/lib/superbench-quota"
+        legacy = storage_document((977, 977), BUDGETS)[STORAGE_FILE][0].replace(
+            b'  "OperationJournal": "indexed-v2",\n', b"")
+        for name, setup, message in [
+            ("legacy policy", lambda: install(self.target, {STORAGE_FILE: (legacy, 0o644)}), "does not select the indexed"),
+            ("legacy ledger", lambda: (quota / "assignments.json").write_bytes(b"{}"), "existing quota ledger"),
+            ("partial anchor", lambda: (quota / "ledger.format-v2").write_bytes(b"x"), "partial indexed ledger"),
+            ("ledger without policy", lambda: [(quota / "ledger").mkdir(), (quota / "ledger.format-v2").write_bytes(b"x")],
+             "partial indexed ledger"),
+            ("installed unit", lambda: install(self.target, {UNIT_FILE: (b"unit", 0o644)}), "already installed"),
+        ]:
+            with self.subTest(name):
+                setup()
+                with self.assertRaisesRegex(ValueError, message):
+                    self.apply()
+                self.assertNotIn([QUOTA_HELPER, "initialize-indexed"], self.commands)
+                self.assertFalse((self.target / "usr/local/bin/benchd").exists(), "effects before refusal")
+                for path in [self.target / STORAGE_FILE, self.target / UNIT_FILE, *quota.iterdir()]:
+                    if path.is_dir():
+                        path.rmdir()
+                    elif os.path.lexists(path):
+                        path.unlink()
+
+    def test_storage_needs_identity_and_a_direct_root_login(self):
+        for flags, environment, message in [
+                (["--managed"], {}, "--storage applies only with --identity"),
+                (["--managed", "--identity"], {"SUDO_UID": "1000"}, "direct root login")]:
+            stderr = io.StringIO()
+            previous = dict(os.environ)
+            os.environ.update(environment)
+            try:
+                with contextlib.redirect_stderr(stderr), self.assertRaises(SystemExit) as stop:
+                    main(["--bin-dir", str(self.bins), "--root", "/", "--storage", str(self.budgets), *flags])
+            finally:
+                os.environ.clear()
+                os.environ.update(previous)
+            self.assertEqual(stop.exception.code, 2)
+            self.assertIn(message, stderr.getvalue())
 
 
 if __name__ == "__main__":

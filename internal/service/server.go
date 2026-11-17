@@ -16,9 +16,9 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/activation"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/autoarchive"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/bench"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/freshreadiness"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/maintenance"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/protocol"
-	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/serviceidentity"
 )
 
 type Config struct {
@@ -72,7 +72,7 @@ func serve(ctx context.Context, c Config, proposed bool) error {
 		a.Cancellation, a.ReceiptLookup = true, true
 	}
 	// Refuse a combination that would strand workspaces before any state or socket.
-	if err := a.Check(func() error { _, err := serviceidentity.ResolveService(); return err }); err != nil {
+	if err := a.Check(freshreadiness.Identity, freshreadiness.Storage); err != nil {
 		return err
 	}
 	private := a.Cancellation || a.ReceiptLookup

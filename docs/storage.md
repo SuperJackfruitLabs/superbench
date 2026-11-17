@@ -65,8 +65,13 @@ operation identity for allocation effects. Unscoped `apply` and `release` refuse
 `apply-operation` retains the original state identity and epoch. An exact retry
 may repeat its fixed idempotent storage effect: the journal records reservation
 and denial, not successful completion. Reviewed retirement remains a separate
-approval-bound operation. This mode does not initialize missing history or enable
-a service; legacy policy mode retains its existing command behavior.
+approval-bound operation. The two fixed shared projects (`apply shared store` and
+`apply shared mirrors`) still apply unscoped, inside the operation barrier, so
+`configure-host` and admission work. This mode does not initialize missing history
+or enable a service; legacy policy mode retains its existing command behavior. A
+fresh install sets the policy and initializes the ledger with the installer's
+`--storage` ([pilot installation](pilot-installation.md#indexed-storage)); there is
+no in-place conversion of a legacy ledger.
 
 ## Configure a fresh managed host
 

@@ -67,12 +67,26 @@ These are the four binaries required by the managed installer. The payload
 helper must be a static Linux executable for the target architecture; do not
 omit it or substitute a dynamically linked build. Review the staged files,
 owners, modes, systemd unit, wrapper and sudo rule before applying anything.
-Staging writes only below the supplied physical absolute root. On a fresh host,
-direct Linux root then runs:
+Staging writes only below the supplied physical absolute root. Write the reviewed
+byte **and** inode budgets for the dedicated data volume to a root-owned file, for
+example `/root/superbench-budgets.json` (the eight fields of
+[the storage policy example](storage.md), and nothing else):
+
+```json
+{"BenchBytes": 8589934592, "StoreBytes": 4294967296, "MirrorBytes": 4294967296,
+ "ReserveBytes": 2147483648, "BenchInodes": 250000, "StoreInodes": 2000000,
+ "MirrorInodes": 1000000, "ReserveInodes": 250000}
+```
+
+Every bench reserves its full `BenchBytes`, on top of the two shared caps and the
+reserve, so size the volume for the number of benches you expect: an allocation
+that would exceed the filesystem is refused. On a fresh host, with the data volume
+mounted, direct Linux root (a root login, not `sudo`) then runs:
 
 ```sh
 python3 deploy/linux/install.py --bin-dir /absolute/build/bin --root / \
-  --managed --prepare --identity --activation
+  --managed --prepare --identity --activation \
+  --storage /root/superbench-budgets.json
 ```
 
 This prepares the stable `superbench` account, the separate `superbench-payload`
@@ -105,12 +119,55 @@ replaced. To change one, remove it deliberately and review the new file.
 Rerunning the installer accepts identical files and refuses changed ones, so do
 not pass `--activation` again after editing the file.
 
-Write root-owned `/etc/superbench/storage.json` using the actual numeric
-`id -u superbench` and `id -g superbench`, the dedicated data mount and reviewed
-byte **and** inode budgets. Use [the storage policy example](storage.md), replacing
-its example IDs and sizes. Preserve reserve space; do not recursively chown the
-volume or delete a ledger to bypass refusal. Configure fresh state as the service
-account:
+### Indexed storage
+
+`--storage` sets up the storage the Fresh payload layout needs. The payload
+helper's `bench-quota bootstrap-payload` only accepts a storage policy that selects
+the indexed operation journal, `"OperationJournal": "indexed-v2"`, with a ledger
+that `bench-quota initialize-indexed` created on an empty filesystem. With any
+other policy every Fresh `create` stops at `materializing` with `operation_failed`.
+`--storage`:
+
+1. writes root-owned `/etc/superbench/storage.json` (mode 0644) from the budgets
+   file, the `superbench` account's numeric IDs, the data root, the ledger
+   `/var/lib/superbench-quota/ledger` and `"OperationJournal": "indexed-v2"`;
+2. masks the service (a `/dev/null` link in place of its unit file) and runs
+   `bench-quota initialize-indexed` once, as direct root. That command only
+   initializes: it refuses unless the service is masked and stopped, nothing
+   runs as either SuperBench account, the data filesystem is empty with no quota
+   projects, and the ledger does not exist yet;
+3. installs the unit file in place of the mask and reloads systemd.
+
+Run it as part of the first install, before `configure-host` and before the
+service ever starts. Rerunning the same command is safe: a host whose ledger is
+already initialized skips step 2, and a run that stopped after step 2 finishes
+step 3. If `initialize-indexed` fails, the service stays masked without its unit
+file; fix the reported cause and rerun the same command. The installer refuses,
+before it changes anything, when:
+
+- `/etc/superbench/storage.json` exists without the indexed journal, or
+  `/var/lib/superbench-quota` holds a legacy ledger (`assignments.json`, `lock`,
+  `operations`). In-place conversion is not supported;
+- `/var/lib/superbench-quota` holds only part of an indexed ledger. An
+  interrupted initialization is never adopted or retried;
+- the unit file is already installed from an earlier run without `--storage`;
+- `SUDO_UID` is set: `initialize-indexed` refuses `sudo` callers.
+
+**An existing host with a legacy ledger** cannot turn on `fresh_payload`; benchd
+refuses to start with it (see [Activation](#activation)). Either keep the switch
+off, or rebuild the host's storage: checkpoint and release the work you want to
+keep, stop and disable the service, keep a backup of `/etc/superbench`,
+`/var/lib/superbench` and `/var/lib/superbench-quota`, then remove the installed
+files, the state, the ledger and the storage policy, recreate the data
+filesystem (old quota projects on it also refuse initialization) and install
+again with `--storage`. Do not delete a ledger to get past a refusal on a host
+whose data you still need.
+
+On an indexed host the helper still applies the two fixed shared projects for
+`configure-host` and admission, but it refuses an unscoped bench allocation or
+release: every bench effect needs its operation's identity. Preserve reserve
+space; do not recursively chown the volume. Configure fresh state as the
+service account:
 
 ```sh
 sudo -u superbench /usr/local/bin/bench configure-host \
@@ -192,6 +249,7 @@ the socket, and refuses a file that breaks one:
 | --- | --- | --- |
 | `fresh_payload` | `cancellation` | Fresh materialization runs inside the operation scope that only the cancellation path claims. Without it every v2 `create` or `recover` would record a durable `materializing` workspace and then fail. |
 | `fresh_payload` | the installed payload policy and service identity | benchd resolves `/etc/superbench/service-identity.json` (with `--identity`, above) for its own uid at start, for the same reason. |
+| `fresh_payload` | the indexed quota operation journal | benchd reads `/etc/superbench/storage.json` at start and refuses unless it sets `"OperationJournal": "indexed-v2"` ([Indexed storage](#indexed-storage)). The payload helper refuses any other policy, so every Fresh create would stop at `materializing`. |
 | `finite_io` | `fresh_payload` | A finite run executes only on a Fresh payload tree. |
 | `registration_observation` | `fresh_payload` | Observation reads only a Fresh payload tree. |
 | `receipt_lookup`, `cancellation` | nothing | |

@@ -65,7 +65,7 @@ func run(args []string) error {
 	if migrating && p.OperationJournal != "" {
 		return fmt.Errorf("indexed operation policy does not permit inode migration")
 	}
-	if err := checkIndexedCommand(p, f.Arg(0)); err != nil {
+	if err := checkIndexedCommand(p, f.Arg(0), f.Arg(1)); err != nil {
 		return err
 	}
 	var approval hoststorage.RetirementApproval

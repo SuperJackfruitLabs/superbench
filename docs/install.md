@@ -62,9 +62,12 @@ is owned by the service account. Do not use tmpfiles to convert an existing host
 between modes: managed configuration requires fresh state and separately reviewed
 storage policy. No recursive data-mount chown is performed.
 
-For managed hosts, write a root-owned `/etc/superbench/storage.json` using the
-actual `id -u superbench` and `id -g superbench` and reviewed budgets. Follow
-[storage provisioning](storage.md), then configure fresh state as the worker:
+For managed hosts, pass `--storage BUDGETS_JSON` with the reviewed byte and inode
+budgets on the first install. It writes a root-owned `/etc/superbench/storage.json`
+with the actual `superbench` IDs and the indexed operation journal, and initializes
+the empty ledger once; see
+[pilot installation](pilot-installation.md#indexed-storage) and
+[storage provisioning](storage.md). Then configure fresh state as the worker:
 
 ```sh
 sudo -u superbench /usr/local/bin/bench configure-host \
