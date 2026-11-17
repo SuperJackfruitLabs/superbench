@@ -154,7 +154,9 @@ const (
 	exactRow
 )
 
-func classify(raw []byte, id uint32, hard uint64) (rows, error) {
+// classify reads one report. No row is accepted only when the tool also wrote nothing to standard error:
+// an empty report beside a diagnostic is a failure, not a missing project.
+func classify(raw, diagnostic []byte, id uint32, hard uint64) (rows, error) {
 	want := "#" + strconv.FormatUint(uint64(id), 10)
 	found := noRow
 	for _, line := range strings.Split(string(raw), "\n") {
@@ -172,6 +174,9 @@ func classify(raw []byte, id uint32, hard uint64) (rows, error) {
 			return noRow, ErrRecovery
 		}
 		found = exactRow
+	}
+	if found == noRow && len(diagnostic) != 0 {
+		return noRow, ErrRecovery
 	}
 	return found, nil
 }

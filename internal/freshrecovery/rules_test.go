@@ -181,7 +181,7 @@ func TestClassifyAcceptsNoRowOrTheExactOriginalCaps(t *testing.T) {
 		"#10004 0 0 4096 00 [--------]\n":   exactRow,
 		"#10004          0          0 4096": exactRow,
 	} {
-		if got, err := classify([]byte(raw), assigned, 4096); err != nil || got != want {
+		if got, err := classify([]byte(raw), nil, assigned, 4096); err != nil || got != want {
 			t.Errorf("%q: %v %v", raw, got, err)
 		}
 	}
@@ -200,7 +200,7 @@ func TestClassifyAcceptsNoRowOrTheExactOriginalCaps(t *testing.T) {
 		"invalid cap":    "#10004 0 0 4k\n",
 		"negative usage": "#10004 -1 0 4096\n",
 	} {
-		if _, err := classify([]byte(raw), assigned, 4096); !errors.Is(err, ErrRecovery) {
+		if _, err := classify([]byte(raw), nil, assigned, 4096); !errors.Is(err, ErrRecovery) {
 			t.Errorf("%s admitted: %q %v", name, raw, err)
 		}
 	}
@@ -255,5 +255,16 @@ func TestLimitCommandSetsOnlyTheOriginalHardCaps(t *testing.T) {
 func TestFsxattrMatchesTheKernelABI(t *testing.T) {
 	if unsafe.Sizeof(fsxattr{}) != fsxattrSize || unsafe.Offsetof(fsxattr{}.Projid) != 12 || fsIocFsgetxattr != 0x801c581f {
 		t.Fatalf("FS_IOC_FSGETXATTR ABI differs: size %d offset %d request %#x", unsafe.Sizeof(fsxattr{}), unsafe.Offsetof(fsxattr{}.Projid), fsIocFsgetxattr)
+	}
+}
+
+func TestNoRowRequiresASilentReport(t *testing.T) {
+	if got, err := classify(nil, nil, assigned, 4096); err != nil || got != noRow {
+		t.Fatalf("a silent empty report refused: %v %v", got, err)
+	}
+	for _, diagnostic := range []string{"xfs_quota: cannot find mount point for path\n", "\n", "x"} {
+		if _, err := classify([]byte("\n"), []byte(diagnostic), assigned, 4096); !errors.Is(err, ErrRecovery) {
+			t.Errorf("an empty report beside %q read as no row: %v", diagnostic, err)
+		}
 	}
 }

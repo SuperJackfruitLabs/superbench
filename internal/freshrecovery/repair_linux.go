@@ -47,14 +47,14 @@ func prove(ctx context.Context, p hoststorage.Policy, sel freshretirement.Select
 	if fs.Type != xfsMagic || uint64(st.Dev) != sel.Approval.Parent.Device {
 		return noRow, ErrRecovery
 	}
-	mount, err := tool(ctx, "/usr/bin/findmnt", "--noheadings", "--raw", "--output", "TARGET,FSROOT,UUID", "--target", p.Root)
+	mount, _, err := tool(ctx, "/usr/bin/findmnt", "--noheadings", "--raw", "--output", "TARGET,FSROOT,UUID", "--target", p.Root)
 	if err != nil {
 		return noRow, err
 	}
 	if err = mountIdentity(mount, p.Root, sel.FilesystemUUID); err != nil {
 		return noRow, err
 	}
-	state, err := tool(ctx, "/usr/sbin/xfs_quota", "-x", "-c", "state -p", p.Root)
+	state, _, err := tool(ctx, "/usr/sbin/xfs_quota", "-x", "-c", "state -p", p.Root)
 	if err != nil {
 		return noRow, err
 	}
@@ -68,11 +68,11 @@ func prove(ctx context.Context, p hoststorage.Policy, sel freshretirement.Select
 			hard = a.Bytes / 1024
 		}
 		id := strconv.FormatUint(uint64(a.ProjectID), 10)
-		report, err := tool(ctx, "/usr/sbin/xfs_quota", "-x", "-c", "report -p -n "+unit+" -N -L "+id+" -U "+id, p.Root)
+		report, diagnostic, err := tool(ctx, "/usr/sbin/xfs_quota", "-x", "-c", "report -p -n "+unit+" -N -L "+id+" -U "+id, p.Root)
 		if err != nil {
 			return noRow, err
 		}
-		if found[k], err = classify(report, a.ProjectID, hard); err != nil {
+		if found[k], err = classify(report, diagnostic, a.ProjectID, hard); err != nil {
 			return noRow, err
 		}
 	}
@@ -86,7 +86,7 @@ func prove(ctx context.Context, p hoststorage.Policy, sel freshretirement.Select
 // leaf is absent and returns the plan for review. It writes nothing.
 func PlanRepair(ctx context.Context, m *payloadbootstrap.Manager, s payloadbootstrap.Spec) (RepairPlan, error) {
 	var plan RepairPlan
-	err := step(ctx, m, s, nil, func(r payloadbootstrap.Recovery, i payloadbootstrap.Inspection, sel freshretirement.Selection, recheck func() error) error {
+	err := step(ctx, m, s, nil, func(r payloadbootstrap.Recovery, i payloadbootstrap.Inspection, sel freshretirement.Selection, recheck, _ func() error) error {
 		a := sel.Approval.Assignment
 		plan = RepairPlan{RepairVersion, i, sel.Approval, sel.FilesystemUUID, Limit{a.ProjectID, a.Bytes / 1024, a.Inodes}}
 		if err := plan.validate(s, r.Storage); err != nil {
@@ -111,7 +111,7 @@ func Repair(ctx context.Context, m *payloadbootstrap.Manager, s payloadbootstrap
 		return Result{}, err
 	}
 	retained := false
-	err = step(ctx, m, s, &plan.Bootstrap, func(r payloadbootstrap.Recovery, _ payloadbootstrap.Inspection, sel freshretirement.Selection, recheck func() error) error {
+	err = step(ctx, m, s, &plan.Bootstrap, func(r payloadbootstrap.Recovery, _ payloadbootstrap.Inspection, sel freshretirement.Selection, recheck, sync func() error) error {
 		if err := plan.validate(s, r.Storage); err != nil || sel.Approval != plan.Storage || sel.FilesystemUUID != plan.FilesystemUUID {
 			return ErrRecovery
 		}
@@ -128,7 +128,11 @@ func Repair(ctx context.Context, m *payloadbootstrap.Manager, s payloadbootstrap
 		}
 		if found == noRow {
 			l := plan.Limit
-			if _, err = tool(ctx, "/usr/sbin/xfs_quota", "-x", "-c", limitCommand(l.ProjectID, l.BlockHardKiB*1024, l.InodeHard), r.Storage.Root); err != nil {
+			if _, _, err = tool(ctx, "/usr/sbin/xfs_quota", "-x", "-c", limitCommand(l.ProjectID, l.BlockHardKiB*1024, l.InodeHard), r.Storage.Root); err != nil {
+				return err
+			}
+			// The limit is a logged XFS change; commit it before reading it back.
+			if err = sync(); err != nil {
 				return err
 			}
 			if err = r.Gate(); err != nil {

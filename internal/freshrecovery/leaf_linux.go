@@ -17,7 +17,8 @@ import (
 // sequence: gate, retained inspection, the selected allocation under the
 // allocation lock, then the same inspection again and the policy recheck.
 // bootstrap, when set, must equal the retained inspection before action runs.
-func step(ctx context.Context, m *payloadbootstrap.Manager, s payloadbootstrap.Spec, bootstrap *payloadbootstrap.Inspection, action func(payloadbootstrap.Recovery, payloadbootstrap.Inspection, freshretirement.Selection, func() error) error) error {
+// action gets the selection's recheck and its syncfs of the held data root.
+func step(ctx context.Context, m *payloadbootstrap.Manager, s payloadbootstrap.Spec, bootstrap *payloadbootstrap.Inspection, action func(payloadbootstrap.Recovery, payloadbootstrap.Inspection, freshretirement.Selection, func() error, func() error) error) error {
 	if m == nil || action == nil {
 		return ErrRecovery
 	}
@@ -32,8 +33,8 @@ func step(ctx context.Context, m *payloadbootstrap.Manager, s payloadbootstrap.S
 		if bootstrap != nil && i != *bootstrap {
 			return ErrRecovery
 		}
-		err = freshretirement.Select(ctx, r.Storage, s.Key, func(sel freshretirement.Selection, recheck, _ func() error) error {
-			return action(r, i, sel, recheck)
+		err = freshretirement.Select(ctx, r.Storage, s.Key, func(sel freshretirement.Selection, recheck, sync func() error) error {
+			return action(r, i, sel, recheck, sync)
 		})
 		if err != nil {
 			return err
@@ -56,7 +57,7 @@ func step(ctx context.Context, m *payloadbootstrap.Manager, s payloadbootstrap.S
 // and returns the plan for review. It writes nothing.
 func PlanLeaf(ctx context.Context, m *payloadbootstrap.Manager, s payloadbootstrap.Spec) (LeafPlan, error) {
 	var plan LeafPlan
-	err := step(ctx, m, s, nil, func(r payloadbootstrap.Recovery, i payloadbootstrap.Inspection, sel freshretirement.Selection, recheck func() error) error {
+	err := step(ctx, m, s, nil, func(r payloadbootstrap.Recovery, i payloadbootstrap.Inspection, sel freshretirement.Selection, recheck, _ func() error) error {
 		benches, err := openBenches(r.Storage.Root, sel.Approval.Parent)
 		if err != nil {
 			return err
@@ -96,7 +97,7 @@ func RemoveLeaf(ctx context.Context, m *payloadbootstrap.Manager, s payloadboots
 		return Result{}, err
 	}
 	retained := false
-	err = step(ctx, m, s, &plan.Bootstrap, func(r payloadbootstrap.Recovery, _ payloadbootstrap.Inspection, sel freshretirement.Selection, recheck func() error) error {
+	err = step(ctx, m, s, &plan.Bootstrap, func(r payloadbootstrap.Recovery, _ payloadbootstrap.Inspection, sel freshretirement.Selection, recheck, _ func() error) error {
 		if err := plan.validate(s, r.Storage); err != nil || sel.Approval != plan.Storage {
 			return ErrRecovery
 		}

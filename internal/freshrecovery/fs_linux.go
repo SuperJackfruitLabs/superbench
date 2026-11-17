@@ -212,16 +212,18 @@ func projectID(f *os.File) (uint32, error) {
 // before the first effect. When existing is set the step is a retry after the
 // effect, so the approval must already exist; it is never created afresh then.
 func retain(ledger, key, step string, raw []byte, existing bool) error {
-	if err := storagecustody.RootOwnedDirectory(ledger, true); err != nil {
-		return err
-	}
 	parent := filepath.Join(ledger, "payload-cleanups")
 	name := key + "." + step + ".json"
 	if existing {
+		// The leaf is already gone: without this step's approval it was not ours.
 		if _, err := os.Lstat(filepath.Join(parent, name)); err != nil {
 			return errors.Join(ErrRecovery, err)
 		}
-	} else if err := os.Mkdir(parent, 0700); err != nil && !errors.Is(err, os.ErrExist) {
+	}
+	if err := storagecustody.RootOwnedDirectory(ledger, true); err != nil {
+		return err
+	}
+	if err := os.Mkdir(parent, 0700); err != nil && !errors.Is(err, os.ErrExist) {
 		return err
 	}
 	if err := storagecustody.RootOwnedDirectory(parent, true); err != nil {
@@ -253,8 +255,9 @@ func (b *bounded) Write(raw []byte) (int, error) {
 	return len(raw), nil
 }
 
-// tool runs a fixed binary with a fixed environment and bounded output.
-func tool(ctx context.Context, binary string, args ...string) ([]byte, error) {
+// tool runs a fixed binary with a fixed environment and returns its bounded
+// standard output and standard error.
+func tool(ctx context.Context, binary string, args ...string) ([]byte, []byte, error) {
 	cmd := exec.CommandContext(ctx, binary, args...)
 	cmd.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL=C"}
 	cmd.Dir = "/"
@@ -262,7 +265,7 @@ func tool(ctx context.Context, binary string, args ...string) ([]byte, error) {
 	var out, diagnostic bounded
 	cmd.Stdout, cmd.Stderr = &out, &diagnostic
 	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("%s: %w: %s", path.Base(binary), err, strings.TrimSpace(string(diagnostic.raw)))
+		return nil, nil, fmt.Errorf("%s: %w: %s", path.Base(binary), err, strings.TrimSpace(string(diagnostic.raw)))
 	}
-	return out.raw, nil
+	return out.raw, diagnostic.raw, nil
 }

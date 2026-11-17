@@ -170,3 +170,25 @@ func TestObserveRefusesLinksAndFilesAndReportsAbsence(t *testing.T) {
 		t.Fatalf("reverse creation order changed: %q", removal)
 	}
 }
+
+// The leaf is already gone: a retry is accepted only when this step's own
+// approval was retained, and nothing is created when it was not.
+func TestAbsentLeafRetryRequiresTheRetainedApproval(t *testing.T) {
+	ledger := t.TempDir()
+	if err := retain(ledger, "card", "leaf", []byte(`{"plan":1}`), true); !errors.Is(err, ErrRecovery) {
+		t.Fatalf("absent leaf accepted without an approval: %v", err)
+	}
+	if err := os.Mkdir(filepath.Join(ledger, "payload-cleanups"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ledger, "payload-cleanups", "card.repair.json"), []byte(`{"plan":1}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := retain(ledger, "card", "leaf", []byte(`{"plan":1}`), true); !errors.Is(err, ErrRecovery) {
+		t.Fatalf("another step's approval accepted for the leaf: %v", err)
+	}
+	entries, err := os.ReadDir(filepath.Join(ledger, "payload-cleanups"))
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("a refused retry created files: %v %v", entries, err)
+	}
+}
