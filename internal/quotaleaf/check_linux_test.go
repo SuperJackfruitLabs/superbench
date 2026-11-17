@@ -1,0 +1,118 @@
+//go:build linux
+
+package quotaleaf
+
+import (
+	"errors"
+	"os"
+	"path/filepath"
+	"syscall"
+	"testing"
+)
+
+// An ordinary temporary directory has project 0, or no fsxattr support at all:
+// either way the leaf check refuses it rather than pass.
+func TestLeafRefusesDirectoryOutsideProject(t *testing.T) {
+	benches := t.TempDir()
+	if err := os.Mkdir(filepath.Join(benches, "b1"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := Leaf(benches, "b1", 10001); err == nil {
+		t.Fatal("leaf outside its project accepted")
+	}
+	if err := Leaf(benches, "absent", 10001); err != nil {
+		t.Fatalf("absent leaf: %v", err)
+	}
+	if err := os.Symlink(filepath.Join(benches, "b1"), filepath.Join(benches, "link")); err != nil {
+		t.Fatal(err)
+	}
+	if err := Leaf(benches, "link", 10001); !errors.Is(err, syscall.ELOOP) && !errors.Is(err, syscall.ENOTDIR) {
+		t.Fatalf("leaf symlink followed: %v", err)
+	}
+}
+
+// fake reports a project per inode, so the walk is tested without XFS.
+func fake(t *testing.T, outside map[uint64]Attr) {
+	old := getattr
+	t.Cleanup(func() { getattr = old })
+	getattr = func(fd int) (Attr, error) {
+		var st syscall.Stat_t
+		if err := syscall.Fstat(fd, &st); err != nil {
+			return Attr{}, err
+		}
+		if a, ok := outside[st.Ino]; ok {
+			return a, nil
+		}
+		return Attr{ProjectID: 10001, Xflags: FlagProjInherit}, nil
+	}
+}
+
+func inode(t *testing.T, path string) uint64 {
+	var st syscall.Stat_t
+	if err := syscall.Lstat(path, &st); err != nil {
+		t.Fatal(err)
+	}
+	return st.Ino
+}
+
+func tree(t *testing.T) (string, string) {
+	root := t.TempDir()
+	leaf := filepath.Join(root, "leaf")
+	elsewhere := filepath.Join(root, "elsewhere")
+	for _, d := range []string{leaf, filepath.Join(leaf, "a", "b"), elsewhere} {
+		if err := os.MkdirAll(d, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(leaf, "a", "b", "f"), []byte("x"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(elsewhere, "g"), []byte("x"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(elsewhere, filepath.Join(leaf, "a", "out")); err != nil {
+		t.Fatal(err)
+	}
+	return leaf, elsewhere
+}
+
+func walk(t *testing.T, leaf string, limit int) error {
+	f, err := os.Open(leaf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	return Tree(f, 10001, limit)
+}
+
+func TestTreeRefusesNestedEntryOutsideProject(t *testing.T) {
+	leaf, elsewhere := tree(t)
+	// The symlink target is outside the project but is never followed.
+	fake(t, map[uint64]Attr{inode(t, elsewhere): {}, inode(t, filepath.Join(elsewhere, "g")): {}})
+	if err := walk(t, leaf, 16); err != nil {
+		t.Fatalf("clean tree: %v", err)
+	}
+	fake(t, map[uint64]Attr{inode(t, filepath.Join(leaf, "a", "b", "f")): {}})
+	if err := walk(t, leaf, 16); !errors.Is(err, ErrTreeProject) {
+		t.Fatalf("file moved to project 0: %v", err)
+	}
+	fake(t, map[uint64]Attr{inode(t, filepath.Join(leaf, "a", "b")): {ProjectID: 10001}})
+	if err := walk(t, leaf, 16); !errors.Is(err, ErrTreeProject) {
+		t.Fatalf("directory without inherit: %v", err)
+	}
+	fake(t, map[uint64]Attr{inode(t, leaf): {ProjectID: 10001}})
+	if err := walk(t, leaf, 16); !errors.Is(err, ErrLeafProject) {
+		t.Fatalf("leaf without inherit: %v", err)
+	}
+}
+
+func TestTreeIsBounded(t *testing.T) {
+	leaf, _ := tree(t)
+	fake(t, nil)
+	if err := walk(t, leaf, 3); !errors.Is(err, ErrTreeLimit) {
+		t.Fatalf("four entries under a limit of three: %v", err)
+	}
+	if err := walk(t, leaf, 4); err != nil {
+		t.Fatalf("four entries under a limit of four: %v", err)
+	}
+}
