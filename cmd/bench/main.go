@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/autoarchive"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/bench"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/buildinfo"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/maintenance"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/protocol"
 	"os"
@@ -29,6 +30,10 @@ func main() {
 	}
 }
 func run(args []string) error {
+	if len(args) == 1 && args[0] == "version" {
+		fmt.Println("bench", buildinfo.Version)
+		return nil
+	}
 	if len(args) > 0 && (args[0] == "prepare-local" || args[0] == "acknowledge-local-preparation" || args[0] == "local-preparation-status") {
 		return cooperativeCLI(args[0], args[1:], os.Stdout, os.Stderr)
 	}

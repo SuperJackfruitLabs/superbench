@@ -101,8 +101,11 @@ func bindPayloadInput(f *os.File) error {
 	if err := checkPayloadInput(f); err != nil {
 		return err
 	}
-	if err := syscall.Dup2(int(f.Fd()), 0); err != nil {
-		return errors.Join(ErrFrame, err)
+	// Dup3 rather than Dup2: linux/arm64 has no dup2. Dup3 refuses old == new, where Dup2 was a no-op.
+	if fd := int(f.Fd()); fd != 0 {
+		if err := syscall.Dup3(fd, 0, 0); err != nil {
+			return errors.Join(ErrFrame, err)
+		}
 	}
 	a, err := f.Stat()
 	b, other := os.Stdin.Stat()
