@@ -34,13 +34,15 @@ class UpgradeMode(unittest.TestCase):
         self.new = binaries(self.top / "new")
         for name in ("bench", "benchd", "bench-quota"):
             (self.new / name).write_bytes((self.new / name).read_bytes() + b"new revision")
+        self.incoming = sums(self.new)
         apply(self.args(self.old, upgrade=False), run=no_commands)
 
     def args(self, bins, upgrade=True, backup="backup"):
         return SimpleNamespace(bin_dir=bins, root=self.root, managed=True, prepare=False, identity=False,
                                activation=False, cgroup_root=CGROUP_ROOT, upgrade=upgrade,
                                previous=self.previous if upgrade else None,
-                               backup=self.top / backup if upgrade else None)
+                               backup=self.top / backup if upgrade else None,
+                               sums=self.incoming if upgrade else None)
 
     def installed(self, relative):
         return (self.root / relative).read_bytes()
@@ -127,12 +129,23 @@ class UpgradeMode(unittest.TestCase):
                 read_previous(bad)
 
     def test_flags_go_together(self):
-        for flags in (["--upgrade"], ["--previous", str(self.previous)], ["--upgrade", "--backup", str(self.top / "b")]):
+        for flags in (["--upgrade"], ["--previous", str(self.previous)], ["--sums", str(self.incoming)],
+                      ["--upgrade", "--backup", str(self.top / "b"), "--previous", str(self.previous)]):
             stderr = io.StringIO()
             with contextlib.redirect_stderr(stderr), self.assertRaises(SystemExit) as stop:
                 main(["--bin-dir", str(self.new), "--root", str(self.root), "--managed", *flags])
             self.assertEqual(stop.exception.code, 2)
-            self.assertIn("--upgrade needs both --previous and --backup", stderr.getvalue())
+            self.assertIn("--upgrade needs --previous, --backup and --sums", stderr.getvalue())
+
+    def test_upgrade_refuses_incoming_executables_that_are_not_the_reviewed_build(self):
+        (self.new / "benchd").write_bytes((self.new / "benchd").read_bytes() + b"tampered after review")
+        with self.assertRaisesRegex(ValueError, "incoming executable does not match"):
+            apply(self.args(self.new), run=no_commands)
+        self.assertEqual(self.installed("usr/local/bin/benchd"), (self.old / "benchd").read_bytes())
+        self.assertFalse((self.top / "backup").exists())
+        self.incoming = sums(self.new, names=("bench", "benchd", "bench-quota"))
+        with self.assertRaisesRegex(ValueError, "incoming executable does not match"):
+            apply(self.args(self.new), run=no_commands)
 
     def test_unit_must_be_stopped_with_no_main_process(self):
         def shown(text):

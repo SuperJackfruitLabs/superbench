@@ -9,8 +9,8 @@ from those accounts, --activation writes the all-false activation file, and
 Starting or enabling the service is a separate operator action after configuration.
 
 An installed file that differs is refused, except in --upgrade mode: then only the
-four executables may differ, and only from the previous revision's reviewed
-SHA256SUMS. Each is backed up first and replaced atomically while the unit is
+four executables may differ, only from the previous revision's reviewed
+SHA256SUMS, and only to the bytes the new build's --sums lists. Each is backed up first and replaced atomically while the unit is
 stopped. Every other installed file must still be identical.
 """
 import argparse
@@ -425,6 +425,16 @@ def read_previous(path):
     return sums
 
 
+def verify_incoming(entries, sums):
+    """Refuse an incoming executable whose bytes are not the reviewed new build."""
+    for relative in EXECUTABLES:
+        if relative not in entries:
+            continue
+        name = Path(relative).name
+        if sums.get(name) != hashlib.sha256(entries[relative][0]).hexdigest():
+            raise ValueError("incoming executable does not match the new build's SHA256SUMS: " + name)
+
+
 class Upgrade:
     """Replace only the reviewed previous executables, backing each one up first."""
 
@@ -550,9 +560,11 @@ def main(argv=None):
                         help="with --upgrade: the previous revision's reviewed executable digests")
     parser.add_argument("--backup", type=Path, metavar="DIR",
                         help="with --upgrade: a new directory that receives the replaced executables")
+    parser.add_argument("--sums", type=Path, metavar="SHA256SUMS",
+                        help="with --upgrade: the new build's reviewed digests, checked against --bin-dir")
     args = parser.parse_args(argv)
-    if args.upgrade != (args.previous is not None) or args.upgrade != (args.backup is not None):
-        parser.error("--upgrade needs both --previous and --backup, and they need --upgrade")
+    if any(args.upgrade != (value is not None) for value in (args.previous, args.backup, args.sums)):
+        parser.error("--upgrade needs --previous, --backup and --sums, and they need --upgrade")
     if not args.root.is_absolute() or str(args.root) != os.path.normpath(str(args.root)) or args.root != args.root.resolve():
         parser.error("installation root must be absolute, normalized and use physical paths")
     if args.prepare and args.root != Path("/"):
@@ -586,6 +598,8 @@ def apply(args, run=subprocess.run, lookup=account_ids, mounted=check_data_mount
     if getattr(args, "upgrade", False):
         upgrade = Upgrade(read_previous(args.previous), args.backup)
     entries = payload(args.bin_dir, args.managed)
+    if upgrade is not None:
+        verify_incoming(entries, read_previous(args.sums))
     if args.activation:
         entries.update(activation_document())
     storage = getattr(args, "storage", None)
