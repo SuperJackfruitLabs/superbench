@@ -4,6 +4,7 @@ package registeredinspection
 
 import (
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,6 +16,7 @@ import (
 type Nodes struct {
 	files   []*os.File
 	initial []os.FileInfo
+	root    *os.File
 }
 
 func (b *Nodes) Close() {
@@ -23,6 +25,7 @@ func (b *Nodes) Close() {
 	}
 	b.files = nil
 	b.initial = nil
+	b.root = nil
 }
 
 func (b *Nodes) retain(f *os.File) error {
@@ -97,6 +100,7 @@ func InspectNodes(p Policy, l Layout) (_ *Nodes, err error) {
 	if err = b.retain(root); err != nil {
 		return nil, err
 	}
+	b.root = root
 	open := func(relative string, node Node) error {
 		current := root
 		for _, part := range strings.Split(relative, "/") {
@@ -151,4 +155,36 @@ func (b *Nodes) Check(p Policy, l Layout) error {
 		}
 	}
 	return nil
+}
+
+// Unregistered reports whether the retained aggregate root holds any entry
+// outside the registered layout. It reads names only and stops at the first.
+func (b *Nodes) Unregistered(l Layout) (bool, error) {
+	if b == nil || b.root == nil {
+		return false, ErrBoundary
+	}
+	fd, err := syscall.Openat(int(b.root.Fd()), ".", syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
+	if err != nil {
+		return false, errors.Join(ErrBoundary, err)
+	}
+	dir := os.NewFile(uintptr(fd), "registered aggregate root")
+	defer dir.Close()
+	known := map[string]bool{".superbench-git": true, ".superbench-runtime": true}
+	for _, m := range l.Members {
+		known[m.Name] = true
+	}
+	for {
+		names, err := dir.Readdirnames(256)
+		for _, name := range names {
+			if !known[name] {
+				return true, nil
+			}
+		}
+		if errors.Is(err, io.EOF) {
+			return false, nil
+		}
+		if err != nil {
+			return false, errors.Join(ErrBoundary, err)
+		}
+	}
 }

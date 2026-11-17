@@ -83,3 +83,21 @@ func TestLayoutMatchingHandlesScalarWithoutGroupedMemberIndex(t *testing.T) {
 		})
 	}
 }
+
+func TestObservationRouteAcceptsOnlyFixedReadOnlyArgv(t *testing.T) {
+	if _, err := Observe(serviceidentity.Authority{}, &model.Bench{Workspace: &model.Workspace{}}, "api"); !errors.Is(err, ErrRefused) {
+		t.Fatalf("observation route bound without installed authority: %v", err)
+	}
+	observer := Route{observe: true}
+	for _, args := range [][]string{{"status"}, {"commit", "-m", "x"}, {"config", "remote.origin.url", "other"}, {"rev-parse", "--show-toplevel", "--git-dir"}, {"bundle", "create", "-", "HEAD"}} {
+		if _, err := observer.Execute(context.Background(), gitcontrol.Runner{}, args, nil, 0, 1024); !errors.Is(err, gitpolicy.ErrPolicy) {
+			t.Fatalf("owner-free route accepted %q: %v", args, err)
+		}
+	}
+	if _, err := observer.Execute(context.Background(), gitcontrol.Runner{}, []string{"status", "--porcelain", "--untracked-files=all"}, nil, 0, 1024); !errors.Is(err, ErrRefused) || errors.Is(err, gitpolicy.ErrPolicy) {
+		t.Fatalf("fixed observation did not reach the separate authority refusal: %v", err)
+	}
+	if _, err := (Route{}).Execute(context.Background(), gitcontrol.Runner{}, []string{"bundle", "create", "-", "HEAD"}, nil, 0, 1024); errors.Is(err, gitpolicy.ErrPolicy) {
+		t.Fatalf("held-owner route lost its unrestricted subcommand policy: %v", err)
+	}
+}
