@@ -42,7 +42,7 @@ func (p Policy) OperationAuthority(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	ledgerFS, err := stateFilesystem(ctx, p.Ledger, ledgerRoot.Device)
+	ledgerFS, err := storageproof.StateFilesystem(ctx, p.Ledger, ledgerRoot.Device)
 	if err != nil {
 		return "", err
 	}
@@ -98,7 +98,7 @@ func (p Policy) OperationAuthority(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	endLedgerFS, err := stateFilesystem(ctx, p.Ledger, endLedger.Device)
+	endLedgerFS, err := storageproof.StateFilesystem(ctx, p.Ledger, endLedger.Device)
 	if err != nil {
 		return "", err
 	}

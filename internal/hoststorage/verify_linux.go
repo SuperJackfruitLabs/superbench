@@ -175,20 +175,6 @@ func managedStorageMount(ctx context.Context, root string, device uint64) (strin
 	return storageproof.ParseManagedMount(raw, root, device)
 }
 
-// stateFilesystem is the reboot-stable identity of the filesystem that holds a
-// state directory whose st_dev in this boot is device.
-func stateFilesystem(ctx context.Context, path string, device uint64) (string, error) {
-	var fs syscall.Statfs_t
-	if err := syscall.Statfs(path, &fs); err != nil {
-		return "", err
-	}
-	raw, err := storageCommand(ctx, "/usr/bin/findmnt", "--noheadings", "--raw", "--output", storageproof.StateFilesystemColumns, "--target", path)
-	if err != nil {
-		return "", err
-	}
-	return storageproof.ParseStateFilesystem(raw, device, fs.Fsid.X__val)
-}
-
 func unmanagedStorageMount(root string) (string, error) {
 	info, err := os.Stat(root)
 	if err != nil {
