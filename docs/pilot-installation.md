@@ -24,6 +24,20 @@ end-to-end card result:
 - **No activated run on a booted host yet.** Creating a Fresh bench and running a
   real task through the payload helper, with all five switches on, is covered by
   tests and fixtures but has not been run on an installed, booted host.
+- **Fresh lifecycle limits.** After bootstrap the member tree belongs to the
+  payload account, mode 0700, and benchd never reads it itself. The payload
+  helper does that: initialization, setup, runs, checkpoint and release observe
+  and run in the tree as the payload account. These steps refuse a Fresh
+  workspace before touching it:
+  - archive, reap and automatic archive (`fresh workspace tree is private to the
+    payload account`);
+  - transfer and cross-host export (the same refusal);
+  - setup from a `package-lock.json` or `pnpm-lock.yaml`, or a `[caches]`
+    setting (`no payload cache transport`). Use an explicit `[setup]` command.
+
+  A checkpoint copies new commits from the payload checkout into the daemon's
+  mirror as a Git bundle. The bundle holds only the commits the mirror lacks,
+  at most 64 MiB per member.
 - **Harness configuration in the payload home.** The payload helper sets `HOME`
   from each bench's Fresh layout. Nothing yet places a harness's provider
   configuration there, and the harness adapter refuses to provision credentials.
