@@ -72,10 +72,11 @@ Staging writes only below the supplied physical absolute root.
 ### Mount the data volume persistently
 
 The quota state, `/var/lib/superbench-quota`, must be on an ext4, XFS or btrfs
-filesystem with a UUID (the root filesystem usually is). Its device number can
-change at boot, so the helper recognises that filesystem by its UUID; on tmpfs,
-overlay or a filesystem without one, `initialize-indexed` refuses before it
-writes a ready record.
+filesystem with a UUID. The helper recognises that filesystem by its UUID; on
+tmpfs, overlay or a filesystem without one, `initialize-indexed` refuses before
+it writes a ready record. Other records still pin device numbers, so the
+supported setup is an ext4 or XFS partition for the state (see [Reboot and device
+numbers](#reboot-and-device-numbers)).
 
 Mount the dedicated XFS filesystem at `/srv/superbench-data` with project quotas
 before installing, and make the mount survive a reboot. The installer creates
@@ -93,10 +94,36 @@ UUID=FILESYSTEM-UUID  /srv/superbench-data  xfs  defaults,prjquota  0  2
 ```
 
 For a filesystem image on a staging host, use a root-owned image outside the
-state and data directories:
+state and data directories, attached at a **fixed** loop device by its own unit
+rather than by the fstab `loop` option, which takes whichever loop device is free
+at boot (see [Reboot and device numbers](#reboot-and-device-numbers)). As root,
+write `/etc/systemd/system/superbench-data-loop.service`:
+
+```ini
+[Unit]
+Description=Attach the SuperBench data image at a fixed loop device
+DefaultDependencies=no
+RequiresMountsFor=/var/lib/superbench-data.img
+Before=local-fs.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/losetup /dev/loop7 /var/lib/superbench-data.img
+ExecStop=/usr/sbin/losetup -d /dev/loop7
+
+[Install]
+WantedBy=local-fs.target
+```
+
+It runs before other loop users such as snaps start at boot. Pick a loop device
+whose node exists (`ls /dev/loop7`) and that nothing else attaches. Enable and
+start it with `systemctl enable --now superbench-data-loop.service`, read the
+filesystem's UUID with `blkid -s UUID -o value /dev/loop7`, and mount by that
+UUID once the loop device is attached:
 
 ```text
-/var/lib/superbench-data.img  /srv/superbench-data  xfs  loop,prjquota  0  0
+UUID=FILESYSTEM-UUID  /srv/superbench-data  xfs  defaults,prjquota,x-systemd.requires=superbench-data-loop.service  0  0
 ```
 
 Instead of fstab, a systemd mount unit named `srv-superbench\x2ddata.mount`
@@ -116,11 +143,49 @@ checks above confirm.
 
 The service unit has `RequiresMountsFor=/srv/superbench-data`, so systemd mounts
 the volume before benchd and does not start benchd without it. The quota ledger is
-bound to the filesystem UUID: mount the same filesystem every time. A different
-loop or block device number after a reboot is fine. The installer's `--storage`
+bound to the filesystem UUID: mount the same filesystem every time. Keep the
+device number the same across reboots too: some records still pin it (see
+[Reboot and device numbers](#reboot-and-device-numbers)). The installer's `--storage`
 refuses to write the storage policy unless `/srv/superbench-data` is a separate
 mounted XFS filesystem root with enforced project quotas (`prjquota`, not
 `pqnoenforce`), without `nouuid` and, on a first install, empty.
+
+### Reboot and device numbers
+
+A device number (`st_dev`) is not a stable name: a loop image attached with the
+fstab `loop` option gets whichever loop device is free at boot, LVM minors follow
+activation order, and btrfs gives each subvolume an anonymous number that can
+change at boot. SuperBench identifies the quota ledger's state filesystem and the
+managed data volume by their UUIDs for the quota ledger and authority, storage
+proofs in transfer approvals, storage retirements, the root checks of
+missing-source freezes and Fresh allocation recovery.
+
+These records still pin device numbers in this release. After a reboot that
+renumbers the device they are on, each fails closed: the operation is refused,
+nothing is adopted or changed, and the record is kept:
+
+- quota helper operation identities (the daemon state directory's device), so
+  cancelling an operation interrupted before the reboot is refused;
+- the Fresh payload bootstrap intent and the registered payload layouts, so
+  resuming a bootstrap or running a registered payload is refused;
+- archive freeze and reap trees, and worktree registrations in a reap plan;
+- sealed run history and log captures;
+- worktree transfer and missing-source quarantine evidence;
+- mirror clone stages;
+- any storage record on an unmanaged host, which has no UUID.
+
+The supported host setup therefore keeps device numbers stable:
+
+- put `/var/lib/superbench` and `/var/lib/superbench-quota` on an ext4 or XFS
+  partition, not on btrfs or an LVM volume; initialization refuses a state
+  filesystem without a UUID (tmpfs, overlay);
+- put the data volume on a partition, or attach its image at a fixed loop device
+  with the unit in [Mount the data volume
+  persistently](#mount-the-data-volume-persistently) or `losetup` with an
+  explicit `/dev/loopN`, never with the fstab `loop` option.
+
+If a device was renumbered anyway, restore the original numbering (attach the
+image at the same loop device again) before retrying; do not delete the records.
 
 ### Install on the host
 
@@ -266,8 +331,10 @@ SuperBench revision that pinned the state filesystem's device number`, and the
 installer refuses it the same way. With it, benchd refuses to start with `fresh_payload` on, and
 `bench-quota operation-info` fails with `quota operation journal authority
 changed: the ready record pins a storage authority that ... no longer match`. The
-record is never adopted or rewritten. Such hosts were first installs with no work
-on the volume; reinitialize the storage as a first install:
+record is never adopted or rewritten. Reinitializing recreates the data
+filesystem and so deletes every workspace on the volume: do it only on a host
+whose work is disposable or already checkpointed and released, and otherwise keep
+the earlier revision installed. To reinitialize the storage as a first install:
 
 1. keep `fresh_payload` off, then stop and disable the service and confirm no
    `superbench` or `superbench-payload` process remains;

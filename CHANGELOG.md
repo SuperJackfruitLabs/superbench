@@ -9,12 +9,15 @@ stamps the section `## vX.Y.Z — YYYY-MM-DD`, and the release notes quote it.
 - Durable storage records survive a reboot that renumbers a device. The quota ledger's ready
   record and authority identify the state filesystem by its UUID (plus the subvolume on btrfs)
   instead of its device number, and initialization refuses a state filesystem without one.
-  Transfer approvals, missing-source freezes, storage retirements and Fresh recovery compare the
-  data volume's device only within one boot; the volume itself is bound by its UUID, so a loop
-  image reattached at another minor no longer makes recovery refuse. A ledger initialized by
-  the previous revision is refused with a pointer to "Reinitialize the indexed ledger".
-  Unmanaged storage, which has no UUID, still refuses a renumbered device, now with a message
-  that says so.
+  Transfer approvals, storage retirements, the root checks of missing-source freezes and Fresh
+  recovery compare a managed data volume's device only within one boot; the volume itself is
+  bound by its UUID, so a loop image reattached at another minor no longer makes Fresh recovery
+  refuse. Archive reap trees, run history, payload layouts, the payload bootstrap intent, helper
+  operation identities, worktree transfer evidence and mirror stages still pin device numbers
+  and refuse after a renumbering; "Reboot and device numbers" in `docs/pilot-installation.md`
+  lists them and the host setup that avoids it. A ledger initialized by the previous revision
+  is refused with a pointer to "Reinitialize the indexed ledger". Unmanaged storage, which has
+  no UUID, still refuses a renumbered device, now with a message that says so.
 - The quota helper's storage authority no longer hashes the data mount's mount ID or device
   number. A ledger that `install.py --storage` initializes in the host's mount namespace now
   opens in the service unit's private namespace and after a reboot; before, every start with
