@@ -268,11 +268,16 @@ on the volume; reinitialize the storage as a first install:
 4. remove the installed unit file `/etc/systemd/system/superbench.service` and
    run `systemctl daemon-reload`, so the installer masks the service and
    initializes again instead of refusing an installed unit;
-5. recreate the data filesystem as in step 3 of
-   [Recover a partial initialization](#recover-a-partial-initialization): its
-   quota owner anchor belongs to the removed ledger;
+5. unmount the data volume (`umount /srv/superbench-data`), then recreate the
+   data filesystem as in step 3 of
+   [Recover a partial initialization](#recover-a-partial-initialization) and
+   mount it again: its quota owner anchor belongs to the removed ledger, and
+   `mkfs.xfs` must never run on a mounted filesystem;
 6. rerun the same installer command, `--storage` included, from the new revision.
-   Leave out `--activation` if you have edited `/etc/superbench/activation.json`.
+   Leave out `--activation` if you have edited `/etc/superbench/activation.json`;
+7. rerun `bench configure-host` as the service account, with the same options as
+   in the first install (below): the new filesystem has none of the shared
+   projects it applied.
 
 The same refusal on a host initialized by the current revision means the storage
 really changed: another filesystem is mounted, or the policy, ledger or anchor
