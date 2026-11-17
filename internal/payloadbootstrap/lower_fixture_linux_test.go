@@ -25,6 +25,7 @@ import (
 	"syscall"
 	"testing"
 
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/confinefixture"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/freshrecovery/fixture"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/lowerfixture"
@@ -286,6 +287,7 @@ func TestFreshIndexedMaterializerLowerFixture(t *testing.T) {
 		t.Fatalf("read-only verify refused the Fresh allocation the legacy apply refuses: %+v %v", verified.Assignment, err)
 	}
 	t.Log("LOWER_FRESH_READ_ONLY_VERIFY_AFTER_LEGACY_APPLY_REFUSAL_PASS")
+	confinefixture.Prove(t, private, p, spec.Key, members[0].Name, result.Allocation.ProjectID)
 	beforeRelease, err := os.ReadFile(filepath.Join(p.Ledger, "assignments.json"))
 	if err != nil {
 		t.Fatal(err)
