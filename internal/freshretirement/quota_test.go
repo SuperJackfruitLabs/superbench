@@ -3,6 +3,7 @@ package freshretirement
 import (
 	"bytes"
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -37,5 +38,38 @@ func TestFixedOutputCannotGrowPastBound(t *testing.T) {
 	}
 	if n, err := out.Write([]byte{'y'}); n != 0 || !errors.Is(err, ErrRetirement) || !bytes.Equal(out.raw, raw) {
 		t.Fatalf("oversize output retained: %d %v len%d", n, err, len(out.raw))
+	}
+}
+
+func TestRetirementSyncsDataBeforeTrustingAbsenceForTheTombstone(t *testing.T) {
+	var calls []string
+	step := func(name string, fail bool) func() error {
+		return func() error {
+			calls = append(calls, name)
+			if fail {
+				return ErrRetirement
+			}
+			return nil
+		}
+	}
+	if err := ordered(step("absent", false), step("unused", false), step("sync", false), step("save", false)); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(calls, " "); got != "absent unused sync absent save absent" {
+		t.Fatalf("retirement order changed: %s", got)
+	}
+	calls = nil
+	if err := ordered(step("absent", false), step("unused", false), step("sync", false), nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(calls, " "); got != "absent unused sync absent" {
+		t.Fatalf("observation order changed: %s", got)
+	}
+	calls = nil
+	if err := ordered(step("absent", false), step("unused", false), step("sync", true), step("save", false)); !errors.Is(err, ErrRetirement) {
+		t.Fatalf("failed sync ignored: %v", err)
+	}
+	if got := strings.Join(calls, " "); got != "absent unused sync" {
+		t.Fatalf("tombstone reachable after a failed sync: %s", got)
 	}
 }

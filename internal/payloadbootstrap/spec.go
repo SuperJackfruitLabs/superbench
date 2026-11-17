@@ -53,6 +53,17 @@ func (s Spec) Validate() error {
 	}
 	return nil
 }
+
+// FixedDirectories lists, in creation order, the only directories Begin creates
+// beneath a fresh leaf. Recovery removes exactly these names, in reverse.
+func FixedDirectories(s Spec) []string {
+	dirs := []string{".superbench-git", ".superbench-runtime", ".superbench-runtime/.root", ".superbench-runtime/.root/home", ".superbench-runtime/.root/tmp"}
+	for _, member := range s.Members {
+		base := ".superbench-runtime/" + member.Name
+		dirs = append(dirs, base, base+"/home", base+"/tmp")
+	}
+	return dirs
+}
 func validBranch(s string) bool {
 	return s != "" && len(s) <= 512 && utf8.ValidString(s) && !strings.HasPrefix(s, "-") && !strings.ContainsAny(s, "\x00\n\r ~^:?*[\\") && !strings.Contains(s, "..") && !strings.Contains(s, "@{") && !strings.HasPrefix(s, "/") && !strings.HasSuffix(s, "/") && !strings.Contains(s, "//") && !strings.HasSuffix(s, ".") && !strings.HasSuffix(s, ".lock")
 }

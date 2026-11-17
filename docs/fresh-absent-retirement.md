@@ -13,7 +13,9 @@ the selected assignment and its exact Fresh marker separately from immutable
 storage authority. An approval records the original allocation and the fixed
 benches parent's device, inode, owner, group and mode. The parent must belong to
 the dedicated data mount; a child mount cannot hide the real leaf. Only leaf
-ENOENT below that existing pinned parent establishes absence.
+ENOENT below that existing pinned parent establishes absence. Before the absence
+check that precedes the tombstone, it runs `syncfs` on a held descriptor of the
+data root, so the removal it relies on is durable on the data filesystem.
 
 Both XFS block and inode reports must uniquely identify zero usage. Nonzero
 usage, open-but-unlinked files, malformed or duplicate rows, missing output,

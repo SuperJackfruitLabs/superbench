@@ -60,12 +60,7 @@ func (m *Manager) Begin(ctx context.Context, s Spec) error {
 			}
 			// Only fixed new directories, created exclusively under the just-reserved
 			// inode, are transferred. There is no recursive chown or existing-tree walk.
-			dirs := []string{".superbench-git", ".superbench-runtime", ".superbench-runtime/.root", ".superbench-runtime/.root/home", ".superbench-runtime/.root/tmp"}
-			for _, member := range s.Members {
-				base := ".superbench-runtime/" + member.Name
-				dirs = append(dirs, base, base+"/home", base+"/tmp")
-			}
-			for _, relative := range dirs {
+			for _, relative := range FixedDirectories(s) {
 				path := filepath.Join(a.Path, relative)
 				if err = os.Mkdir(path, 0700); err != nil {
 					return err

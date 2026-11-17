@@ -193,3 +193,8 @@ func assertRetirementTombstone(t *testing.T, raw []byte, key string, a hoststora
 		t.Fatal("retirement did not commit exact tombstone")
 	}
 }
+
+// SetFixtureGate replaces only the booted maintenance gate, for the recovery child.
+func SetFixtureGate(m *Manager, gate func(context.Context, hoststorage.Policy) error) {
+	m.maintenanceGate = gate
+}

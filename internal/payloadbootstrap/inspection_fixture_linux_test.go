@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/freshrecovery/fixture"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/payloadbootstrap"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotaoperation"
@@ -103,10 +104,14 @@ func assertLowerRetainedInspection(t *testing.T, control *quotaoperationjournal.
 	}
 	assertLowerBytes(t, intentPath, intent)
 	assertLowerBytes(t, filepath.Join(p.Ledger, "assignments.json"), assignments)
-	child := exec.CommandContext(t.Context(), helper, "-test.v", "-test.run=^TestRetirement(ApprovalCustody|Ordering)Fixture$", "-test.timeout=0")
+	child := exec.CommandContext(t.Context(), helper, "-test.v", "-test.run=^Test(Retirement(ApprovalCustody|Ordering)|FreshRecovery)Fixture$", "-test.timeout=0")
 	log, err := child.CombinedOutput()
-	if err != nil || (!bytes.Contains(log, []byte("RETIREMENT_APPROVAL_CUSTODY_PASS")) || !bytes.Contains(log, []byte("RETIREMENT_ORDERING_AND_BINDING_PASS"))) || bytes.Contains(log, []byte("SKIP")) {
+	if err != nil || (!bytes.Contains(log, []byte("RETIREMENT_APPROVAL_CUSTODY_PASS")) || !bytes.Contains(log, []byte("RETIREMENT_ORDERING_AND_BINDING_PASS"))) || fixture.Logged(log) != nil || bytes.Contains(log, []byte("SKIP")) {
 		t.Fatalf("actual root approval custody failed: %v\n%s", err, log)
 	}
+	fixture.Relay(t, log)
 	t.Log("LOWER_RETAINED_BOOTSTRAP_INSPECTION_WITHOUT_REVIVAL_PASS")
 }
+
+// The recovery child: real leaks recovered through the real commands' Manager calls.
+func TestFreshRecoveryFixture(t *testing.T) { fixture.Run(t, payloadbootstrap.SetFixtureGate) }
