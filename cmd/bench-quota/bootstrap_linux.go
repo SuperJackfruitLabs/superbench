@@ -67,6 +67,11 @@ func runBootstrapCommand(args []string, override bool, input *os.File, output io
 	if spec.Key != key {
 		return errBootstrapCommand
 	}
+	if args[0] == "reclaim-payload" {
+		if err = checkReclaimIdentity(spec, identity); err != nil {
+			return err
+		}
+	}
 	control, _, err := quotaoperationcontrol.Open(ctx)
 	if err != nil {
 		return err

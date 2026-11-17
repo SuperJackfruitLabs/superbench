@@ -139,3 +139,32 @@ func TestBootstrapPartialPipeCannotHoldPrivilegedInputReader(t *testing.T) {
 		t.Fatalf("partial input was not bounded: %d %v", len(raw), err)
 	}
 }
+
+// reclaim-payload refuses an identity that is not the workspace's reclaim
+// identity before any journal, policy or lock is opened.
+func TestReclaimCommandRefusesAnotherIdentityBeforeAuthority(t *testing.T) {
+	spec := payloadbootstrap.Spec{Version: payloadbootstrap.Version, Key: "card", ID: strings.Repeat("a", 32), CheckpointRepository: "api",
+		Members: []payloadbootstrap.Member{{Name: "api", Repository: "https://example.invalid/api.git", Branch: "task/api", Source: strings.Repeat("a", 40), ObjectFormat: "sha1"}}}
+	raw, err := spec.Bytes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := strings.Repeat("a", 64)
+	for name, args := range map[string][]string{
+		"create-identity": {"reclaim-payload", "card", h, strings.Repeat("b", 32), h, h, h},
+	} {
+		path := t.TempDir() + "/spec"
+		if err = os.WriteFile(path, raw, 0600); err != nil {
+			t.Fatal(err)
+		}
+		f, err := os.Open(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out bytes.Buffer
+		if err = runBootstrapCommand(args, false, f, &out); !errors.Is(err, errReclaimIdentity) || out.Len() != 0 {
+			t.Fatalf("%s: %v %q", name, err, out.Bytes())
+		}
+		f.Close()
+	}
+}
