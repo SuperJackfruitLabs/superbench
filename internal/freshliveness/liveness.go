@@ -13,12 +13,12 @@ import (
 )
 
 var (
-	// ErrBusy refuses a reclaim while anything still uses the bench:
-	// a populated cgroup scope holding a process with its working directory,
-	// root or an open file in the bench, or such a process of the payload
-	// account anywhere. Root checks this itself, before it retains the
-	// reclaiming intent and again before the purge; it does not trust the
-	// daemon's record that the bench is released.
+	// ErrBusy refuses a reclaim when root's best-effort, point-in-time check
+	// sees the bench in use: a populated cgroup holding a process with a task
+	// whose working directory, root, open file or mapping is in the bench, or
+	// such a process of the payload account anywhere. Root checks this itself,
+	// before it retains the reclaiming intent and again before the purge; it
+	// does not trust the daemon's record that the bench is released.
 	ErrBusy = errors.New("fresh reclaim refused: the bench is in use; stop its runs and retry the same reclaim")
 	// ErrPayloadActive reports a reclaim stopped because the payload
 	// account interfered: the purge worker made no progress (it was stopped),

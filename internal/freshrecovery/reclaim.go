@@ -51,9 +51,10 @@ type reclaimSteps struct {
 	leaf func() (bool, error)
 	// fenced requires the bootstrap's Git controls fenced.
 	fenced func() error
-	// idle refuses (ErrReclaimBusy) while anything uses the bench: root's own
-	// check, never the daemon's record. It runs before retention and again
-	// before the purge.
+	// idle refuses (ErrReclaimBusy) when root's own check, never the daemon's
+	// record, sees the bench in use. It is best-effort and point in time; the
+	// empty-leaf removal and the zero-usage retirement are the guarantees. It
+	// runs before retention and again before the purge.
 	idle func() error
 	// retain moves the intent completed -> reclaiming, before any effect.
 	retain func() error
