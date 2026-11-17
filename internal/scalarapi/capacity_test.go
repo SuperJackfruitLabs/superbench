@@ -41,3 +41,10 @@ func TestCapacityErrorProjectionKeepsOnlyLogicalQuantities(t *testing.T) {
 		})
 	}
 }
+
+func TestFreshCreateRefusalIsAnExplicitConflict(t *testing.T) {
+	status, code, message := ErrorStatus(fmt.Errorf("dispatch: %w", ErrFreshCreate))
+	if status != 409 || code != "conflict" || !strings.Contains(message, "fresh_payload is active") {
+		t.Fatal(status, code, message)
+	}
+}

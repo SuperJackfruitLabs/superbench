@@ -271,6 +271,16 @@ the socket, and refuses a file that breaks one:
 So the registered launch, which needs all five, sets every switch to `true`, and
 `receipt_lookup` or `cancellation` may run alone.
 
+While `fresh_payload` is on, benchd refuses a v1 `create` or `recover` before it
+records anything, with `409 conflict` and the message `scalar benches cannot be
+created while fresh_payload is active; use the workspace API`. The indexed journal
+that `fresh_payload` needs refuses the unscoped bench allocation a scalar create
+makes, so the create would otherwise fail after recording its intent. Other v1
+operations on existing scalar benches are unchanged. Separately, v1 has no
+capacity code: a v1 create that would take the volume past its reservations (every
+bench reserves its full `BenchBytes`) returns `operation_failed`, and only the
+journal line says `capacity_exhausted`.
+
 When the file exists, benchd refuses to start unless it is a single-link regular
 file of at most 4 KiB, owned by root and not group- or world-writable, and every
 directory from `/` to `/etc/superbench` is owned by root without group or world

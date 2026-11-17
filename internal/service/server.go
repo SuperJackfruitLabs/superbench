@@ -325,6 +325,9 @@ func (s *Server) dispatch(r protocol.Request) (any, error) {
 		h, e := store.HostStatus()
 		return map[string]any{"managed": h.Managed, "data_free_bytes": h.Data.Free, "state_free_bytes": h.State.Free}, e
 	case "create", "recover":
+		if store.ProposedFreshPayload {
+			return map[string]any{"bench": nil}, scalarapi.ErrFreshCreate
+		}
 		var b *bench.Bench
 		var e error
 		options := bench.Options{Repo: r.Repository, Branch: r.Branch, Base: r.Base}

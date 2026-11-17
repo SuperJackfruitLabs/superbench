@@ -9,10 +9,18 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/bench"
 )
 
+// ErrFreshCreate refuses v1 create and recover while fresh_payload is active.
+// That needs the indexed quota journal, whose helper refuses the unscoped bench
+// allocation a scalar create makes, so the create would fail after recording
+// its intent. benchd refuses before any effect instead.
+var ErrFreshCreate = errors.New("scalar create and recover are refused while fresh_payload is active; create a v2 workspace")
+
 // ErrorStatus keeps v1's error set: capacity exhaustion has no v1 code and
 // stays operation_failed.
 func ErrorStatus(e error) (int, string, string) {
 	switch {
+	case errors.Is(e, ErrFreshCreate):
+		return 409, "conflict", "scalar benches cannot be created while fresh_payload is active; use the workspace API"
 	case errors.Is(e, bench.ErrNotFound):
 		return 404, "not_found", "unknown bench"
 	case errors.Is(e, bench.ErrLease):
