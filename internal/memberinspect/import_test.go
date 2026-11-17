@@ -69,7 +69,9 @@ type importFixture struct {
 	bench                 *model.Bench
 }
 
-func newImport(t *testing.T) *importFixture {
+func newImport(t *testing.T) *importFixture { return newFormat(t, "sha1") }
+
+func newFormat(t *testing.T, format string) *importFixture {
 	t.Helper()
 	root, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
@@ -79,7 +81,7 @@ func newImport(t *testing.T) *importFixture {
 	if err = os.Mkdir(f.state, 0700); err != nil {
 		t.Fatal(err)
 	}
-	run(t, root, nil, "init", "-q", "-b", "main", f.source)
+	run(t, root, nil, "init", "-q", "-b", "main", "--object-format="+format, f.source)
 	run(t, f.source, nil, "commit", "-q", "--allow-empty", "-m", "base")
 	f.base = strings.TrimSpace(run(t, f.source, nil, "rev-parse", "HEAD"))
 	run(t, root, nil, "clone", "-q", "--bare", f.source, f.mirror)
@@ -89,8 +91,13 @@ func newImport(t *testing.T) *importFixture {
 	run(t, f.source, nil, "add", "work.txt")
 	run(t, f.source, nil, "commit", "-q", "-m", "payload work")
 	f.head = strings.TrimSpace(run(t, f.source, nil, "rev-parse", "HEAD"))
-	f.bench = &model.Bench{Key: "card", Workspace: &model.Workspace{Members: []model.WorkspaceMember{{Name: "a", Mirror: f.mirror, Source: f.base}}}}
+	f.bench = benchFor(f)
+	f.bench.Workspace.Members[0].ObjectFormat = format
 	return f
+}
+
+func benchFor(f *importFixture) *model.Bench {
+	return &model.Bench{Key: "card", Workspace: &model.Workspace{Members: []model.WorkspaceMember{{Name: "a", Mirror: f.mirror, Source: f.base, ObjectFormat: "sha1"}}}}
 }
 
 func (f *importFixture) bundle(args ...string) []byte {
@@ -248,5 +255,80 @@ func TestImportBoundsADeltaBomb(t *testing.T) {
 	f.unchanged("delta bomb", before, err)
 	if runtime.GOOS == "linux" && !strings.Contains(err.Error(), "llocate") {
 		t.Fatalf("the address-space bound did not stop the delta allocation: %v", err)
+	}
+}
+
+func TestImportCarriesSHA256MembersAndRefusesAFormatMismatch(t *testing.T) {
+	f := newFormat(t, "sha256")
+	honest := f.bundle("HEAD", "--not", f.base)
+	if !bytes.HasPrefix(honest, []byte("# v3 git bundle\n@object-format=sha256\n")) {
+		t.Fatalf("fixture did not make a SHA-256 bundle: %q", honest[:40])
+	}
+	if _, err := f.importing(honest, f.head, 0); err != nil {
+		t.Fatalf("honest SHA-256 bundle refused: %v", err)
+	}
+	run(t, f.mirror, nil, "cat-file", "-e", f.head+"^{commit}")
+
+	sha1 := newFormat(t, "sha1")
+	before := sha1.objects()
+	_, err := sha1.importing(honest, sha1.head, 0)
+	sha1.unchanged("SHA-256 bundle for a SHA-1 member", before, err)
+
+	other := newFormat(t, "sha256")
+	before = other.objects()
+	_, err = other.importing(sha1.bundle("HEAD", "--not", sha1.base), other.head, 0)
+	other.unchanged("SHA-1 bundle for a SHA-256 member", before, err)
+	for _, header := range []string{"# v2 git bundle\n", "# v3 git bundle\n@object-format=sha1\n"} {
+		if _, _, err := CheckBundle([]byte(header+f.head+" HEAD\n\nPACK"), "sha256", nil); !errors.Is(err, ErrBundle) {
+			t.Fatalf("%q accepted for a SHA-256 member: %v", header, err)
+		}
+	}
+	if _, _, err := CheckBundle([]byte("# v3 git bundle\n@object-format=sha256\n"+sha1.head+" HEAD\n\nPACK"), "sha256", nil); !errors.Is(err, ErrBundle) {
+		t.Fatalf("a SHA-1 object ID was accepted under a SHA-256 header: %v", err)
+	}
+}
+
+func TestImportOutputAndStagingAreBounded(t *testing.T) {
+	var out importOutput
+	if _, err := out.Write(make([]byte, 64<<10)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := out.Write([]byte{0}); err == nil {
+		t.Fatal("import Git output exceeded 64 KiB")
+	}
+	f := newImport(t)
+	if err := os.Mkdir(filepath.Join(f.state, "fresh-imports"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.importing(f.bundle("HEAD", "--not", f.base), f.head, 0); err == nil || !strings.Contains(err.Error(), "private directory") {
+		t.Fatalf("a shared staging parent was used: %v", err)
+	}
+}
+
+func TestMigrationLeftoversRemovesOnlyWhatTheFailedFetchCreated(t *testing.T) {
+	mirror := t.TempDir()
+	pack := filepath.Join(mirror, "objects", "pack")
+	if err := os.MkdirAll(pack, 0700); err != nil {
+		t.Fatal(err)
+	}
+	old := filepath.Join(pack, "tmp_pack_other")
+	if err := os.WriteFile(old, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	before, err := migrationLeftovers(mirror, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{filepath.Join(pack, "tmp_pack_new"), filepath.Join(mirror, "objects", "incoming-x"), filepath.Join(mirror, "objects", "tmp_obj_y")} {
+		if err = os.WriteFile(name, nil, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err = migrationLeftovers(mirror, before); err != nil {
+		t.Fatal(err)
+	}
+	after, err := migrationLeftovers(mirror, nil)
+	if err != nil || len(after) != 1 || !after[old] {
+		t.Fatalf("leftovers after cleanup: %v %v", after, err)
 	}
 }

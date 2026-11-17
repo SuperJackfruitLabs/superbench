@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/freshtree"
@@ -80,8 +81,10 @@ func (i Inspector) present(ctx context.Context, mirror, commit string) bool {
 // CheckBundle accepts only a bounded v2 or v3 bundle whose single ref is HEAD
 // and whose prerequisites are commits the daemon chose to exclude. Which commit
 // HEAD names is bound after unbundling, against the quarantined object.
-// It returns the ref's object ID and the pack that follows the header.
-func CheckBundle(raw []byte, exclude []string) (string, []byte, error) {
+// Its object format must be the member's: a v2 bundle or v3 @object-format=sha1
+// for sha1, v3 @object-format=sha256 for sha256. It returns the ref's object
+// ID and the pack that follows the header.
+func CheckBundle(raw []byte, format string, exclude []string) (string, []byte, error) {
 	if len(raw) > freshtree.MaxExport {
 		return "", nil, freshtree.ErrExportCap
 	}
@@ -91,6 +94,11 @@ func CheckBundle(raw []byte, exclude []string) (string, []byte, error) {
 	}
 	lines := strings.Split(string(raw[:end]), "\n")
 	if lines[0] != "# v2 git bundle" && lines[0] != "# v3 git bundle" {
+		return "", nil, ErrBundle
+	}
+	declared := "sha1" // a v2 bundle has no capabilities and is always SHA-1
+	oidLength := map[string]int{"sha1": 40, "sha256": 64}[format]
+	if oidLength == 0 {
 		return "", nil, ErrBundle
 	}
 	allowed := map[string]bool{}
@@ -104,6 +112,7 @@ func CheckBundle(raw []byte, exclude []string) (string, []byte, error) {
 			if lines[0] != "# v3 git bundle" || line != "@object-format=sha1" && line != "@object-format=sha256" {
 				return "", nil, ErrBundle
 			}
+			declared = strings.TrimPrefix(line, "@object-format=")
 		case strings.HasPrefix(line, "-"):
 			oid, _, _ := strings.Cut(line[1:], " ")
 			if !allowed[oid] {
@@ -111,20 +120,20 @@ func CheckBundle(raw []byte, exclude []string) (string, []byte, error) {
 			}
 		default:
 			oid, ref, ok := strings.Cut(line, " ")
-			if !ok || ref != "HEAD" || !model.ValidCommit(oid) {
+			if !ok || ref != "HEAD" || !model.ValidCommit(oid) || len(oid) != oidLength {
 				return "", nil, ErrBundle
 			}
 			refs, named = refs+1, oid
 		}
 	}
-	if refs != 1 {
+	if refs != 1 || declared != format {
 		return "", nil, ErrBundle
 	}
 	return named, raw[end+2:], nil
 }
 
 func (i Inspector) quarantine(ctx context.Context, state string, b *model.Bench, member model.WorkspaceMember, head string, exclude []string, raw []byte) error {
-	named, pack, err := CheckBundle(raw, exclude)
+	named, pack, err := CheckBundle(raw, member.ObjectFormat, exclude)
 	if err != nil {
 		return err
 	}
@@ -145,7 +154,7 @@ func (i Inspector) quarantine(ctx context.Context, state string, b *model.Bench,
 		return err
 	}
 	repo := filepath.Join(dir, "quarantine.git")
-	if _, err = i.importGit(ctx, dir, nil, "init", "--bare", "--quiet", "--template=", repo); err != nil {
+	if _, err = i.importGit(ctx, dir, nil, "init", "--bare", "--quiet", "--template=", "--object-format="+member.ObjectFormat, repo); err != nil {
 		return err
 	}
 	// The quarantine reads the mirror's objects; only its own new objects can
@@ -166,10 +175,36 @@ func (i Inspector) quarantine(ctx context.Context, state string, b *model.Bench,
 	if err != nil || strings.TrimSpace(quarantined) != head {
 		return errors.Join(ErrBundle, errors.New("quarantined bundle does not carry the member HEAD"), err)
 	}
+	before, err := migrationLeftovers(mirror, nil)
+	if err != nil {
+		return err
+	}
 	if _, err = i.importGit(ctx, mirror, nil, "fetch", "--no-tags", "--no-write-fetch-head", repo, quarantineRef); err != nil {
-		return errors.Join(ErrBundle, err)
+		_, cleanup := migrationLeftovers(mirror, before)
+		return errors.Join(ErrBundle, err, cleanup)
 	}
 	return nil
+}
+
+// migrationLeftovers lists the mirror's temporary object files. Given the
+// listing from before a failed fetch, it removes only entries that fetch
+// created, so a refused migration leaves no partial objects behind.
+func migrationLeftovers(mirror string, before map[string]bool) (map[string]bool, error) {
+	found := map[string]bool{}
+	var errs []error
+	for _, pattern := range []string{"objects/incoming-*", "objects/tmp_*", "objects/pack/tmp_*", "objects/pack/.tmp-*"} {
+		paths, err := filepath.Glob(filepath.Join(mirror, pattern))
+		if err != nil {
+			return nil, err
+		}
+		for _, path := range paths {
+			found[path] = true
+			if before != nil && !before[path] {
+				errs = append(errs, os.RemoveAll(path))
+			}
+		}
+	}
+	return found, errors.Join(errs...)
 }
 
 type importOutput struct{ bytes.Buffer }
@@ -192,6 +227,8 @@ func (i Inspector) importGit(ctx context.Context, dir string, stdin []byte, args
 		"-c", "protocol.allow=never", "-c", "protocol.file.allow=always",
 		"-c", "transfer.fsckObjects=true", "-c", "fetch.fsckObjects=true",
 		"-c", "pack.threads=1", "-c", "index.threads=1", "-c", "core.bigFileThreshold=1m",
+		// Pack windows count against the address-space limit: keep them far below it.
+		"-c", "core.packedGitWindowSize=32m", "-c", "core.packedGitLimit=256m", "-c", "core.deltaBaseCacheLimit=64m",
 		"-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "credential.helper=",
 		"-c", "gc.auto=0", "-c", "maintenance.auto=false", "-c", "fetch.writeCommitGraph=false",
 		"-C", dir}
@@ -212,6 +249,9 @@ func (i Inspector) importGit(ctx context.Context, dir string, stdin []byte, args
 	out, stderr := &importOutput{}, &importOutput{}
 	cmd.Stdout, cmd.Stderr, cmd.Stdin = out, stderr, bytes.NewReader(stdin)
 	cmd.WaitDelay = 2 * time.Second
+	// Without a control scope a timeout must still stop every descendant.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
 	if err := gitcontrol.Run(ctx, cmd); err != nil {
 		return "", fmt.Errorf("import git %s: %w: %s", args[0], err, strings.TrimSpace(stderr.String()))
 	}
