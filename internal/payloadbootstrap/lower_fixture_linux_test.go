@@ -12,10 +12,7 @@ package payloadbootstrap_test
 // mid-transaction merely to make cleanup pass.
 
 import (
-	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -29,6 +26,7 @@ import (
 	"testing"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/lowerfixture"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/mountnsfixture"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/payloadbootstrap"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/payloadexec"
@@ -281,6 +279,12 @@ func TestFreshIndexedMaterializerLowerFixture(t *testing.T) {
 	if got := mustLowerInfo(t, root).Sys().(*syscall.Stat_t).Uid; got != private.PayloadUID {
 		t.Fatal("legacy path changed payload ownership")
 	}
+	// benchd checks a Fresh allocation before each launch and lease with this
+	// read-only verify; it must accept what the legacy apply above refuses.
+	if verified, err := p.VerifyStorage(t.Context(), spec.Key); err != nil || verified.Assignment != result.Allocation {
+		t.Fatalf("read-only verify refused the Fresh allocation the legacy apply refuses: %+v %v", verified.Assignment, err)
+	}
+	t.Log("LOWER_FRESH_READ_ONLY_VERIFY_AFTER_LEGACY_APPLY_REFUSAL_PASS")
 	beforeRelease, err := os.ReadFile(filepath.Join(p.Ledger, "assignments.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -373,70 +377,41 @@ func TestFreshIndexedMaterializerLowerFixture(t *testing.T) {
 		}
 	}
 	t.Log("LOWER_ACTUAL_MANAGER_DENIAL_BEFORE_EFFECTS_PASS")
+	// Fill the volume's logical reservations with ordinary allocations until one
+	// more bench cannot fit. A request above BenchBytes is refused by the policy
+	// ceiling, not by capacity, so the bootstrap asks for exactly BenchBytes.
+	var capacity *hoststorage.CapacityError
+	for i := 0; capacity == nil; i++ {
+		if i == 4096 {
+			t.Fatal("fixture volume never reached its reservation capacity")
+		}
+		err = control.Run(t.Context(), func() error { _, e := p.ApplyRequested("bench", fmt.Sprintf("fill-%d", i), 0); return e })
+		if err != nil && !errors.As(err, &capacity) {
+			t.Fatal("capacity filler", err)
+		}
+	}
+	over := spec
+	over.Key, over.ID, over.QuotaBytes = "over-capacity", lowerHash("over-bid:" + string(marker))[:32], p.BenchBytes
+	if before, err = os.ReadFile(filepath.Join(p.Ledger, "assignments.json")); err != nil {
+		t.Fatal(err)
+	}
+	out, _, exit = lowerBootstrap(t, base, helper, expectedSHA, identityFor("over-capacity"), over)
+	if capacity = nil; !errors.As(exit, &capacity) || !capacity.Valid() || len(out) != 0 {
+		t.Fatalf("over-capacity bootstrap not refused as capacity_exhausted: %q %v", out, exit)
+	}
+	assertLowerBytes(t, filepath.Join(p.Ledger, "assignments.json"), before)
+	for _, path := range []string{filepath.Join(p.Ledger, "payload-bootstrap", over.Key+".json"), filepath.Join(p.Root, "benches", over.Key), filepath.Join(private.StateRoot, "payload-layouts", over.Key+".json")} {
+		if _, e := os.Lstat(path); !errors.Is(e, os.ErrNotExist) {
+			t.Fatalf("capacity refusal had effects: %s %v", path, e)
+		}
+	}
+	t.Log("LOWER_BOOTSTRAP_CAPACITY_REFUSAL_CANONICAL_NO_INTENT_PASS")
 	t.Log("LOWER_SCOPE_ONLY_NO_BOOTED_SYSTEMD_GATE_OR_INSTALL_LIFECYCLE_CLAIM")
 }
 
-func lowerHash(s string) string { v := sha256.Sum256([]byte(s)); return hex.EncodeToString(v[:]) }
-func mustLowerInfo(t *testing.T, path string) os.FileInfo {
-	t.Helper()
-	s, e := os.Lstat(path)
-	if e != nil {
-		t.Fatal(e)
-	}
-	return s
-}
-func assertLowerBytes(t *testing.T, path string, want []byte) {
-	t.Helper()
-	got, e := os.ReadFile(path)
-	if e != nil || !bytes.Equal(got, want) {
-		t.Fatalf("retained evidence differs: %s %v", path, e)
-	}
-}
-func verifyLowerHelper(t *testing.T, path, want string) {
-	t.Helper()
-	if len(want) != 64 || storagecustody.TrustedAncestors(path) != nil {
-		t.Fatal("helper custody missing")
-	}
-	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer f.Close()
-	before, err := f.Stat()
-	if err != nil {
-		t.Fatal(err)
-	}
-	st := before.Sys().(*syscall.Stat_t)
-	if !before.Mode().IsRegular() || before.Mode().Perm() != 0755 || st.Uid != 0 || st.Nlink != 1 || before.Size() > 128<<20 {
-		t.Fatal("helper custody invalid")
-	}
-	h := sha256.New()
-	if _, err = io.Copy(h, io.LimitReader(f, (128<<20)+1)); err != nil {
-		t.Fatal(err)
-	}
-	after, err := f.Stat()
-	named, e := os.Lstat(path)
-	if err != nil || e != nil || !os.SameFile(before, after) || !os.SameFile(before, named) || before.Size() != after.Size() || before.ModTime() != after.ModTime() || hex.EncodeToString(h.Sum(nil)) != want {
-		t.Fatal("helper pin differs")
-	}
-}
-func daemonLowerGit(t *testing.T, dir string, args ...string) string {
-	t.Helper()
-	return daemonLowerGitInput(t, dir, "", args...)
-}
-func daemonLowerGitInput(t *testing.T, dir, input string, args ...string) string {
-	t.Helper()
-	cmd := exec.Command("/usr/bin/git", args...)
-	cmd.Stdin = strings.NewReader(input)
-	cmd.Dir = dir
-	cmd.Env = []string{"PATH=/usr/bin:/bin", "HOME=/nonexistent", "LC_ALL=C", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null", "GIT_TERMINAL_PROMPT=0"}
-	cmd.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: 61001, Gid: 61003, Groups: []uint32{}}}
-	out, e := cmd.CombinedOutput()
-	if e != nil {
-		t.Fatalf("owned source Git failed: %v %s", e, out)
-	}
-	return string(out)
-}
+// The shared lower-fixture helpers live in the fixture-only lowerfixture package.
+var lowerHash, mustLowerInfo, assertLowerBytes, verifyLowerHelper = lowerfixture.Hash, lowerfixture.Info, lowerfixture.AssertBytes, lowerfixture.VerifyHelper
+var daemonLowerGit, daemonLowerGitInput = lowerfixture.DaemonGit, lowerfixture.DaemonGitInput
 
 // Direct actual manager Bootstrap API only; this does not test the command or
 // service route. SelfBinarySHA binds the static fixture actually calling it.
