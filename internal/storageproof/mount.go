@@ -57,6 +57,40 @@ func ParseManagedMount(raw []byte, root string, device uint64) (string, string, 
 	return "xfs uuid=" + uuid + " fsroot=/ target=" + root + " prjquota", uuid, nil
 }
 
+// ParseUnmanagedMount finds the /proc/self/mountinfo line of the mount holding
+// root and returns its namespace-independent part: device, filesystem root,
+// mountpoint, type, source and superblock options. The mount and parent IDs,
+// the per-mount options and the optional fields (peer groups) differ between
+// mount namespaces and are left out.
+func ParseUnmanagedMount(raw []byte, root string, device uint64) (string, error) {
+	best, depth := "", -1
+	decode := strings.NewReplacer(`\040`, " ", `\011`, "\t", `\012`, "\n", `\134`, `\`)
+	for _, line := range strings.Split(string(raw), "\n") {
+		fields := strings.Fields(line)
+		separator := -1
+		for i := 6; i < len(fields); i++ {
+			if fields[i] == "-" {
+				separator = i
+				break
+			}
+		}
+		if separator < 0 || len(fields) != separator+4 || fields[2] != DeviceNumber(device) {
+			continue
+		}
+		mountpoint := decode.Replace(fields[4])
+		if root != mountpoint && !strings.HasPrefix(root, strings.TrimSuffix(mountpoint, "/")+"/") {
+			continue
+		}
+		if len(mountpoint) > depth {
+			best, depth = strings.Join(append([]string{fields[2], fields[3], fields[4]}, fields[separator+1:]...), " "), len(mountpoint)
+		}
+	}
+	if best == "" {
+		return "", errors.New("actual storage mount could not be identified")
+	}
+	return "linux:" + best, nil
+}
+
 // Root is the stat identity of a root-owned storage directory.
 type Root struct {
 	Device, Inode  uint64

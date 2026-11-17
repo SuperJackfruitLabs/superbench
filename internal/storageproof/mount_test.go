@@ -93,6 +93,34 @@ func TestAuthorityDiffersForAnotherVolumeOrRoot(t *testing.T) {
 	}
 }
 
+// /proc/self/mountinfo for one unmanaged data directory in the host namespace
+// and in a private namespace: other mount and parent IDs, peer groups and
+// per-mount options.
+func TestUnmanagedMountIgnoresNamespaceLocalFields(t *testing.T) {
+	host := "1 0 8:1 / / rw,relatime shared:1 - ext4 /dev/sda1 rw\n99 1 8:1 /srv/data /srv/data rw,relatime shared:22 - ext4 /dev/sda1 rw\n"
+	private := "1301 1290 8:1 / / ro,relatime master:1 - ext4 /dev/sda1 rw\n1302 1301 8:1 /srv/data /srv/data rw,nosuid,nodev - ext4 /dev/sda1 rw\n"
+	a, err := ParseUnmanagedMount([]byte(host), "/srv/data/bench", 0x801)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := ParseUnmanagedMount([]byte(private), "/srv/data/bench", 0x801)
+	if err != nil || a != b {
+		t.Fatalf("namespace changed the unmanaged mount: %q %q %v", a, b, err)
+	}
+	for name, table := range map[string]string{
+		"other filesystem root": strings.Replace(host, "/srv/data /srv/data", "/other /srv/data", 1),
+		"other source":          strings.Replace(host, "shared:22 - ext4 /dev/sda1", "shared:22 - ext4 /dev/sdb1", 1),
+		"superblock read-only":  strings.Replace(host, "shared:22 - ext4 /dev/sda1 rw", "shared:22 - ext4 /dev/sda1 ro", 1),
+	} {
+		if c, err := ParseUnmanagedMount([]byte(table), "/srv/data/bench", 0x801); err != nil || c == a {
+			t.Errorf("%s kept the unmanaged mount: %v", name, err)
+		}
+	}
+	if _, err := ParseUnmanagedMount([]byte(host), "/srv/data/bench", 0x802); err == nil {
+		t.Error("a mount of another device was used")
+	}
+}
+
 func TestVerifyQuotaRequiresOneExactRow(t *testing.T) {
 	for _, bad := range []string{"", "#10000 0 0 42", "#10000 0 0 8\n#10000 0 0 8"} {
 		if VerifyQuota([]byte(bad), 10000, 8) == nil {

@@ -13,7 +13,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"syscall"
 	"time"
 )
@@ -181,9 +180,6 @@ func unmanagedStorageMount(root string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	device := uint64(info.Sys().(*syscall.Stat_t).Dev)
-	major := (device>>8)&0xfff | (device>>32)&0xfffff000
-	minor := device&0xff | (device>>12)&0xffffff00
 	f, err := os.Open("/proc/self/mountinfo")
 	if err != nil {
 		return "", err
@@ -196,23 +192,5 @@ func unmanagedStorageMount(root string) (string, error) {
 	if len(raw) > 1<<20 {
 		return "", errors.New("mount table exceeds verification limit")
 	}
-	best, depth := "", -1
-	decode := strings.NewReplacer(`\040`, " ", `\011`, "\t", `\012`, "\n", `\134`, `\`)
-	for _, line := range strings.Split(string(raw), "\n") {
-		fields := strings.Fields(line)
-		if len(fields) < 10 || fields[2] != fmt.Sprintf("%d:%d", major, minor) {
-			continue
-		}
-		mountpoint := decode.Replace(fields[4])
-		if root != mountpoint && !strings.HasPrefix(root, strings.TrimSuffix(mountpoint, "/")+"/") {
-			continue
-		}
-		if len(mountpoint) > depth {
-			best, depth = line, len(mountpoint)
-		}
-	}
-	if best == "" {
-		return "", errors.New("actual storage mount could not be identified")
-	}
-	return "linux:" + best, nil
+	return storageproof.ParseUnmanagedMount(raw, root, uint64(info.Sys().(*syscall.Stat_t).Dev))
 }
