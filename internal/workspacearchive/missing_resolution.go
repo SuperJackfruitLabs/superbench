@@ -162,11 +162,19 @@ func (m Manager) resolutionBinding(ctx context.Context, tx *sql.Tx, b *model.Ben
 		return p, storage, e
 	}
 	oldParent := plan.Missing.Root
-	if observedParent.ParentDevice != oldParent.ParentDevice && !storage.Managed || observedParent.ParentInode != oldParent.ParentInode || observedParent.ParentMode != oldParent.ParentMode {
+	if !sameRetirementParent(observedParent, oldParent, storage.Managed) {
 		return p, storage, errors.New("original fixed retirement parent changed")
 	}
 	p = RootRemovalReview{Version: RootRemovalReviewVersion, Action: "remove-current-empty-directory", ID: id, State: m.State, DataRoot: m.Data, Key: b.Key, Path: b.Path, BenchID: b.Workspace.ID, TransferID: b.Workspace.Transfer.ID, TransferDigest: b.Workspace.Transfer.Digest, FreezeDigest: b.Workspace.Archive.FreezeDigest, ReapDigest: plan.Digest, RemovalDigest: rootReviewSHA(raw), StorageDigest: rootReviewDigest(storage)}
 	return p, storage, ctx.Err()
+}
+
+// sameRetirementParent compares a current observation of the fixed benches
+// parent with a retained one. A managed parent's device is not compared (a reboot
+// can renumber the data device, and the storage UUID binds the volume); an
+// unmanaged one has no UUID, so its device is.
+func sameRetirementParent(observed, recorded hoststorage.RetirementRoot, managed bool) bool {
+	return (managed || observed.ParentDevice == recorded.ParentDevice) && observed.ParentInode == recorded.ParentInode && observed.ParentMode == recorded.ParentMode
 }
 
 // observeDispositionRoot requires a physical empty same-filesystem fixed leaf.
@@ -288,7 +296,7 @@ func (m Manager) ReconcileRootRemoval(ctx context.Context, p RootRemovalReview) 
 				if !observed.Absent {
 					return errors.New("root disposition already started; present path requires fresh review")
 				}
-				if observed.ParentDevice != p.Root.ParentDevice && !storage.Managed || observed.ParentInode != p.Root.ParentInode || observed.ParentMode != p.Root.ParentMode {
+				if !sameRetirementParent(observed, p.Root, storage.Managed) {
 					return errors.New("root disposition parent changed")
 				}
 				return ctx.Err()

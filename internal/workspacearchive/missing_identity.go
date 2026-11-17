@@ -136,26 +136,34 @@ func (m Manager) missingCheckout(ctx context.Context, tx *sql.Tx, b *model.Bench
 
 // checkMissingRoot validates the surviving fixed parent even when the reviewed
 // root is absent. Reaping can remove only the exact frozen root, never adopt one.
-// The freeze's device numbers are not compared: a reboot can renumber the data
-// device. Parent and root must be on the data root's device in this boot, and
-// the storage identity binds that volume (by its UUID when managed).
-func checkMissingRoot(p MissingFreeze, reaping bool) error {
+// For managed storage the freeze's device numbers are not compared, because a
+// reboot can renumber the data device: parent and root must be on the data
+// root's device in this boot, and the storage identity binds that volume by its
+// UUID. Unmanaged storage has no UUID, so its recorded devices are compared.
+// This helps only a freeze whose root is absent: a present root's frozen reap
+// tree still pins st_dev and refuses after a renumbering (see "Reboot and
+// device numbers" in docs/pilot-installation.md).
+func checkMissingRoot(p MissingFreeze, managed, reaping bool) error {
 	parent := filepath.Dir(p.Path)
 	physical, e := filepath.EvalSymlinks(parent)
 	if e != nil || physical != parent {
 		return errors.New("missing archive parent changed")
 	}
-	data, e := os.Lstat(filepath.Dir(parent))
-	if e != nil {
-		return e
+	parentDevice, rootDevice := p.Root.ParentDevice, p.Root.Device
+	if managed {
+		data, e := os.Lstat(filepath.Dir(parent))
+		if e != nil {
+			return e
+		}
+		parentDevice = uint64(data.Sys().(*syscall.Stat_t).Dev)
+		rootDevice = parentDevice
 	}
-	device := data.Sys().(*syscall.Stat_t).Dev
 	st, e := os.Lstat(parent)
 	if e != nil {
 		return e
 	}
 	id := st.Sys().(*syscall.Stat_t)
-	if !st.IsDir() || id.Dev != device || uint64(id.Ino) != p.Root.ParentInode || uint32(st.Mode()) != p.Root.ParentMode {
+	if !st.IsDir() || uint64(id.Dev) != parentDevice || uint64(id.Ino) != p.Root.ParentInode || uint32(st.Mode()) != p.Root.ParentMode {
 		return errors.New("missing archive parent identity changed")
 	}
 	st, e = os.Lstat(p.Path)
@@ -174,7 +182,7 @@ func checkMissingRoot(p MissingFreeze, reaping bool) error {
 	id = st.Sys().(*syscall.Stat_t)
 	mode := uint32(st.Mode())
 	readonly := p.Root.Mode &^ 0222
-	if !st.IsDir() || st.Mode()&os.ModeSymlink != 0 || id.Dev != device || uint64(id.Ino) != p.Root.Inode || mode != p.Root.Mode && mode != readonly && (!reaping || mode != readonly|0200) {
+	if !st.IsDir() || st.Mode()&os.ModeSymlink != 0 || uint64(id.Dev) != rootDevice || uint64(id.Ino) != p.Root.Inode || mode != p.Root.Mode && mode != readonly && (!reaping || mode != readonly|0200) {
 		return errors.New("missing archive root identity changed")
 	}
 	for _, name := range p.Missing {
@@ -201,11 +209,11 @@ func (m Manager) verifyMissingArchive(ctx context.Context, tx *sql.Tx, b *model.
 	if f.missing == nil {
 		return errors.New("missing archive lacks explicit intent")
 	}
-	if e = checkMissingRoot(*f.missing, b.Workspace.Phase == "reaping" || b.Workspace.Phase == "reaped"); e != nil {
-		return e
-	}
 	p, e := m.missingApproval(tx, b)
 	if e != nil {
+		return e
+	}
+	if e = checkMissingRoot(*f.missing, p.Storage.Managed, b.Workspace.Phase == "reaping" || b.Workspace.Phase == "reaped"); e != nil {
 		return e
 	}
 	if e = m.confirm(ctx, b); e != nil {
@@ -269,7 +277,7 @@ func (m Manager) verifyRetired(ctx context.Context, s hoststorage.StorageIdentit
 	if _, e := os.Lstat(f.Path); !os.IsNotExist(e) {
 		return errors.New("retired source path reappeared")
 	}
-	return checkMissingRoot(f, true)
+	return checkMissingRoot(f, false, true)
 }
 
 func (m Manager) retireQuota(ctx context.Context, a hoststorage.RetirementApproval) error {

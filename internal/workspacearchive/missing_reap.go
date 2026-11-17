@@ -113,7 +113,7 @@ func (m Manager) reapMissing(ctx context.Context, p Plan, raw []byte) (*model.Be
 			if e = ctx.Err(); e != nil {
 				return e
 			}
-			if e = checkMissingRoot(*p.Missing, true); e != nil {
+			if e = checkMissingRoot(*p.Missing, approval.Storage.Managed, true); e != nil {
 				return e
 			}
 			if !p.Missing.Root.Absent {
@@ -121,7 +121,7 @@ func (m Manager) reapMissing(ctx context.Context, p Plan, raw []byte) (*model.Be
 					return e
 				}
 			}
-			if e = m.removeMissingRoot(ctx, b, p); e != nil {
+			if e = m.removeMissingRoot(ctx, b, p, approval.Storage.Managed); e != nil {
 				return e
 			}
 			if approval.Storage.Managed {

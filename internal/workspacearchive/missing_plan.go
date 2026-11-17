@@ -24,7 +24,11 @@ func (m Manager) planMissing(ctx context.Context, tx *sql.Tx, b *model.Bench) (*
 	if e != nil {
 		return nil, e
 	}
-	if e = checkMissingRoot(*f.missing, false); e != nil {
+	approved, e := m.missingApproval(tx, b)
+	if e != nil {
+		return nil, e
+	}
+	if e = checkMissingRoot(*f.missing, approved.Storage.Managed, false); e != nil {
 		return nil, e
 	}
 	var tree reap.Tree
