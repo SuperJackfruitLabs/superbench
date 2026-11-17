@@ -16,6 +16,12 @@ var ErrCache = errors.New("registered payload cache transport is not available")
 // ownership gate. Authority is independently installed/actual-process bound;
 // fields in a Bench can never select another policy, helper or payload UID.
 func Workspace(authority serviceidentity.Authority, bench *model.Bench, member string, root bool) (stageexec.PrepareTransport, error) {
+	return workspaceTransport(authority, bench, member, root, nil, false)
+}
+
+// workspaceTransport snapshots the selected registration. A finite transport
+// carries copied opaque stdin for the helper; it selects no other authority.
+func workspaceTransport(authority serviceidentity.Authority, bench *model.Bench, member string, root bool, input []byte, finite bool) (stageexec.PrepareTransport, error) {
 	if bench == nil || bench.Lease == nil || bench.Lease.Execution == nil || bench.Lease.Execution.Phase != "starting" || bench.Lease.StopRequested || bench.Lease.Continuation == "" || bench.Workspace == nil || bench.Workspace.ID == "" || bench.Workspace.Transfer != nil || bench.Workspace.Archive != nil || root && member != "" || !root && member == "" {
 		return nil, ErrRegistration
 	}
@@ -37,7 +43,7 @@ func Workspace(authority serviceidentity.Authority, bench *model.Bench, member s
 	if _, err := authority.Policy(); err != nil {
 		return nil, err
 	}
-	return workspace(authority, &copy, member, root), nil
+	return workspace(authority, &copy, member, root, input, finite), nil
 }
 
 // Scalar requires the fresh private layout marker. An installed service must
@@ -54,5 +60,5 @@ func Scalar(authority serviceidentity.Authority, bench *model.Bench) (stageexec.
 	if _, err := authority.Policy(); err != nil {
 		return nil, err
 	}
-	return workspace(authority, &copy, "", false), nil
+	return workspace(authority, &copy, "", false, nil, false), nil
 }

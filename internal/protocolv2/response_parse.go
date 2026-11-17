@@ -27,7 +27,10 @@ type responseWire struct {
 // inventory completeness. ValidateAuthority checks that independent evidence.
 func ParseResponse(raw []byte, httpStatus int, request Request) (Response, error) {
 	var zero Response
-	if len(raw) > MaxResponse || Growth(request.Operation) && len(raw) > MaxBody || !utf8.Valid(raw) || !scalarEscapes(raw) || !strictJSON(raw) || !responseIntegers(raw) {
+	// One bound per typed request: 1 MiB read-only, 64 KiB growth, and only a
+	// valid profiled run raises its own bound to MaxResponseBytes.
+	limit := ResponseLimit(request)
+	if len(raw) > limit || !utf8.Valid(raw) || !scalarEscapes(raw) || !strictJSON(raw) || !responseIntegers(raw) {
 		return zero, ErrResponse
 	}
 	var wire responseWire
@@ -50,7 +53,7 @@ func ParseResponse(raw []byte, httpStatus int, request Request) (Response, error
 		}
 		return response, nil
 	}
-	if !Known(request.Operation) || wire.Operation != request.Operation || wire.RequestID != request.RequestID || Growth(wire.Operation) != (wire.RequestID != "") || wire.RequestID != "" && !keyPattern.MatchString(wire.RequestID) || Growth(wire.Operation) && len(raw) > MaxBody {
+	if !Known(request.Operation) || wire.Operation != request.Operation || wire.RequestID != request.RequestID || Growth(wire.Operation) != (wire.RequestID != "") || wire.RequestID != "" && !keyPattern.MatchString(wire.RequestID) {
 		return zero, ErrResponse
 	}
 	if wire.Result != nil {

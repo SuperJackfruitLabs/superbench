@@ -45,7 +45,11 @@ func (r *receipts) validateReceipt(v storedReceipt) error {
 	}
 	// Legacy untyped receipts retain their original opaque bytes (including
 	// diagnostic evidence rejected by the bounded public response adapter).
-	if v.state == "done" && (v.body == nil || len(v.body) > 64<<10) {
+	limit, err := r.responseLimit(r.db, v.target.UID, v.target.RequestID)
+	if err != nil {
+		return errInDoubt
+	}
+	if v.state == "done" && (v.body == nil || int64(len(v.body)) > limit) {
 		return errInDoubt
 	}
 	var finalized, tracked int
@@ -89,9 +93,12 @@ func (r *receipts) validateHistory() error {
 	if invalid != 0 {
 		return errInDoubt
 	}
+	if err := r.validateResponseLimits(); err != nil {
+		return err
+	}
 	cursor := WorkCursor{}
 	for {
-		rows, err := r.db.Query(`SELECT owner,id,digest,state,cancel_state,CASE WHEN length(body)<=65536 THEN body ELSE NULL END,status FROM receipts WHERE owner>? OR (owner=? AND id>?) ORDER BY owner,id LIMIT 64`, cursor.UID, cursor.UID, cursor.RequestID)
+		rows, err := r.db.Query(r.historyBodies(), cursor.UID, cursor.UID, cursor.RequestID)
 		if err != nil {
 			return err
 		}

@@ -36,6 +36,11 @@ TESTS = (
         'INSPECTION_ACTUAL_ROOT_FULL_VECTOR',
         'INSPECTION_SCOPE_FREE_REFUSALS_NO_CGROUP_OR_EXEC',
         'PREPARATION_ACTUAL_ROOT_INPUTS_AND_REFUSALS')),
+    ('payloadexec', 'TestFiniteInputSealedAfterCredentialDropFixture', (
+        'FINITE_INPUT_SEALED_DELIVERED_AFTER_CREDENTIAL_DROP',
+        'FINITE_INPUT_IMMUTABLE_READ_ONLY_REFUSALS',
+        'FINITE_INPUT_EXACT_BYTES_EOF_NO_DESCRIPTOR_LEAK',
+        'FINITE_INPUT_EMPTY_KEEPS_INHERITED_STDIN')),
     ('execution', 'TestHostStartPreservesActualChildCredentials', (
         'ACTUAL_SCOPED_CHILD_CREDENTIALS_PRESERVED',)),
     ('bench-quota', 'TestInstalledIndexedPolicyRefusesMissingHistory', (

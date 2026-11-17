@@ -60,7 +60,12 @@ func NewCancelRequest(source Request) (CancelRequest, error) {
 	if err != nil {
 		return CancelRequest{}, ErrInvalid
 	}
-	parsed, err := Parse(raw)
+	parse := Parse
+	if source.IO != nil {
+		// A profiled run keeps the same target identity: its exact typed digest.
+		parse = ParseFinite
+	}
+	parsed, err := parse(raw)
 	if err != nil || !Growth(parsed.Operation) || parsed.RequestID == "" {
 		return CancelRequest{}, ErrInvalid
 	}

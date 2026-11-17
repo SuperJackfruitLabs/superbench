@@ -10,6 +10,6 @@ import (
 	"os/exec"
 )
 
-func workspace(serviceidentity.Authority, *model.Bench, string, bool) stageexec.PrepareTransport {
+func workspace(serviceidentity.Authority, *model.Bench, string, bool, []byte, bool) stageexec.PrepareTransport {
 	return func(*exec.Cmd, *execution.Execution) (stageexec.Transport, error) { return nil, ErrRegistration }
 }

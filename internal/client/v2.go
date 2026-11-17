@@ -62,7 +62,12 @@ func CallV2(ctx context.Context, socket string, request protocolv2.Request) (pro
 	if err != nil {
 		return zero, err
 	}
-	if _, err := protocolv2.Parse(raw); err != nil {
+	parse, contentType := protocolv2.Parse, "application/json"
+	if request.IO != nil {
+		// The explicit profile is the only way to send io; unprofiled bytes are unchanged.
+		parse, contentType = protocolv2.ParseFinite, protocolv2.FiniteIOContentType
+	}
+	if _, err := parse(raw); err != nil {
 		return zero, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, time.Hour)
@@ -75,7 +80,7 @@ func CallV2(ctx context.Context, socket string, request protocolv2.Request) (pro
 	if err != nil {
 		return zero, err
 	}
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", contentType)
 	response, err := (&http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}).Do(req)
 	if err != nil {
 		return zero, fmt.Errorf("workspace socket request interrupted; reconcile using its request id: %w", err)
@@ -85,10 +90,7 @@ func CallV2(ctx context.Context, socket string, request protocolv2.Request) (pro
 	if err != nil || media != "application/json" {
 		return zero, errors.New("workspace service response is not JSON")
 	}
-	limit := protocolv2.MaxResponse
-	if protocolv2.Growth(request.Operation) {
-		limit = protocolv2.MaxBody
-	}
+	limit := protocolv2.ResponseLimit(request)
 	body, err := io.ReadAll(io.LimitReader(response.Body, int64(limit)+1))
 	if err != nil {
 		return zero, fmt.Errorf("workspace response interrupted; reconcile using its request id: %w", err)

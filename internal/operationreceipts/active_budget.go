@@ -7,18 +7,19 @@ import (
 
 const activeReceiptBytes int64 = 64 << 20
 const receiptReservation int64 = 64 << 10
+const unresolvedIdentities = `
+ SELECT owner,id FROM operation_intents WHERE core_finalized=0
+ UNION ALL
+ SELECT r.owner,r.id FROM receipts r WHERE r.state<>'done' AND r.cancel_state<>'cancelled'
+ AND NOT EXISTS(SELECT 1 FROM operation_intents i WHERE i.owner=r.owner AND i.id=r.id)
+ `
 
 // Every unresolved identity reserves a whole bounded response, including work
 // interrupted by restart and typed responses awaiting independent core cutoff.
 // Historical rows are never removed to recover this admission capacity.
 func requireReceiptCapacity(tx *sql.Tx) error {
 	var count int64
-	err := tx.QueryRow(`SELECT count(*) FROM (
- SELECT owner,id FROM operation_intents WHERE core_finalized=0
- UNION ALL
- SELECT r.owner,r.id FROM receipts r WHERE r.state<>'done' AND r.cancel_state<>'cancelled'
- AND NOT EXISTS(SELECT 1 FROM operation_intents i WHERE i.owner=r.owner AND i.id=r.id)
- )`).Scan(&count)
+	err := tx.QueryRow(`SELECT count(*) FROM (` + unresolvedIdentities + `)`).Scan(&count)
 	if err != nil {
 		return err
 	}

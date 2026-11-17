@@ -58,7 +58,7 @@ func (f *fixture) ready() string {
 	return old
 }
 func (f *fixture) run(selector string, args ...string) (*workspaceprep.RunResult, error) {
-	return f.manager.Run(context.Background(), "card", f.initial.Lease.Token, selector, args, false)
+	return f.manager.Run(context.Background(), "card", f.initial.Lease.Token, selector, args, false, nil)
 }
 
 func TestOperationalPayloadUsesWholePreparationAndRegisteredCwd(t *testing.T) {
@@ -120,7 +120,7 @@ func TestReleasedInitializationCannotLaunchOperationalPayload(t *testing.T) {
 	f := newFixture(t, 2, nil)
 	oldToken := f.ready()
 	beforeCreates, beforeStarts := f.backend.counts()
-	if _, err := f.manager.Run(context.Background(), "card", oldToken, "r00", []string{"/bin/sh", "-c", "echo forbidden > forbidden"}, false); err == nil {
+	if _, err := f.manager.Run(context.Background(), "card", oldToken, "r00", []string{"/bin/sh", "-c", "echo forbidden > forbidden"}, false, nil); err == nil {
 		t.Fatal("released initialization token launched payload")
 	}
 	if creates, starts := f.backend.counts(); creates != beforeCreates || starts != beforeStarts {
@@ -222,7 +222,7 @@ func TestOperationalPayloadCancellationRevokesContinuation(t *testing.T) {
 	f.backend.onStart = func() { close(started) }
 	done := make(chan error, 1)
 	go func() {
-		_, err := f.manager.Run(ctx, "card", f.initial.Lease.Token, "r00", []string{"/bin/sh", "-c", "exec sleep 30"}, false)
+		_, err := f.manager.Run(ctx, "card", f.initial.Lease.Token, "r00", []string{"/bin/sh", "-c", "exec sleep 30"}, false, nil)
 		done <- err
 	}()
 	select {
@@ -309,7 +309,7 @@ func TestInvalidPayloadSelectorAndArgumentsHaveNoPreparationEffects(t *testing.T
 		selector string
 		args     []string
 	}{{"missing", []string{"true"}}, {"r00", nil}, {"r00", []string{""}}, {"r00", []string{"true", strings.Repeat("x", 8193)}}} {
-		if _, err := f.manager.Run(context.Background(), "card", f.initial.Lease.Token, request.selector, request.args, false); err == nil {
+		if _, err := f.manager.Run(context.Background(), "card", f.initial.Lease.Token, request.selector, request.args, false, nil); err == nil {
 			t.Fatal("invalid payload request accepted")
 		}
 	}

@@ -9,6 +9,7 @@ import (
 const Version = payloadwire.Version
 const MaxRequest = payloadwire.MaxRequest
 const MaxPayloadInput = payloadwire.MaxPayloadInput
+const ExecReached, ExecFailed = payloadwire.ExecReached, payloadwire.ExecFailed
 
 var ErrRequest = payloadwire.ErrRequest
 var logical = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$`)

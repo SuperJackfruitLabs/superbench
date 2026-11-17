@@ -3,6 +3,8 @@ package protocolv2
 import (
 	"encoding/json"
 	"unicode/utf8"
+
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/finiteio"
 )
 
 const MaxReceiptLookupResponse = 512 << 10
@@ -58,8 +60,28 @@ func NewReceiptLookupRequest(source Request) (ReceiptLookupRequest, error) {
 // grant is not current ownership; callers must reparse the exact original body
 // against their original source request and preserve all uncertainty.
 func ParseReceiptLookupResponse(raw []byte, status int, target ReceiptLookupRequest) (ReceiptLookupResponse, error) {
+	return parseReceiptLookupResponse(raw, status, target, false)
+}
+
+// ReceiptLookupLimits returns the original-body and outer-envelope bounds. Only
+// the explicit finite profile permits a 2 MiB original body, inside 16 MiB;
+// unprofiled lookups keep 64 KiB inside 512 KiB and report larger bodies unavailable.
+func ReceiptLookupLimits(finite bool) (body, envelope int) {
+	if finite {
+		return finiteio.MaxBody, finiteio.MaxLookup
+	}
+	return MaxBody, MaxReceiptLookupResponse
+}
+
+// ParseFiniteReceiptLookupResponse is the profiled lookup. Its request and
+// target semantics are unchanged; it confers no ownership or replay authority.
+func ParseFiniteReceiptLookupResponse(raw []byte, status int, target ReceiptLookupRequest) (ReceiptLookupResponse, error) {
+	return parseReceiptLookupResponse(raw, status, target, true)
+}
+func parseReceiptLookupResponse(raw []byte, status int, target ReceiptLookupRequest, finite bool) (ReceiptLookupResponse, error) {
 	var zero ReceiptLookupResponse
-	if !validReceiptLookupRequest(target) || len(raw) > MaxReceiptLookupResponse || !utf8.Valid(raw) || !scalarEscapes(raw) || !strictJSON(raw) {
+	bodyLimit, envelopeLimit := ReceiptLookupLimits(finite)
+	if !validReceiptLookupRequest(target) || len(raw) > envelopeLimit || !utf8.Valid(raw) || !scalarEscapes(raw) || !strictJSON(raw) {
 		return zero, ErrResponse
 	}
 	fields, ok := fieldSet(raw, []string{"version", "operation", "ok"}, []string{"result", "error"})
@@ -86,7 +108,7 @@ func ParseReceiptLookupResponse(raw []byte, status int, target ReceiptLookupRequ
 	required := []string{"target_request_id", "target_digest", "state"}
 	if result.State == "completed" {
 		required = append(required, "http_status", "response_body")
-		if result.HTTPStatus < 200 || result.HTTPStatus > 599 || result.ResponseBody == "" || len(result.ResponseBody) > MaxBody || !utf8.ValidString(result.ResponseBody) {
+		if result.HTTPStatus < 200 || result.HTTPStatus > 599 || result.ResponseBody == "" || len(result.ResponseBody) > bodyLimit || !utf8.ValidString(result.ResponseBody) {
 			return zero, ErrResponse
 		}
 	} else if !oneOf(result.State, "absent", "in_progress", "operation_in_doubt", "cancel_requested") {
@@ -112,10 +134,13 @@ func lookupHTTPError(code string, status int) bool {
 	}
 }
 func ValidateReceiptLookupResponse(response ReceiptLookupResponse, status int, target ReceiptLookupRequest) error {
+	return ValidateReceiptLookupResponseProfile(response, status, target, false)
+}
+func ValidateReceiptLookupResponseProfile(response ReceiptLookupResponse, status int, target ReceiptLookupRequest, finite bool) error {
 	raw, e := json.Marshal(response)
 	if e != nil {
 		return ErrResponse
 	}
-	_, e = ParseReceiptLookupResponse(raw, status, target)
+	_, e = parseReceiptLookupResponse(raw, status, target, finite)
 	return e
 }

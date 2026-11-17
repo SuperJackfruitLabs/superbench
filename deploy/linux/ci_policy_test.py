@@ -58,6 +58,17 @@ class CIPolicy(unittest.TestCase):
         phases = [package + '-' + selector for package, selector, _ in IDENTITY['TESTS']]
         self.assertEqual(len(phases), len(set(phases)))
 
+    def test_finite_input_fixture_is_selected_and_requires_its_proof(self):
+        selected = [(package, markers) for package, selector, markers in IDENTITY['TESTS']
+                    if selector == 'TestFiniteInputSealedAfterCredentialDropFixture']
+        self.assertEqual(len(selected), 1)
+        self.assertEqual(selected[0][0], 'payloadexec')
+        self.assertEqual(set(selected[0][1]), {
+            'FINITE_INPUT_SEALED_DELIVERED_AFTER_CREDENTIAL_DROP',
+            'FINITE_INPUT_IMMUTABLE_READ_ONLY_REFUSALS',
+            'FINITE_INPUT_EXACT_BYTES_EOF_NO_DESCRIPTOR_LEAK',
+            'FINITE_INPUT_EMPTY_KEEPS_INHERITED_STDIN'})
+
     def test_readonly_cgroup_refuses_before_privileged_fixture_execution(self):
         refusal = subprocess.CalledProcessError(1, ['identity', '--preflight'])
         with patch.object(sys, 'argv', ['check-ci.py', '--privileged-only']), patch('os.geteuid', return_value=0), \

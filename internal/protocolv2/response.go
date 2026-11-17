@@ -1,6 +1,10 @@
 package protocolv2
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/finiteio"
+)
 
 const MaxResponse = 1 << 20
 const MaxSafeInteger = uint64(1<<53 - 1)
@@ -96,6 +100,9 @@ type RunOutcome struct {
 	Execution    *Execution `json:"execution,omitempty"`
 	ExitCode     *int       `json:"exit_code,omitempty"`
 	LogTruncated *bool      `json:"log_truncated,omitempty"`
+	// IO is present only for a profiled run whose stdout was fenced, drained
+	// and sealed by the producer. Omission preserves every legacy encoding.
+	IO *finiteio.Output `json:"io,omitempty"`
 }
 
 func (*RunOutcome) responseResult() {}

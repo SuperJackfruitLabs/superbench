@@ -72,7 +72,8 @@ laptop preparation still needs its own supported execution backend.
 
 `POST /v2/operations` uses the same private Unix socket and kernel peer-UID
 authorization as v1. Request bodies and durable growth responses are bounded to
-64 KiB; read-only responses are bounded to 1 MiB. A global inventory that cannot
+64 KiB; read-only responses are bounded to 1 MiB. The proposed, default-off
+[finite I/O profile](finite-io.md) is the only exception, for one run. A global inventory that cannot
 fit returns unavailable rather than dropping registrations. V2 status includes
 both scalar and grouped records with an explicit kind. V2 mutations refuse
 scalar records; callers must use their original API for those records.

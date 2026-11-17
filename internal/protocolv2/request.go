@@ -105,6 +105,11 @@ func parseRequest(raw []byte, limit int, finite bool) (Request, error) {
 	if !ok {
 		return zero, ErrInvalid
 	}
+	// The profile widens only the io value: every other byte keeps the 64 KiB
+	// request budget, so argv and metadata never exceed the helper's limits.
+	if finite && len(raw)-len(fields["io"]) > MaxBody {
+		return zero, ErrInvalid
+	}
 	if wire.Quota != nil {
 		n, ok := quota(wire.Quota)
 		if !ok {

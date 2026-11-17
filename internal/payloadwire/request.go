@@ -20,6 +20,12 @@ const MaxRequest = 16 << 20
 // against MaxRequest; the limit is fixed here, never selected by a payload.
 const MaxPayloadInput = 1 << 20
 
+// ExecReached is written by the helper to stdout immediately before exec, and
+// ExecFailed if exec returns, only for a ReportExec request. Refusals by the
+// helper or sudo write neither; a payload cannot write before ExecReached.
+const ExecReached = "\x00superbench.exec-reached.v1\n"
+const ExecFailed = "\x00superbench.exec-failed.v1\n"
+
 var ErrRequest = errors.New("invalid managed payload launch request")
 var logical = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$`)
 var identity = regexp.MustCompile(`^[a-f0-9]{32}$`)
@@ -40,10 +46,13 @@ type Request struct {
 	// Input is optional private transport data, not an execution authority.
 	// Omission preserves the existing payload EOF and Git streaming encodings.
 	Input []byte `json:",omitempty"`
+	// ReportExec asks for ExecReached on stdout; finite runs only. Omission
+	// preserves every existing encoding and the payload's exact stdout.
+	ReportExec bool `json:",omitempty"`
 }
 
 func (r Request) Validate() error {
-	if len(r.Input) > MaxPayloadInput || len(r.Input) != 0 && r.Kind != "payload" {
+	if len(r.Input) > MaxPayloadInput || (len(r.Input) != 0 || r.ReportExec) && r.Kind != "payload" {
 		return ErrRequest
 	}
 	if r.Version != Version || !hostIdentity.MatchString(r.PolicyDigest) || r.Kind != "payload" && r.Kind != "git" || r.Root && (r.Member != "" || r.Kind != "payload") || !logical.MatchString(r.Key) || !identity.MatchString(r.LayoutID) || r.Member != "" && !logical.MatchString(r.Member) || !identity.MatchString(r.Scope.ID) || !hostIdentity.MatchString(r.Scope.HostID) || !bootIdentity.MatchString(r.Scope.BootID) || len(r.Arguments) == 0 || r.Arguments[0] == "" {

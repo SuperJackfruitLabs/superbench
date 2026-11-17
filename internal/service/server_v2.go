@@ -4,12 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"log"
-	"mime"
 	"net/http"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/bench"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/operationbody"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/operationcontrol"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/protocolv2"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspaceapi"
@@ -48,23 +47,18 @@ func (s *Server) serveV2(w http.ResponseWriter, r *http.Request) {
 		s.replyV2(w, protocolv2.Request{}, nil, 405, "invalid_request", "POST required")
 		return
 	}
-	media, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
-	if err != nil || media != "application/json" {
-		s.replyV2(w, protocolv2.Request{}, nil, 415, "invalid_request", "JSON required")
+	body, finite, status, message := operationbody.Read(w, r, s.proposedFiniteIO)
+	if status != 0 {
+		s.replyV2(w, protocolv2.Request{}, nil, status, "invalid_request", message)
 		return
 	}
-	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, protocolv2.MaxBody))
-	if err != nil {
-		s.replyV2(w, protocolv2.Request{}, nil, 413, "invalid_request", "request body exceeds limit")
-		return
-	}
-	if s.proposedCancellation {
+	if s.proposedCancellation && !finite {
 		if cancellation, parseErr := protocolv2.ParseCancelRequest(body); parseErr == nil {
 			s.cancelV2(w, uid, cancellation)
 			return
 		}
 	}
-	request, err := protocolv2.Parse(body)
+	request, err := operationbody.Parse(body, finite)
 	if err != nil {
 		s.replyV2(w, protocolv2.Request{}, nil, 400, "invalid_request", "invalid workspace operation request")
 		return
@@ -155,13 +149,13 @@ func (s *Server) serveV2(w http.ResponseWriter, r *http.Request) {
 					return claimErr
 				}
 				var stop func()
-				cached, dispatchContext, stop, claimErr = s.receipts.ClaimScope(s.ctx, intent)
+				cached, dispatchContext, stop, claimErr = s.receipts.ClaimScopeLimit(s.ctx, intent, protocolv2.ResponseLimit(request))
 				// No controller is attached for historical replay or admission failure.
 				if stop != nil {
 					deferStop = stop
 				}
 			} else {
-				cached, claimErr = s.receipts.Claim(uid, request.RequestID, digest)
+				cached, claimErr = s.receipts.ClaimLimit(uid, request.RequestID, digest, protocolv2.ResponseLimit(request))
 			}
 			return claimErr
 		})

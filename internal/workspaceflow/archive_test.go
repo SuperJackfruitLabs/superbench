@@ -114,7 +114,7 @@ func TestWorkspaceArchiveReviewedReapPreservesOtherWorkAndRemoteRecovery(t *test
 	if _, err := store.PrepareWorkspaceContext(ctx, ready.Key, strings.Repeat("a", 32), "", false); err == nil {
 		t.Fatal("archived workspace prepared")
 	}
-	if _, err := store.RunWorkspaceContext(ctx, ready.Key, strings.Repeat("a", 32), "", []string{"true"}, false); err == nil {
+	if _, err := store.RunWorkspaceContext(ctx, ready.Key, strings.Repeat("a", 32), "", []string{"true"}, false, nil); err == nil {
 		t.Fatal("archived workspace executed")
 	}
 	if _, err := store.CheckpointWorkspaceContext(ctx, ready.Key, strings.Repeat("a", 32)); err == nil {

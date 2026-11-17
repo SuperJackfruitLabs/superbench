@@ -171,12 +171,12 @@ func (s Store) AcquireWorkspaceContext(ctx context.Context, key, holder string) 
 
 // RunWorkspaceContext executes in a registered member, or the aggregate root
 // for an empty selector. The stopped owner remains held for checkpoint/release.
-func (s Store) RunWorkspaceContext(ctx context.Context, key, token, selector string, args []string, offline bool) (*workspaceprep.RunResult, error) {
+func (s Store) RunWorkspaceContext(ctx context.Context, key, token, selector string, args []string, offline bool, finite workspaceprep.FiniteRun) (*workspaceprep.RunResult, error) {
 	s, ctx, err := s.workspaceControls(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return s.workspacePreparation().Run(ctx, key, token, selector, args, offline)
+	return s.workspacePreparation().Run(ctx, key, token, selector, args, offline, finite)
 }
 
 func (s Store) ReleaseWorkspaceContext(ctx context.Context, key, token string) (*Bench, error) {

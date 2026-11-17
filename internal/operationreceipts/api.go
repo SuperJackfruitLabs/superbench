@@ -26,6 +26,20 @@ func (r *receipt) HTTPStatus() int       { return r.status }
 func (r *receipts) Claim(uid uint32, id, digest string) (*Receipt, error) {
 	return r.claim(uid, id, digest)
 }
+
+// ClaimLimit is Claim with an explicit whole-response bound. Only the legacy
+// bound or a finite bound up to 2 MiB is accepted; a finite bound creates
+// response_limits (format 7) on first use and is charged before insertion.
+func (r *receipts) ClaimLimit(uid uint32, id, digest string, limit int) (*Receipt, error) {
+	if !validResponseLimit(int64(limit)) {
+		return nil, errInDoubt
+	}
+	return r.claimLimit(uid, id, digest, int64(limit))
+}
+
+// LegacyResponseLimit is the unprofiled retained-response bound.
+const LegacyResponseLimit = int(legacyResponseLimit)
+
 func (r *receipts) Lookup(uid uint32, id, digest string) (*Receipt, bool, error) {
 	return r.lookup(uid, id, digest)
 }

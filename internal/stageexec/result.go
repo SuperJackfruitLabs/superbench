@@ -6,7 +6,8 @@ import (
 )
 
 // MaxResultBytes bounds explicit opaque result capture independently of log size.
-const MaxResultBytes uint64 = 1 << 20
+// It allows 1 MiB of payload stdout plus a fixed helper exec marker (<64 bytes).
+const MaxResultBytes uint64 = 1<<20 + 64
 
 var ErrResultTransport = errors.New("execution result requires prepared transport")
 
@@ -26,4 +27,4 @@ func (b *resultBuffer) Write(p []byte) (int, error) {
 	}
 	return b.data.Write(p)
 }
-func (b *resultBuffer) copy() []byte { return bytes.Clone(b.data.Bytes()) }
+func (b *resultBuffer) copy() []byte { return append([]byte{}, b.data.Bytes()...) }

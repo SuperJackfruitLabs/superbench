@@ -12,7 +12,16 @@ import (
 // Restart can prove a committed pre-engine interruption had no effects; a
 // historical receipt never gains a fresh epoch or controller.
 func (r *receipts) ClaimScope(parent context.Context, i operationcontrol.Intent) (*Receipt, context.Context, context.CancelFunc, error) {
-	if !i.Valid() {
+	return r.claimScope(parent, i, legacyResponseLimit)
+}
+
+// ClaimScopeLimit reserves the identity's whole response bound in the same
+// transaction that publishes it, before any controller or effect exists.
+func (r *receipts) ClaimScopeLimit(parent context.Context, i operationcontrol.Intent, limit int) (*Receipt, context.Context, context.CancelFunc, error) {
+	return r.claimScope(parent, i, int64(limit))
+}
+func (r *receipts) claimScope(parent context.Context, i operationcontrol.Intent, limit int64) (*Receipt, context.Context, context.CancelFunc, error) {
+	if !i.Valid() || !validResponseLimit(limit) {
 		return nil, nil, nil, errConflict
 	}
 	if _, exists := operationcontrol.FromContext(parent); exists {
@@ -26,7 +35,7 @@ func (r *receipts) ClaimScope(parent context.Context, i operationcontrol.Intent)
 	if cached, found, err := r.lookupLocked(i.Target.UID, i.Target.RequestID, i.Target.Digest); found || err != nil {
 		return cached, nil, nil, err
 	}
-	if err := r.claimTypedLocked(i); err != nil {
+	if err := r.claimTypedLocked(i, limit); err != nil {
 		return nil, nil, nil, err
 	}
 	key := receiptKey(i.Target.UID, i.Target.RequestID)
@@ -39,7 +48,7 @@ func (r *receipts) ClaimScope(parent context.Context, i operationcontrol.Intent)
 	return nil, ctx, stop, nil
 }
 
-func (r *receipts) claimTypedLocked(i operationcontrol.Intent) error {
+func (r *receipts) claimTypedLocked(i operationcontrol.Intent, limit int64) error {
 	t := i.Target
 	tx, err := r.db.Begin()
 	if err != nil {
@@ -49,7 +58,8 @@ func (r *receipts) claimTypedLocked(i operationcontrol.Intent) error {
 	if err = cancelBarrier(tx, t.UID, t.RequestID, t.Digest); err != nil {
 		return err
 	}
-	if err = requireReceiptCapacity(tx); err != nil {
+	upgraded, err := r.reserveResponse(tx, limit)
+	if err != nil {
 		return err
 	}
 	var count int64
@@ -61,6 +71,9 @@ func (r *receipts) claimTypedLocked(i operationcontrol.Intent) error {
 	}
 	result, err := tx.Exec(`INSERT INTO receipts(owner,id,digest,state) VALUES(?,?,?,'running')`, t.UID, t.RequestID, t.Digest)
 	if err = oneInserted(result, err); err != nil {
+		return err
+	}
+	if err = r.recordResponseLimit(tx, t.UID, t.RequestID, limit); err != nil {
 		return err
 	}
 	result, err = tx.Exec(`INSERT INTO operation_intents(owner,id,digest,key,operation,epoch,helper_tracking) VALUES(?,?,?,?,?,?,1)`, t.UID, t.RequestID, t.Digest, i.Key, i.Operation, i.Epoch)
@@ -90,7 +103,10 @@ func (r *receipts) claimTypedLocked(i operationcontrol.Intent) error {
 	if digest != t.Digest || state != "running" || barrier != "" || body != nil || status.Valid {
 		return errInDoubt
 	}
-	return tx.Commit()
+	if err = tx.Commit(); err == nil {
+		r.finite = r.finite || upgraded
+	}
+	return err
 }
 func oneInserted(result sql.Result, err error) error {
 	if err != nil {

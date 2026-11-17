@@ -14,7 +14,7 @@ import (
 
 func TestOpaqueResultRequiresStoppedSealedSuccess(t *testing.T) {
 	refusal := errors.New("retained lifecycle failure")
-	for _, kind := range []string{"success", "command", "stop", "drain", "seal", "cancel", "overflow"} {
+	for _, kind := range []string{"success", "empty", "command", "stop", "drain", "seal", "cancel", "overflow"} {
 		t.Run(kind, func(t *testing.T) {
 			p := plan(t, "printf opaque-result; printf diagnostic >&2")
 			p.ResultLimitBytes = 128
@@ -23,6 +23,9 @@ func TestOpaqueResultRequiresStoppedSealedSuccess(t *testing.T) {
 			}
 			if kind == "command" {
 				p.Args[len(p.Args)-1] += "; exit 7"
+			}
+			if kind == "empty" {
+				p.Args[len(p.Args)-1] = "printf diagnostic >&2"
 			}
 			var trace []string
 			held := false
@@ -50,6 +53,20 @@ func TestOpaqueResultRequiresStoppedSealedSuccess(t *testing.T) {
 				return nil
 			}
 			result, err := r.Run(ctx, p)
+			if kind == "empty" {
+				if err != nil || result == nil || result.Output == nil || len(result.Output) != 0 {
+					t.Fatalf("complete empty stdout was not an exact observation: %+v %v", result, err)
+				}
+				return
+			}
+			if kind == "command" {
+				// A known nonzero exit after stop, drain and seal keeps exact stdout.
+				var exit *exec.ExitError
+				if !errors.As(err, &exit) || exit.ExitCode() != 7 || result == nil || string(result.Output) != "opaque-result" {
+					t.Fatalf("known nonzero exit lost sealed stdout: %+v %v", result, err)
+				}
+				return
+			}
 			if kind == "success" {
 				if err != nil || result == nil || string(result.Output) != "opaque-result" || !reflect.DeepEqual(trace, []string{"check", "start", "io", "leader", "stop", "drain", "fence", "seal"}) {
 					t.Fatalf("result before successful lifecycle: %+v %v %v", result, err, trace)
@@ -71,11 +88,6 @@ func TestOpaqueResultRequiresStoppedSealedSuccess(t *testing.T) {
 			case "overflow":
 				if !errors.Is(err, ErrResultOverflow) {
 					t.Fatalf("lost overflow: %v", err)
-				}
-			case "command":
-				var exit *exec.ExitError
-				if !errors.As(err, &exit) || exit.ExitCode() != 7 {
-					t.Fatalf("lost child failure: %v", err)
 				}
 			}
 		})

@@ -124,7 +124,7 @@ func Operation(r protocolv2.Request, out *workspaceops.Result, operationErr erro
 		return &m, proof, nil
 	}
 	run := protocolv2.RunOutcome{Mutation: m, Execution: executionV2(out.Execution),
-		ExitCode: out.ExitCode, LogTruncated: out.LogTruncated}
+		ExitCode: out.ExitCode, LogTruncated: out.LogTruncated, IO: out.IO}
 	// A signal or unknown outcome has no numeric command exit status on the wire.
 	if run.ExitCode != nil && (*run.ExitCode < 0 || *run.ExitCode > 255) {
 		run.ExitCode = nil
