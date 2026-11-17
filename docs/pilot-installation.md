@@ -67,9 +67,10 @@ end-to-end card result:
   helper's operation lock while it is deleted, so other creates wait. No
   automatic policy reclaims yet; the caller that finishes a card reclaims it.
   Root trusts the daemon that the work is checkpointed (that evidence is in the
-  daemon's mirror, which root cannot see); root itself refuses while anything
-  still uses the bench, and stops the deletion if the payload account interferes
-  with it. See [Reclaiming a released bench](fresh-bootstrap-recovery.md#reclaiming-a-released-bench).
+  daemon's mirror, which root cannot see). Root's own "in use" check is
+  best-effort and point in time; what it guarantees is that it removes only an
+  empty leaf and retires the project only at zero usage, and it stops the
+  deletion if the payload account interferes with it. See [Reclaiming a released bench](fresh-bootstrap-recovery.md#reclaiming-a-released-bench).
   Before each launch and lease, benchd checks a Fresh bench's pinned allocation
   with the helper's read-only `verify bench KEY`; the helper refuses the ordinary
   bench apply for it.

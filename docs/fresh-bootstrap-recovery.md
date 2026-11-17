@@ -312,12 +312,22 @@ What root trusts and what it checks:
   checkpointed and durable lives in the daemon-owned mirror and the remote,
   which root cannot observe. A compromised daemon can have root delete work it
   never checkpointed.
-- **Not in use: checked by root.** Root refuses with "the bench is in use"
-  while a populated cgroup scope beneath the policy's cgroup root holds a
-  process with its working directory, root or an open file in the bench, or
-  while such a process of the payload account runs anywhere. A malformed
-  `cgroup.events` counts as populated. Root checks before it retains
-  `reclaiming` and again before the purge.
+- **Not in use: a best-effort check by root.** Root refuses with "the bench is
+  in use" while any cgroup beneath the policy's cgroup root, nested ones too, is
+  populated with a process that has any task whose working directory, root,
+  open file or file mapping is on the data volume in the bench's project, or
+  while such a payload-account process runs anywhere. A malformed
+  `cgroup.events`, an entry on the data volume root cannot attribute, and a
+  process with live tasks root cannot read all count as use. Root checks before
+  it retains `reclaiming` and again before the purge. This is a point-in-time
+  check: a process can start between it and the purge, and the project ID that
+  attributes an open file to the bench is only as reliable as the payload's
+  inability to relabel quota projects, which a separate change will confine.
+- **The guarantees are the backstops after the purge.** Root removes only an
+  empty leaf, so anything written during the purge stops the reclaim, and it
+  saves the tombstone only when the project's usage is zero, so a file still
+  held open, or still charged to the project anywhere on the volume, stops it
+  too. Either way the reclaim stays `reclaiming` and the same reclaim retries.
 - **Provenance: checked by root.** The retained `completed` intent must match
   the request, and the leaf must be the bench's own (the recorded inode,
   payload-owned, in the assigned project) with fenced Git controls.
