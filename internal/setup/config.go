@@ -109,6 +109,10 @@ func Read(path string) (*Config, error) {
 	return parseConfig(raw)
 }
 
+// Parse validates already-bounded observed configuration bytes using the same
+// strict parser and digest as Read. It performs no filesystem access or effects.
+func Parse(raw []byte) (*Config, error) { return parseConfig(raw) }
+
 func parseConfig(raw []byte) (*Config, error) {
 	if len(raw) > MaxConfig || !utf8.Valid(raw) {
 		return nil, errors.New("setup config exceeds bounds or is not UTF-8")

@@ -32,6 +32,10 @@ TESTS = (
         'HELPER_BINDING_PRIVATE_MODE_LINK_TYPE_REFUSALS',
         'HELPER_BINDING_MISSING_MISMATCHED_REGISTRY_NO_FRAME',
         'HELPER_BINDING_CHANGED_PROFILE_AND_IDENTICAL_REPLACEMENT_REFUSED')),
+    ('payloadexec', 'TestInstalledReadOnlyRegistrationInspectionFixture', (
+        'INSPECTION_ACTUAL_ROOT_FULL_VECTOR',
+        'INSPECTION_SCOPE_FREE_REFUSALS_NO_CGROUP_OR_EXEC',
+        'PREPARATION_ACTUAL_ROOT_INPUTS_AND_REFUSALS')),
     ('execution', 'TestHostStartPreservesActualChildCredentials', (
         'ACTUAL_SCOPED_CHILD_CREDENTIALS_PRESERVED',)),
     ('bench-quota', 'TestInstalledIndexedPolicyRefusesMissingHistory', (
@@ -282,26 +286,27 @@ def main():
             raise RuntimeError('identity CI cgroup limits unsupported')
         report['limits'] = LIMITS
         for package, selector, markers in TESTS:
-            candidate, binary = work / (package + '.test'), sealed / (package + '.test')
+            phase = package + '-' + selector
+            candidate, binary = work / (phase + '.test'), sealed / (phase + '.test')
             run([args.go, 'test', '-c', '-tags=serviceidentityfixture', '-o', str(candidate),
-                 ('./cmd/' if package == 'bench-quota' else './internal/') + package], package + '-compile', env, ordinary=True)
-            report['binaries'][package] = {'sha256': capture(candidate, binary, account.pw_uid)}
+                 ('./cmd/' if package == 'bench-quota' else './internal/') + package], phase + '-compile', env, ordinary=True)
+            report['binaries'][phase] = {'sha256': capture(candidate, binary, account.pw_uid)}
             metadata = subprocess.check_output([args.go, 'version', '-m', str(binary)],
                                                env={'PATH': env['PATH'], 'GOTOOLCHAIN': 'local'}, text=True, timeout=10)
             if '\tbuild\tCGO_ENABLED=0\n' not in metadata or '\tbuild\tGOOS=linux\n' not in metadata:
                 raise RuntimeError('identity fixture must be a CGO0 Linux binary')
-            report['binaries'][package]['build_info'] = metadata
+            report['binaries'][phase]['build_info'] = metadata
             namespace_env = {'PATH': '/usr/sbin:/usr/bin:/sbin:/bin',
                              'SUPERBENCH_EXECUTION_CGROUP_ROOT': str(cgroup),
                              'SUPERBENCH_IDENTITY_ORIGINAL_MNT': os.readlink('/proc/1/ns/mnt'),
                              'SUPERBENCH_IDENTITY_ORIGINAL_NET': os.readlink('/proc/1/ns/net')}
             log = run(['unshare', '--mount', '--net', '--propagation', 'private', sys.executable,
                        str(Path(__file__).resolve()), '--inside', str(binary), selector],
-                      package + '-root', namespace_env)
+                      phase + '-root', namespace_env)
             if ('--- PASS: ' + selector not in log or '--- FAIL:' in log or '--- SKIP:' in log
                     or '[no tests to run]' in log or any(marker not in log for marker in markers)):
                 raise RuntimeError('identity fixture proof markers missing: ' + package)
-            if package == 'payloadexec' and '--- PASS: ' + selector + '/FIFO ' not in log:
+            if selector == 'TestInstalledHelperPolicyRegistryBindingFixture' and '--- PASS: ' + selector + '/FIFO ' not in log:
                 raise RuntimeError('precise private-policy FIFO subtest did not pass')
             print(log, end='')
     except BaseException as error:

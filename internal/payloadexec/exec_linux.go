@@ -15,7 +15,7 @@ import (
 // Exec belongs only in a dedicated fixed helper. The caller must exit on every
 // returned error: credentials may already have been irreversibly dropped. This
 // function must never be called inside a daemon or reusable server process.
-// Only a successfully completed read-only inspection returns nil.
+// Only completed read-only layout or preparation-input inspections return nil.
 // It consumes a bounded request frame from stdin, retaining only Git's subsequent
 // ordinary stdin. It does not create or convert any layout or change ownership.
 func Exec() (err error) {
@@ -43,13 +43,17 @@ func Exec() (err error) {
 		return err
 	}
 	phase = "frame"
-	inspection, r, err := readInvocation(os.Stdin, frameTimeout)
+	inspection, preparation, r, err := readAnyInvocation(os.Stdin, frameTimeout)
 	if err != nil {
 		return err
 	}
 	if inspection != nil {
 		phase = "inspection"
 		return inspectInstalled(binding, *inspection)
+	}
+	if preparation != nil {
+		phase = "preparation"
+		return inspectPreparation(binding, *preparation)
 	}
 	phase = "scope"
 	scope, err := VerifyScope(p, r)
