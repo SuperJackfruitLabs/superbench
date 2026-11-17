@@ -20,6 +20,7 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/freshrecovery"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/payloadbootstrap"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/payloadexec"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotaoperation"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/retainedfile"
 )
@@ -259,6 +260,68 @@ func (e *env) recoverDaemon(l *leak) {
 	e.finish(l, plan, got)
 }
 
+// isolatedWorker finds the one live daemon-uid process, the worker, and
+// requires it to lead its own session with no controlling tty, to be
+// non-dumpable (procfs then shows its files as root's) and to run in a
+// transient worker cgroup.
+func (e *env) isolatedWorker() {
+	t := e.t
+	t.Helper()
+	entries, err := os.ReadDir("/proc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := 0
+	for _, entry := range entries {
+		pid, err := strconv.Atoi(entry.Name())
+		if err != nil {
+			continue
+		}
+		dir := filepath.Join("/proc", entry.Name())
+		status, err := os.ReadFile(filepath.Join(dir, "status"))
+		if err != nil || !strings.Contains(string(status), "\nUid:\t"+strconv.Itoa(e.p.OwnerUID)+"\t") {
+			continue
+		}
+		found++
+		stat, err := os.ReadFile(filepath.Join(dir, "stat"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		f := strings.Fields(string(stat[bytes.LastIndexByte(stat, ')')+1:]))
+		if len(f) < 5 || f[3] != strconv.Itoa(pid) || f[4] != "0" {
+			t.Fatalf("worker %d shares a session or has a tty: %q", pid, stat)
+		}
+		if st := mustInfo(t, dir).Sys().(*syscall.Stat_t); st.Uid != 0 || st.Gid != 0 {
+			t.Fatalf("worker %d is dumpable: /proc entry owned by %d:%d", pid, st.Uid, st.Gid)
+		}
+		cgroup, err := os.ReadFile(filepath.Join(dir, "cgroup"))
+		if err != nil || !strings.Contains(string(cgroup), "/superbench-clean-") {
+			t.Fatalf("worker %d outside a worker cgroup: %q %v", pid, cgroup, err)
+		}
+		if !strings.Contains(string(status), "\nNoNewPrivs:\t1\n") || !strings.Contains(string(status), "\nCapBnd:\t0000000000000000\n") || !strings.Contains(string(status), "\nGroups:\t\n") {
+			t.Fatalf("worker %d status: %s", pid, status)
+		}
+	}
+	if found != 1 {
+		t.Fatalf("%d daemon-uid processes during the delete, want the worker alone", found)
+	}
+}
+
+// staleScope leaves an empty worker cgroup as a crash would, beneath the
+// policy's cgroup root; the next worker run must sweep it.
+func (e *env) staleScope() string {
+	e.t.Helper()
+	p, err := payloadexec.LoadFixedPolicy()
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	path := filepath.Join(p.CgroupRoot, "superbench-clean-"+hash("stale-scope")[:32])
+	if err = os.Mkdir(path, 0700); err != nil {
+		e.t.Fatal(err)
+	}
+	return path
+}
+
 // noDaemonProcess requires that no daemon-uid process survived a worker.
 func (e *env) noDaemonProcess() {
 	t := e.t
@@ -356,7 +419,11 @@ func (e *env) stagedGitTrees() {
 			t.Fatalf("no Git tree for %s: %v", member.Name, err)
 		}
 	}
+	stale := e.staleScope()
 	plan := e.planClean(l)
+	if _, err := os.Lstat(stale); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("an empty stale worker cgroup was not swept: %v", err)
+	}
 	a := e.approvalOf(plan.Path)
 	git := 0
 	for _, entry := range a.Observation.Tree.Entries {
@@ -571,6 +638,8 @@ func (e *env) workerKilled() {
 	deadline := time.Now().Add(2 * time.Minute)
 	for {
 		if _, statErr := os.Lstat(last); errors.Is(statErr, os.ErrNotExist) {
+			// The real worker, mid-delete: it must have passed its own checks.
+			e.isolatedWorker()
 			cancel()
 			err = <-done
 			break
