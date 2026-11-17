@@ -41,8 +41,9 @@ request with the gate off and on.
    exactly one valid `io`; an unprofiled body is the unchanged `Parse`. Profile
    without `io`, `io` without profile, and the profile on any other operation all
    refuse with 400. Base64 must be canonical and decode to at most 1 MiB;
-   `stdout_limit_bytes` is 1 to 1 MiB. Cancellation parsing is skipped for a
-   profiled body.
+   `stdout_limit_bytes` is 1 to 1 MiB. Every byte outside the `io` value keeps
+   the 64 KiB request budget, so argv and metadata are never widened.
+   Cancellation parsing is skipped for a profiled body.
 3. **Preflight** (`workspaceops.Manager.Preflight`). It reparses with the finite
    parser and builds the finite plan. The production plan
    (`payloadstage.NewInstalled`) resolves the installed service identity. A host
@@ -65,8 +66,14 @@ request with the gate off and on.
    helper writes them to an anonymous memfd, seals it (seal, shrink, grow, write)
    and reopens it read-only at offset zero. It then drops credentials, marks every
    other descriptor close-on-exec and binds that descriptor to stdin once, just
-   before `exec`. Empty input keeps the existing EOF stdin. Setup hooks and Git
-   never receive the input.
+   before `exec`. That final order lives only in `payloadexec.enterPayload`,
+   which Exec and the privileged fixture share and which refuses unless the
+   credential drop is complete. Empty input keeps the existing EOF stdin. Setup
+   hooks and Git never receive the input.
+   A finite request also sets `ReportExec`: the helper writes a fixed
+   `ExecReached` marker to stdout immediately before `exec`, and `ExecFailed` if
+   `exec` returns. A refusal by the helper or by sudo exits nonzero without the
+   marker; the payload cannot write before it.
 7. **Capture** (`stageexec`). Stdout is copied into a buffer bounded at the
    requested limit. A write past the bound fails the pump: the runner fences,
    revokes the continuation and returns before sealing. The captured bytes are
@@ -76,7 +83,10 @@ request with the gate off and on.
 8. **Publish** (`payloadstage.Complete`). The observation is built only when the
    runner's stopped execution and the current owner's stopped execution are the one
    this run launched, and the installed identity is unchanged. `finiteio.Observe`
-   computes the count and SHA-256.
+   computes the count and SHA-256. Stdout without the leading `ExecReached`
+   marker, or with only `ExecFailed` after it, is a refusal before exec: it never
+   becomes an observation, empty or otherwise. The capture bound is the request
+   limit plus the marker; the marker is stripped before the request limit applies.
 9. **Respond and retain.** `RunOutcome.IO` is the final field of the result.
    `protocolv2.ParseResponse` validates it against the original request's `io`:
    bytes, digest and bound. The response, and the receipt `Finish` stores, are
@@ -87,6 +97,7 @@ request with the gate off and on.
 | Bound | Value | Enforced by |
 | --- | --- | --- |
 | Profiled request body | 2 MiB | `operationbody.Read` (`MaxBytesReader`) and `ParseFinite` |
+| Profiled body outside `io` | 64 KiB | `ParseFinite` |
 | Unprofiled request body | 64 KiB | unchanged, with the gate on or off |
 | Decoded input | 1 MiB | `finiteio.Input.Bytes`, `payloadwire.Request.Validate`, `payloadinput.Open` |
 | Stdout | `stdout_limit_bytes` ≤ 1 MiB | `stageexec` result buffer; `finiteio.Observe` |
@@ -97,8 +108,9 @@ request with the gate off and on.
 ## Receipt format
 
 A finite reservation needs a per-identity limit. The ledger keeps format 6 until
-the first finite claim. That claim creates `response_limits` and sets
-`user_version` to 7 in one transaction. Legacy identities keep their 64 KiB
+the first successful finite claim. That claim creates `response_limits` and sets
+`user_version` to 7 inside its own claim transaction, so a refused or failed
+first claim leaves format 6. Only an exact format-6 ledger is upgraded. Legacy identities keep their 64 KiB
 bound and have no row. Open refuses a table without version 7, version 7 without
 the table, and a limit row without a receipt.
 
@@ -147,5 +159,11 @@ omits the field, and a response without an observation omits `io`.
   observed.
 - **No CLI.** `bench workspace run` has no finite flags. The Go client
   (`client.CallV2`) sends the profile when `Request.IO` is set.
+- **Open-time memory and retained disk.** Open validates every retained receipt,
+  loading finite bodies up to 2 MiB each in pages of 64, and completed finite
+  receipts are never collected. Both grow with finite use and must be bounded
+  (streamed validation, collection with replay protection) before production.
+- **Payload output equal to `ExecFailed`.** A payload whose entire stdout is
+  exactly the `ExecFailed` marker gets no observation. This fails closed.
 - **Proposed contract.** The treaty files are proposals. The adapter conformance
   above checks byte spelling, bounds and digests, not producer lifecycle.
