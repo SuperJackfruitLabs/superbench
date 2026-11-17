@@ -23,6 +23,8 @@ type Inspector struct {
 	Data string
 	Git  func(context.Context, string, ...string) (string, error)
 	Tree freshtree.Tree
+	// ImportMemoryKiB bounds each checkpoint import Git process; zero is the default.
+	ImportMemoryKiB uint64
 }
 
 func samePhysical(a, b string) bool {

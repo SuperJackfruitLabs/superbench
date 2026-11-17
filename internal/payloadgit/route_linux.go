@@ -125,7 +125,7 @@ func (r Route) Execute(ctx context.Context, runner gitcontrol.Runner, args []str
 	}
 	r.input = payloadlaunch.GitInput{Bytes: bytes.Clone(input), Limit: inputLimit}
 	out := &bounded{limit: outputLimit}
-	stderr := &bounded{limit: outputLimit}
+	stderr := &bounded{limit: min(outputLimit, 64<<10)} // diagnostics stay small
 	cmd := gitcontrol.ManagedCommand(ctx, r.directory, args...)
 	cmd.Env = []string{}
 	cmd.Stdout = out
