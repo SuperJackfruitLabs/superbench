@@ -67,6 +67,45 @@ implemented yet. Commands still have the launching user's authority, so delibera
 cgroup escape by that user is outside this boundary. Phase 3 supplies stronger
 isolation; this is lifecycle fencing for trusted commands, not a sandbox.
 
+### Project quotas and the payload account
+
+XFS project quotas alone do not hold against a file's owner. From the initial
+user namespace, the owner can change the project ID of its own files
+(`xfs_io -c 'chproj 0' FILE`) and clear the project-inherit flag on its own
+directories, with no capability. Writes to those files or directories then count
+against another project, outside the bench's byte and inode caps. A Fresh bench's
+tree belongs to the payload account, so SuperBench confines that account.
+
+- **Prevention.** `bench-payload` installs a seccomp filter after `no_new_privs`
+  and the credential drop, before the payload runs anything. Every thread of that
+  process gets it, and so do all its children. The filter covers setup and run
+  stages, member and root runs, and every Git route through the helper. It refuses
+  `ioctl` `FS_IOC_FSSETXATTR`, `FS_IOC_SETFLAGS` and `FS_IOC32_SETFLAGS` (it compares
+  the request's low 32 bits, which is what the kernel uses), as well as
+  `file_setattr`, `io_uring_setup`, `io_uring_enter` and `io_uring_register`. Each
+  refusal fails with `EPERM`. Only amd64 and arm64 are supported. Any other
+  architecture, the 32-bit compat ABIs and x32 are killed. On other CPU
+  architectures the helper refuses to launch. Reading attributes still works. The
+  helper checks that the kernel reports seccomp filter mode before it executes the
+  payload.
+- **Detection.** Root's read-only `bench-quota verify bench KEY` checks that the
+  bench's leaf directory carries the bench's project ID and the project-inherit
+  flag. It reads them through a descriptor and never follows a symlink. If either
+  check fails, it refuses with `bench leaf is outside its quota project`. benchd
+  runs this verify before each Fresh launch and lease, and before it exports a
+  checkpoint from a managed Fresh bench. An absent leaf holds no data and passes.
+  The leaf check is cheap. Walking the whole tree on every launch is not, so a
+  full-tree check is provided for reclaim; no released-bench reclaim calls it yet.
+  It runs as root through descriptors only, never follows a symlink and never
+  leaves the filesystem. It is bounded by the bench's inode cap, and every
+  directory and regular file must carry the project, with directories also
+  carrying the inherit flag. Symlinks and special files are counted but not
+  opened.
+
+The filter does not cover a process that runs as the payload account without
+going through `bench-payload`. Keep that account without a login shell,
+`systemd --user` lingering, cron or at jobs.
+
 Storage budgets and the [delegated Linux service installer](install.md) are
 implemented. Automatic log retention is still pending. Interactive terminal
 attachment belongs to Phase 2.

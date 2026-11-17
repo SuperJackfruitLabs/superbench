@@ -19,6 +19,14 @@ enforcement is the repository's recorded drills on loop-backed XFS images, not a
 recorded runs are historical: at least one names an uncommitted working snapshot of a feature
 branch, so they are not runs of the current commit.
 
+Project quotas alone do not hold against a file's owner. The owner can move its own files to
+another project, or clear the project-inherit flag on its own directories, without any capability.
+A Fresh bench's tree belongs to the payload account, so SuperBench confines that account. Every
+process started through the payload helper runs under a seccomp filter. The filter refuses the
+attribute-setting `ioctl` requests, `file_setattr` and io_uring, so those changes fail with
+`EPERM`. Separately, the helper's read-only verify refuses a bench whose leaf directory has lost
+its project ID or inherit flag. This holds only for processes that start through the helper.
+
 What managed storage does:
 
 - **Admission.** Create, recover, new leases and supervised runs check free-space reserves on the
