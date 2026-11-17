@@ -35,11 +35,6 @@ func (r *receipts) claimScope(parent context.Context, i operationcontrol.Intent,
 	if cached, found, err := r.lookupLocked(i.Target.UID, i.Target.RequestID, i.Target.Digest); found || err != nil {
 		return cached, nil, nil, err
 	}
-	if limit != legacyResponseLimit {
-		if err := r.enableFiniteLocked(); err != nil {
-			return nil, nil, nil, err
-		}
-	}
 	if err := r.claimTypedLocked(i, limit); err != nil {
 		return nil, nil, nil, err
 	}
@@ -63,7 +58,8 @@ func (r *receipts) claimTypedLocked(i operationcontrol.Intent, limit int64) erro
 	if err = cancelBarrier(tx, t.UID, t.RequestID, t.Digest); err != nil {
 		return err
 	}
-	if err = r.reserveResponse(tx, limit); err != nil {
+	upgraded, err := r.reserveResponse(tx, limit)
+	if err != nil {
 		return err
 	}
 	var count int64
@@ -107,7 +103,10 @@ func (r *receipts) claimTypedLocked(i operationcontrol.Intent, limit int64) erro
 	if digest != t.Digest || state != "running" || barrier != "" || body != nil || status.Valid {
 		return errInDoubt
 	}
-	return tx.Commit()
+	if err = tx.Commit(); err == nil {
+		r.finite = r.finite || upgraded
+	}
+	return err
 }
 func oneInserted(result sql.Result, err error) error {
 	if err != nil {

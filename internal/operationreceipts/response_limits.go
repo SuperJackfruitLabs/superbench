@@ -35,31 +35,18 @@ func finiteFormat(db *sql.DB, version int) (bool, error) {
 	return tables == 1, nil
 }
 
-// enableFiniteLocked upgrades exactly format 6. The caller holds receipts.mu.
-func (r *receipts) enableFiniteLocked() error {
-	if r.finite {
-		return nil
-	}
-	tx, err := r.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
+// upgradeFiniteTx upgrades exactly format 6 inside the caller's claim
+// transaction, so a refused or failed first claim rolls the upgrade back too.
+func upgradeFiniteTx(tx *sql.Tx) error {
 	var version int
-	if err = tx.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
+	if err := tx.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
 		return err
 	}
 	if version != 6 {
 		return errInDoubt
 	}
-	if _, err = tx.Exec(responseLimitsTable); err != nil {
-		return err
-	}
-	if err = tx.Commit(); err != nil {
-		return err
-	}
-	r.finite = true
-	return nil
+	_, err := tx.Exec(responseLimitsTable)
+	return err
 }
 
 // responseLimit is the identity's retained bound. Absence means legacy; a
@@ -85,21 +72,29 @@ func (r *receipts) responseLimit(q cancelReader, uid uint32, id string) (int64, 
 // reserveResponse charges the whole bound before any effect, in the claim
 // transaction and before its identity is inserted. Legacy claims in format 6
 // keep the original count arithmetic; recordResponseLimit then binds the row.
-func (r *receipts) reserveResponse(tx *sql.Tx, limit int64) error {
-	if !validResponseLimit(limit) || limit != legacyResponseLimit && !r.finite {
-		return errInDoubt
+// It reports whether this transaction created format 7; the caller marks the
+// ledger finite only after its commit.
+func (r *receipts) reserveResponse(tx *sql.Tx, limit int64) (upgraded bool, err error) {
+	if !validResponseLimit(limit) {
+		return false, errInDoubt
 	}
-	if !r.finite {
-		return requireReceiptCapacity(tx)
+	if limit != legacyResponseLimit && !r.finite {
+		if err = upgradeFiniteTx(tx); err != nil {
+			return false, err
+		}
+		upgraded = true
+	}
+	if !r.finite && !upgraded {
+		return false, requireReceiptCapacity(tx)
 	}
 	var reserved int64
-	if err := tx.QueryRow(`SELECT COALESCE(SUM(COALESCE(l.bytes,` + strconv.FormatInt(legacyResponseLimit, 10) + `)),0) FROM (` + unresolvedIdentities + `) u LEFT JOIN response_limits l ON l.owner=u.owner AND l.id=u.id`).Scan(&reserved); err != nil {
-		return err
+	if err = tx.QueryRow(`SELECT COALESCE(SUM(COALESCE(l.bytes,` + strconv.FormatInt(legacyResponseLimit, 10) + `)),0) FROM (` + unresolvedIdentities + `) u LEFT JOIN response_limits l ON l.owner=u.owner AND l.id=u.id`).Scan(&reserved); err != nil {
+		return false, err
 	}
 	if reserved < 0 || reserved+limit > activeReceiptBytes {
-		return errCapacity
+		return false, errCapacity
 	}
-	return nil
+	return upgraded, nil
 }
 func (r *receipts) recordResponseLimit(tx *sql.Tx, uid uint32, id string, limit int64) error {
 	if limit == legacyResponseLimit {

@@ -279,11 +279,6 @@ func (r *receipts) claimLimit(uid uint32, id, digest string, limit int64) (*rece
 	if cached, found, err := r.lookupLocked(uid, id, digest); found || err != nil {
 		return cached, err
 	}
-	if limit != legacyResponseLimit {
-		if err := r.enableFiniteLocked(); err != nil {
-			return nil, err
-		}
-	}
 	key := receiptKey(uid, id)
 	tx, e := r.db.Begin()
 	if e != nil {
@@ -293,7 +288,8 @@ func (r *receipts) claimLimit(uid uint32, id, digest string, limit int64) (*rece
 	if e = cancelBarrier(tx, uid, id, digest); e != nil {
 		return nil, e
 	}
-	if e = r.reserveResponse(tx, limit); e != nil {
+	upgraded, e := r.reserveResponse(tx, limit)
+	if e != nil {
 		return nil, e
 	}
 	result, e := tx.Exec("INSERT INTO receipts(owner,id,digest,state) VALUES (?,?,?,'running')", uid, id, digest)
@@ -315,6 +311,7 @@ func (r *receipts) claimLimit(uid uint32, id, digest string, limit int64) (*rece
 	if e = tx.Commit(); e != nil {
 		return nil, e
 	}
+	r.finite = r.finite || upgraded
 	r.active[key] = true
 	return nil, nil
 }
