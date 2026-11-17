@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/bench"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/buildinfo"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/service"
 )
 
@@ -30,6 +31,10 @@ func run() error {
 	cache, e := os.UserCacheDir()
 	if e != nil {
 		return e
+	}
+	if len(os.Args) == 2 && os.Args[1] == "version" {
+		fmt.Println("benchd", buildinfo.Version)
+		return nil
 	}
 	state := flag.String("state", filepath.Join(config, "superbench", "state"), "private authoritative state directory")
 	data := flag.String("data", filepath.Join(cache, "superbench", "data"), "bench data directory")

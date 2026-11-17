@@ -1,0 +1,11 @@
+{
+  "product": "SuperBench",
+  "ci": {
+    "forge": "https://forge.superjackfruit.com",
+    "repo": "SuperJackfruitLabs/superbench",
+    "context": "check / check (push)"
+  },
+  "assets": [
+    "dist/superbench_*.tar.gz"
+  ]
+}
