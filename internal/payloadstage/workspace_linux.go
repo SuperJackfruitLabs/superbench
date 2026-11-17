@@ -112,7 +112,7 @@ func workspace(authority serviceidentity.Authority, b *model.Bench, member strin
 		if finite {
 			// Copied bytes reach the helper frame only; it seals them in a memfd
 			// and binds stdin once after the credential drop. Empty keeps EOF.
-			bridge, err = payloadlaunch.PreparePayloadInput(cmd, target, e, payloadlaunch.PayloadInput{Bytes: input, Limit: payloadexec.MaxPayloadInput})
+			bridge, err = payloadlaunch.PreparePayloadInput(cmd, target, e, payloadlaunch.PayloadInput{Bytes: input, Limit: payloadexec.MaxPayloadInput, ReportExec: true})
 		} else {
 			bridge, err = payloadlaunch.Prepare(cmd, target, e, payloadlaunch.GitInput{})
 		}

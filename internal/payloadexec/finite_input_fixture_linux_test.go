@@ -3,9 +3,9 @@
 package payloadexec
 
 // Opt-in root fixture for the helper's finite-input sequence: the sealed memfd
-// is created while root, the actual dropCredentials runs, stdin is bound once
-// and an ordinary reader is exec'd as the payload identity. This is the same
-// order Exec uses, not a sudo, scope, layout or service-lifecycle claim.
+// is created while root, the actual dropCredentials runs, then Exec's own
+// enterPayload binds stdin once, reports exec and execs an ordinary reader as
+// the payload identity. Not a sudo, scope, layout or service-lifecycle claim.
 import (
 	"bytes"
 	"context"
@@ -47,6 +47,9 @@ func TestFiniteInputSealedAfterCredentialDropFixture(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s delivery child: %v\n%s", mode, err, out)
 		}
+		if (mode == "sealed") != bytes.HasPrefix(out, []byte(ExecReached)) {
+			t.Fatalf("%s reader exec report: %q", mode, out[:min(len(out), 64)])
+		}
 		for _, marker := range finiteFixtureMarkers[mode] {
 			if !bytes.Contains(out, []byte("READER "+marker+"\n")) {
 				t.Fatalf("%s reader did not prove %s:\n%s", mode, marker, out)
@@ -56,7 +59,7 @@ func TestFiniteInputSealedAfterCredentialDropFixture(t *testing.T) {
 	}
 }
 
-// Root child: exactly Exec's input order, then exec of the unprivileged reader.
+// Root child: Exec's open and drop, then the shared enterPayload into the reader.
 func TestFiniteInputDeliveryChild(t *testing.T) {
 	mode := os.Getenv("SUPERBENCH_FINITE_INPUT_CHILD")
 	if mode == "" {
@@ -64,8 +67,9 @@ func TestFiniteInputDeliveryChild(t *testing.T) {
 	}
 	helperFixtureNamespaceGuard(t)
 	r := launchRequest()
+	r.Arguments = []string{os.Args[0], "-test.run=^TestFiniteInputReaderChild$", "-test.timeout=30s"}
 	if mode == "sealed" {
-		r.Input = finiteFixtureInput()
+		r.Input, r.ReportExec = finiteFixtureInput(), true
 	}
 	input, err := openPayloadInput(r)
 	if err != nil || (input == nil) != (mode == "empty") {
@@ -74,18 +78,10 @@ func TestFiniteInputDeliveryChild(t *testing.T) {
 	if err := dropCredentials(finiteFixturePolicy); err != nil {
 		t.Fatalf("drop: %v", err)
 	}
-	if err := descriptorsCloseOnExec(); err != nil {
-		t.Fatal(err)
-	}
-	// As in Exec, the sealed descriptor itself is close-on-exec; only its
-	// duplicate on stdin survives into the payload.
-	if input != nil {
-		if err := bindPayloadInput(input); err != nil {
-			t.Fatalf("bind: %v", err)
-		}
-	}
+	// The sealed descriptor itself is close-on-exec; only its stdin duplicate survives.
+	phase := "fixture"
 	env := []string{"PATH=/usr/bin:/bin", "SUPERBENCH_FINITE_INPUT_READER=" + mode}
-	t.Fatal(syscall.Exec(os.Args[0], []string{os.Args[0], "-test.run=^TestFiniteInputReaderChild$", "-test.timeout=30s"}, env))
+	t.Fatalf("%s: %v", phase, enterPayload(&phase, finiteFixturePolicy, r, input, os.Args[0], env))
 }
 
 // Payload-identity reader: proves who it is and what its stdin is and allows.

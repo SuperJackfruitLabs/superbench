@@ -8,6 +8,7 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/execution"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/finiteio"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/payloadexec"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/serviceidentity"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/stageexec"
 )
@@ -79,5 +80,35 @@ func TestCompletePublishesOnlyItsOwnStoppedSealedExecution(t *testing.T) {
 	}
 	if observed, err := Complete(nil, launched, out, current); observed != nil || !errors.Is(err, ErrIncomplete) {
 		t.Fatal("absent plan published output", err)
+	}
+}
+
+func TestHelperRefusalBeforeExecIsNeverAnObservation(t *testing.T) {
+	reached := payloadexec.ExecReached
+	for name, raw := range map[string]string{
+		"sudo-or-helper-refusal": "", "diagnostic-only": "managed payload refused: executable\n",
+		"exec-failed": reached + payloadexec.ExecFailed, "payload-without-report": "\x00\x01\x02", "late-report": "x" + reached,
+	} {
+		if payload, err := helperStdout([]byte(raw)); payload != nil || !errors.Is(err, ErrIncomplete) {
+			t.Fatal("refusal before exec became stdout", name, err)
+		}
+	}
+	for want, raw := range map[string]string{"": reached, "\x00\x01\x02": reached + "\x00\x01\x02"} {
+		if payload, err := helperStdout([]byte(raw)); err != nil || string(payload) != want {
+			t.Fatal("exec-reached stdout changed", raw, err)
+		}
+	}
+	f := &Installed{input: finiteio.Input{Version: finiteio.Version, StdoutLimitBytes: 3}}
+	if f.Limit() != 3+uint64(len(reached)) || f.Limit()-3 > stageexec.MaxResultBytes-finiteio.MaxBytes {
+		t.Fatal("capture bound does not cover the exec report exactly")
+	}
+	if _, err := f.Observe(nil); !errors.Is(err, ErrIncomplete) {
+		t.Fatal("empty helper stdout observed as exact empty output", err)
+	}
+	if out, err := f.Observe([]byte(reached + "abc")); err != nil || out.StdoutBytes != 3 {
+		t.Fatal("reported stdout refused", err)
+	}
+	if _, err := f.Observe([]byte(reached + "abcd")); err == nil {
+		t.Fatal("stdout over the request bound observed")
 	}
 }

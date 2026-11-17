@@ -1,11 +1,13 @@
 package payloadstage
 
 import (
+	"bytes"
 	"errors"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/execution"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/finiteio"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/payloadexec"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/payloadpolicy"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/serviceidentity"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/stageexec"
@@ -90,7 +92,12 @@ func (f *Installed) Check() error {
 	}
 	return nil
 }
-func (f *Installed) Limit() uint64 { return f.input.StdoutLimitBytes }
+
+// Limit allows the helper's fixed ExecReached prefix on top of the request's
+// stdout bound; Observe strips and requires it before applying that bound.
+func (f *Installed) Limit() uint64 {
+	return f.input.StdoutLimitBytes + uint64(len(payloadexec.ExecReached))
+}
 func (f *Installed) Transport(b *model.Bench, selector string) (stageexec.PrepareTransport, error) {
 	if err := f.Check(); err != nil {
 		return nil, err
@@ -98,7 +105,22 @@ func (f *Installed) Transport(b *model.Bench, selector string) (stageexec.Prepar
 	return workspaceTransport(f.authority, b, selector, selector == "", f.bytes, true)
 }
 func (f *Installed) Observe(stdout []byte) (finiteio.Output, error) {
-	return finiteio.Observe(stdout, f.input)
+	payload, err := helperStdout(stdout)
+	if err != nil {
+		return finiteio.Output{}, err
+	}
+	return finiteio.Observe(payload, f.input)
+}
+
+// helperStdout returns the payload's own stdout only when the helper proved
+// that exec was reached. A helper or sudo refusal (any exit status, empty or
+// diagnostic-free stdout) and a failed exec never become an observation.
+func helperStdout(raw []byte) ([]byte, error) {
+	payload, reached := bytes.CutPrefix(raw, []byte(payloadexec.ExecReached))
+	if !reached || string(payload) == payloadexec.ExecFailed {
+		return nil, ErrIncomplete
+	}
+	return payload, nil
 }
 
 // Complete publishes an observation only for the exact execution the caller

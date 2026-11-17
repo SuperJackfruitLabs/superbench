@@ -161,24 +161,57 @@ func Exec() (err error) {
 			return errors.Join(ErrBoundary, err)
 		}
 	}
-	phase = "descriptors"
-	if err := descriptorsCloseOnExec(); err != nil {
-		return err
-	}
-	phase = "input"
-	if input != nil {
-		if err := bindPayloadInput(input); err != nil {
-			return err
-		}
-	}
 	if r.Kind == "git" {
 		phase = "git-policy"
 		if err := verifyManagedGit(r, b.admin, environment); err != nil {
 			return err
 		}
 	}
-	phase = "exec"
-	return syscall.Exec(path, r.Arguments, environment)
+	return enterPayload(&phase, p, r, input, path, environment)
+}
+
+// enterPayload is the only place the final launch order lives, shared by Exec
+// and the privileged fixture. It requires the actual credential drop to be
+// complete, marks every other descriptor close-on-exec, binds the sealed input
+// to stdin once and execs. With ReportExec it writes ExecReached to stdout
+// immediately before exec, and ExecFailed if exec returns: a helper or sudo
+// refusal never produces ExecReached, and a payload cannot write before it.
+func enterPayload(phase *string, p Policy, r Request, input *os.File, path string, environment []string) error {
+	*phase = "credentials"
+	if err := verifyDropped(p); err != nil {
+		return err
+	}
+	*phase = "descriptors"
+	if err := descriptorsCloseOnExec(); err != nil {
+		return err
+	}
+	*phase = "input"
+	if input != nil {
+		if err := bindPayloadInput(input); err != nil {
+			return err
+		}
+	}
+	*phase = "exec"
+	if r.ReportExec {
+		if err := writeStdout(ExecReached); err != nil {
+			return err
+		}
+	}
+	err := syscall.Exec(path, r.Arguments, environment)
+	if r.ReportExec {
+		_ = writeStdout(ExecFailed)
+	}
+	return err
+}
+func writeStdout(marker string) error {
+	for raw := []byte(marker); len(raw) > 0; {
+		n, err := syscall.Write(1, raw)
+		if err != nil {
+			return errors.Join(ErrBoundary, err)
+		}
+		raw = raw[n:]
+	}
+	return nil
 }
 
 func verifyCommandDirectories() error {
