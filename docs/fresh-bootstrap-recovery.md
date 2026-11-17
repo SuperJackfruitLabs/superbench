@@ -67,12 +67,14 @@ Retirement holds the existing operation lock, re-establishes the original denial
 durability, rechecks retained provenance and actual controller authority, and
 persists the exact reviewed plan as a root-owned 0600 file at
 `LEDGER/payload-retirements/KEY.json` before changing any reservation. An existing
-approval must match exactly, including after a lost reply. Partial or foreign
-approval files refuse; retain them for explicit operator investigation. A partial
-`LEDGER/payload-retirements/KEY.json` requires explicit manual removal only after
-inspection verifies that no retirement effects occurred. The commands never
-automatically delete or replace it. If effects cannot be ruled out, preserve the
-file and stop for separate recovery. The historical bootstrap intent is never
+approval must match exactly, including after a lost reply. The file is published
+atomically: a complete, fsynced temp file in the same directory is linked to the
+final name, so a crash leaves either no approval or a complete one, never a
+partial one. Leftover `.KEY.json.tmp-*` files are harmless, and a retry removes
+one that is still linked to an exact approval. Foreign or different approval
+files refuse; retain them for explicit operator investigation. The commands never
+automatically delete or replace `KEY.json`. If effects cannot be ruled out,
+preserve the file and stop for separate recovery. The historical bootstrap intent is never
 rewritten. A `reserved` intent continues to record zero allocation even when the
 separate storage observation identifies a reservation. An unspecified requested byte quota must match the fixed policy's
 original default.
