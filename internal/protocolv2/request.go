@@ -62,6 +62,7 @@ var shapes = map[string]shape{
 	"setup":      {[]string{"key", "holder", "request_id"}, []string{"offline", "repository_name", "lease_token"}},
 	"checkpoint": {[]string{"key", "lease_token"}, nil}, "release": {[]string{"key", "lease_token"}, nil},
 	"stop": {[]string{"key", "lease_token"}, nil}, "stop_admin": {[]string{"key"}, nil}, "archive": {[]string{"key"}, nil},
+	"reclaim": {[]string{"key"}, nil},
 }
 
 func Known(operation string) bool { _, ok := shapes[operation]; return ok }

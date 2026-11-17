@@ -2,6 +2,7 @@ package protocolv2
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -42,5 +43,31 @@ func TestResponseReclaimPhasesAreReleasedOnly(t *testing.T) {
 	}
 	if parse("reclaimable", nil) == nil {
 		t.Fatal("an unknown phase accepted")
+	}
+}
+
+// reclaim takes only a key, and its success names a reclaimed workspace.
+func TestReclaimRequestAndSuccess(t *testing.T) {
+	if r, err := Parse([]byte(`{"version":"superbench.v2","operation":"reclaim","key":"card"}`)); err != nil || r.Operation != "reclaim" || Growth("reclaim") || ReadOnly("reclaim") {
+		t.Fatalf("reclaim request: %+v %v", r, err)
+	}
+	for _, raw := range []string{`{"version":"superbench.v2","operation":"reclaim"}`, `{"version":"superbench.v2","operation":"reclaim","key":"card","lease_token":"` + strings.Repeat("a", 32) + `"}`, `{"version":"superbench.v2","operation":"reclaim","key":"card","request_id":"r1"}`} {
+		if _, err := Parse([]byte(raw)); err == nil {
+			t.Errorf("reclaim request accepted: %s", raw)
+		}
+	}
+	for phase, ok := range map[string]bool{"reclaimed": true, "reclaiming": false, "ready": false} {
+		response, _, status := fixtureResponse(t, "release-complete")
+		response.Operation = "reclaim"
+		m := response.Result.(*Mutation)
+		m.Workspace.Phase, m.Workspace.ReadyForAcquisition = phase, false
+		raw, err := json.Marshal(response)
+		if err != nil {
+			t.Fatal(err)
+		}
+		request := Request{Version: Version, Operation: "reclaim", Key: m.Workspace.Key}
+		if _, err = ParseResponse(raw, status, request); (err == nil) != ok {
+			t.Errorf("reclaim success naming %s: %v", phase, err)
+		}
 	}
 }
