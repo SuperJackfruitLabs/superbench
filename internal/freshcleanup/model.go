@@ -52,23 +52,37 @@ type Observation struct {
 	Owners []Ownership
 }
 
+// Owner is the single uid and gid that must own the root and every entry. The
+// caller derives it from the retained phase and the observed leaf; the model
+// accepts only the policy's daemon, never root or the payload identity.
+type Owner struct{ UID, GID uint32 }
+
+// Assignment is the selected quota reservation the cleaned tree belongs to.
+type Assignment struct {
+	ProjectID     uint32
+	Bytes, Inodes uint64
+}
+
 type Approval struct {
 	Version     string
 	Binding     Binding
+	Owner       Owner
+	Assignment  Assignment
 	RootPath    string
 	Observation Observation
 	SHA256      string
 }
 
 // New copies an already-observed inventory; it never snapshots or adopts a tree.
-func New(p payloadpolicy.Policy, b Binding, o Observation) (Approval, error) {
+// owner and assignment are the caller's independently derived expectations.
+func New(p payloadpolicy.Policy, b Binding, owner Owner, assignment Assignment, o Observation) (Approval, error) {
 	if len(o.Tree.Entries) > MaxEntries || len(o.Owners) != len(o.Tree.Entries)+1 {
 		return Approval{}, ErrApproval
 	}
-	a := Approval{Version: Version, Binding: b, RootPath: rootPath(p, b.Key), Observation: o}
+	a := Approval{Version: Version, Binding: b, Owner: owner, Assignment: assignment, RootPath: rootPath(p, b.Key), Observation: o}
 	a.Observation.Tree.Entries = append([]reap.Entry(nil), o.Tree.Entries...)
 	a.Observation.Owners = append([]Ownership(nil), o.Owners...)
-	if err := a.validate(p, b); err != nil {
+	if err := a.validate(p, b, owner, assignment); err != nil {
 		return Approval{}, err
 	}
 	raw, err := a.digestBytes()
@@ -76,7 +90,7 @@ func New(p payloadpolicy.Policy, b Binding, o Observation) (Approval, error) {
 		return Approval{}, ErrApproval
 	}
 	a.SHA256 = digest(raw)
-	if _, err = a.Bytes(p, b); err != nil {
+	if _, err = a.Bytes(p, b, owner, assignment); err != nil {
 		return Approval{}, err
 	}
 	return a, nil

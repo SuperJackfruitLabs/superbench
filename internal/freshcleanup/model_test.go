@@ -37,13 +37,18 @@ func fixture() (payloadpolicy.Policy, Binding, Observation) {
 		if os.FileMode(e.Mode).IsDir() {
 			n = 2
 		}
-		o.Owners = append(o.Owners, Ownership{Path: e.Path, Device: e.Device, Inode: e.Inode, Nlink: n, UID: 1002, GID: 1002})
+		o.Owners = append(o.Owners, Ownership{Path: e.Path, Device: e.Device, Inode: e.Inode, Nlink: n, UID: 1001, GID: 1001})
 	}
 	return p, b, o
 }
+
+// The daemon owns the fixture tree; the assignment is a Fresh reservation.
+var testOwner = Owner{UID: 1001, GID: 1001}
+var testAssignment = Assignment{ProjectID: 10001, Bytes: 4 << 20, Inodes: 4096}
+
 func requireRefusal(t *testing.T, p payloadpolicy.Policy, b Binding, o Observation) {
 	t.Helper()
-	a, err := New(p, b, o)
+	a, err := New(p, b, testOwner, testAssignment, o)
 	if !errors.Is(err, ErrApproval) || !reflect.DeepEqual(a, Approval{}) {
 		t.Fatalf("invalid approval accepted: %v %#v", err, a)
 	}
@@ -51,11 +56,11 @@ func requireRefusal(t *testing.T, p payloadpolicy.Policy, b Binding, o Observati
 
 func TestApprovalCopiesAndRoundTripsCompleteOwnershipBoundTree(t *testing.T) {
 	p, b, o := fixture()
-	a, err := New(p, b, o)
+	a, err := New(p, b, testOwner, testAssignment, o)
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw, err := a.Bytes(p, b)
+	raw, err := a.Bytes(p, b, testOwner, testAssignment)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,13 +68,13 @@ func TestApprovalCopiesAndRoundTripsCompleteOwnershipBoundTree(t *testing.T) {
 	if err := json.Indent(&pretty, raw, "", "  "); err != nil {
 		t.Fatal(err)
 	}
-	parsed, err := Parse(pretty.Bytes(), p, b)
+	parsed, err := Parse(pretty.Bytes(), p, b, testOwner, testAssignment)
 	if err != nil || !reflect.DeepEqual(a, parsed) {
 		t.Fatal("canonical round trip", err)
 	}
 	o.Tree.Entries[0].Path = "changed"
 	o.Owners[0].UID = 0
-	after, err := a.Bytes(p, b)
+	after, err := a.Bytes(p, b, testOwner, testAssignment)
 	if err != nil || !bytes.Equal(raw, after) {
 		t.Fatal("input aliases retained", err)
 	}
@@ -81,8 +86,8 @@ func TestApprovalCopiesAndRoundTripsCompleteOwnershipBoundTree(t *testing.T) {
 func TestApprovalRefusesUnsafeOrIncompleteOwnershipAndTopology(t *testing.T) {
 	for name, mutate := range map[string]func(*Observation){
 		"root-uid":             func(o *Observation) { o.Owners[0].UID = 0 },
-		"mixed-uid":            func(o *Observation) { o.Owners[2].UID = 1001 },
-		"foreign-gid":          func(o *Observation) { o.Owners[2].GID = 1001 },
+		"mixed-uid":            func(o *Observation) { o.Owners[2].UID = 1002 },
+		"foreign-gid":          func(o *Observation) { o.Owners[2].GID = 1002 },
 		"regular-hardlink":     func(o *Observation) { o.Owners[2].Nlink = 2 },
 		"symlink-hardlink":     func(o *Observation) { o.Owners[3].Nlink = 2 },
 		"zero-directory-links": func(o *Observation) { o.Owners[0].Nlink = 0 },
@@ -138,22 +143,22 @@ func TestApprovalBindsOriginalEvidenceAndFixedPolicy(t *testing.T) {
 			p, b, o := fixture()
 			other := b
 			change(&other)
-			a, err := New(p, other, o)
+			a, err := New(p, other, testOwner, testAssignment, o)
 			if err != nil {
 				t.Fatal("valid alternate fixture", err)
 			}
-			if !errors.Is(a.Validate(p, b), ErrApproval) {
+			if !errors.Is(a.Validate(p, b, testOwner, testAssignment), ErrApproval) {
 				t.Fatal("substituted original evidence accepted")
 			}
 		})
 	}
 	p, b, o := fixture()
-	a, err := New(p, b, o)
+	a, err := New(p, b, testOwner, testAssignment, o)
 	if err != nil {
 		t.Fatal(err)
 	}
 	p.PayloadUID++
-	if !errors.Is(a.Validate(p, b), ErrApproval) {
+	if !errors.Is(a.Validate(p, b, testOwner, testAssignment), ErrApproval) {
 		t.Fatal("changed policy accepted")
 	}
 	p, b, o = fixture()
@@ -166,13 +171,13 @@ func TestApprovalBindsOriginalEvidenceAndFixedPolicy(t *testing.T) {
 
 func TestDirectoryLinkCountsAreInitialObservationsNotOneLinkRules(t *testing.T) {
 	p, b, o := fixture()
-	a, err := New(p, b, o)
+	a, err := New(p, b, testOwner, testAssignment, o)
 	if err != nil {
 		t.Fatal(err)
 	}
 	o.Owners[0].Nlink++
 	o.Owners[1].Nlink++
-	other, err := New(p, b, o)
+	other, err := New(p, b, testOwner, testAssignment, o)
 	if err != nil {
 		t.Fatal("directory link count treated as regular-file link count", err)
 	}
@@ -185,24 +190,26 @@ func TestDirectoryLinkCountsAreInitialObservationsNotOneLinkRules(t *testing.T) 
 
 func TestApprovalCodecRefusesTamperingAndNonCanonicalDocuments(t *testing.T) {
 	p, b, o := fixture()
-	a, err := New(p, b, o)
+	a, err := New(p, b, testOwner, testAssignment, o)
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw, err := a.Bytes(p, b)
+	raw, err := a.Bytes(p, b, testOwner, testAssignment)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for name, bad := range map[string][]byte{
-		"duplicate":       append(append([]byte{}, raw[:len(raw)-1]...), []byte(`,"Version":"`+Version+`"}`)...),
-		"unknown":         append(append([]byte{}, raw[:len(raw)-1]...), []byte(`,"unknown":true}`)...),
-		"tampered-owner":  bytes.Replace(raw, []byte(`"UID":1002`), []byte(`"UID":1001`), 1),
-		"tampered-digest": bytes.Replace(raw, []byte(a.SHA256), []byte(strings.Repeat("0", 64)), 1),
-		"trailing":        append(append([]byte{}, raw...), []byte(`{}`)...),
-		"invalid-utf8":    append(raw, 0xff), "over-limit": bytes.Repeat([]byte(" "), MaxApproval+1),
+		"duplicate":            append(append([]byte{}, raw[:len(raw)-1]...), []byte(`,"Version":"`+Version+`"}`)...),
+		"unknown":              append(append([]byte{}, raw[:len(raw)-1]...), []byte(`,"unknown":true}`)...),
+		"tampered-owner":       bytes.Replace(raw, []byte(`"UID":1001`), []byte(`"UID":1002`), 1),
+		"tampered-entry-owner": bytes.Replace(raw, []byte(`"Nlink":2,"UID":1001`), []byte(`"Nlink":2,"UID":1002`), 1),
+		"tampered-project":     bytes.Replace(raw, []byte(`"ProjectID":10001`), []byte(`"ProjectID":10002`), 1),
+		"tampered-digest":      bytes.Replace(raw, []byte(a.SHA256), []byte(strings.Repeat("0", 64)), 1),
+		"trailing":             append(append([]byte{}, raw...), []byte(`{}`)...),
+		"invalid-utf8":         append(raw, 0xff), "over-limit": bytes.Repeat([]byte(" "), MaxApproval+1),
 	} {
 		t.Run(name, func(t *testing.T) {
-			got, err := Parse(bad, p, b)
+			got, err := Parse(bad, p, b, testOwner, testAssignment)
 			if !errors.Is(err, ErrApproval) || !reflect.DeepEqual(got, Approval{}) {
 				t.Fatal("invalid document accepted", err)
 			}
@@ -228,4 +235,82 @@ func TestApprovalRefusesEntryCountAndTotalEncodedBudget(t *testing.T) {
 		o.Owners = append(o.Owners, v)
 	}
 	requireRefusal(t, p, b, o)
+}
+
+func TestApprovalAcceptsOnlyTheDaemonOwnerAndTheExpectedAssignment(t *testing.T) {
+	p, b, o := fixture()
+	if _, err := New(p, b, testOwner, testAssignment, o); err != nil {
+		t.Fatal("daemon-owned approval refused", err)
+	}
+	reown := func(o Observation, uid, gid uint32) Observation {
+		o.Owners = append([]Ownership(nil), o.Owners...)
+		for i := range o.Owners {
+			o.Owners[i].UID, o.Owners[i].GID = uid, gid
+		}
+		return o
+	}
+	for name, owner := range map[string]Owner{
+		"root":         {0, 0},
+		"payload":      {p.PayloadUID, p.PayloadGID},
+		"daemon-uid-0": {p.DaemonUID, 0},
+		"other-gid":    {p.DaemonUID, p.PayloadGID},
+	} {
+		if a, err := New(p, b, owner, testAssignment, reown(o, owner.UID, owner.GID)); !errors.Is(err, ErrApproval) || !reflect.DeepEqual(a, Approval{}) {
+			t.Errorf("%s owner accepted: %v", name, err)
+		}
+	}
+	zero := p
+	zero.DaemonUID, zero.DaemonGID = 0, 0
+	if _, err := New(zero, b, Owner{}, testAssignment, reown(o, 0, 0)); !errors.Is(err, ErrApproval) {
+		t.Error("a root daemon policy made root an owner", err)
+	}
+	a, err := New(p, b, testOwner, testAssignment, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !errors.Is(a.Validate(p, b, Owner{p.PayloadUID, p.PayloadGID}, testAssignment), ErrApproval) {
+		t.Error("approval validated against a different expected owner")
+	}
+	for name, assignment := range map[string]Assignment{
+		"legacy-project": {9999, 4 << 20, 4096},
+		"partial-kib":    {10001, 4<<20 + 1, 4096},
+		"tiny":           {10001, 512, 4096},
+		"no-inodes":      {10001, 4 << 20, 0},
+	} {
+		if _, err := New(p, b, testOwner, assignment, o); !errors.Is(err, ErrApproval) {
+			t.Errorf("%s assignment accepted: %v", name, err)
+		}
+	}
+	for name, other := range map[string]Assignment{
+		"project": {10002, 4 << 20, 4096}, "bytes": {10001, 8 << 20, 4096}, "inodes": {10001, 4 << 20, 4095},
+	} {
+		if !errors.Is(a.Validate(p, b, testOwner, other), ErrApproval) {
+			t.Errorf("approval validated against another %s", name)
+		}
+	}
+}
+
+// The daemon worker must traverse, re-hash and unlink every approved entry, so a
+// directory without owner rwx or a file without owner read is refused at plan time.
+func TestApprovalRefusesEntriesTheDaemonWorkerCannotTraverseOrRead(t *testing.T) {
+	for name, mutate := range map[string]func(*Observation){
+		"directory-no-search": func(o *Observation) { o.Tree.Entries[0].Mode = uint32(os.ModeDir | 0600) },
+		"directory-no-write":  func(o *Observation) { o.Tree.Entries[0].Mode = uint32(os.ModeDir | 0500) },
+		"directory-no-read":   func(o *Observation) { o.Tree.Entries[0].Mode = uint32(os.ModeDir | 0300) },
+		"file-unreadable":     func(o *Observation) { o.Tree.Entries[1].Mode = 0200 },
+		"file-group-readable": func(o *Observation) { o.Tree.Entries[1].Mode = 0040 },
+	} {
+		t.Run(name, func(t *testing.T) { p, b, o := fixture(); mutate(&o); requireRefusal(t, p, b, o) })
+	}
+	for name, mutate := range map[string]func(*Observation){
+		"read-only-file":     func(o *Observation) { o.Tree.Entries[1].Mode = 0400 },
+		"group-dir-bits":     func(o *Observation) { o.Tree.Entries[0].Mode = uint32(os.ModeDir | 0750) },
+		"symlink-unaffected": func(o *Observation) { o.Tree.Entries[2].Mode = uint32(os.ModeSymlink | 0777) },
+	} {
+		p, b, o := fixture()
+		mutate(&o)
+		if _, err := New(p, b, testOwner, testAssignment, o); err != nil {
+			t.Errorf("%s refused: %v", name, err)
+		}
+	}
 }
