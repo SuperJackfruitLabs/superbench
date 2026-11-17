@@ -84,7 +84,7 @@ git -c user.name=fixture -c user.email=fixture@example.invalid add source.txt .b
 git -c user.name=fixture -c user.email=fixture@example.invalid commit -m 'payload checkpoint'
 /usr/bin/setsid /bin/sh -c "$1" child "$2" "$3" "$4" </dev/null >/dev/null 2>&1 &
 i=0; while [ ! -e "$2" ]; do i=$((i+1)); [ "$i" -lt 200 ] || exit 31; sleep .01; done`
-	result, err := store.RunWorkspaceContext(ctx, spec.Key, token, "a", []string{"/bin/sh", "-c", command, "payload", child, childReady, releaseChild, late}, false)
+	result, err := store.RunWorkspaceContext(ctx, spec.Key, token, "a", []string{"/bin/sh", "-c", command, "payload", child, childReady, releaseChild, late}, false, nil)
 	if err != nil || result == nil || result.ExitCode != 0 || result.Bench.Lease == nil || result.Bench.Lease.Token != token || result.Execution.Phase != "stopped" {
 		t.Fatal("payload did not preserve its stopped owner", err)
 	}
@@ -121,14 +121,14 @@ i=0; while [ ! -e "$2" ]; do i=$((i+1)); [ "$i" -lt 200 ] || exit 31; sleep .01;
 			}
 		}
 	}
-	failed, err := store.RunWorkspaceContext(ctx, spec.Key, next.Lease.Token, "", []string{"/bin/sh", "-c", "test -d a && test -d b && exit 23"}, false)
+	failed, err := store.RunWorkspaceContext(ctx, spec.Key, next.Lease.Token, "", []string{"/bin/sh", "-c", "test -d a && test -d b && exit 23"}, false, nil)
 	if err == nil || failed == nil || failed.ExitCode != 23 || failed.Bench.Lease == nil || failed.Execution.Phase != "stopped" {
 		t.Fatal("root payload failure lost the stopped owner", err)
 	}
 	if _, err := store.StopWorkspace(spec.Key, next.Lease.Token, false); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.RunWorkspaceContext(ctx, spec.Key, next.Lease.Token, "b", []string{"/bin/true"}, false); err == nil {
+	if _, err := store.RunWorkspaceContext(ctx, spec.Key, next.Lease.Token, "b", []string{"/bin/true"}, false, nil); err == nil {
 		t.Fatal("explicit stop revived an automatic payload continuation")
 	}
 	if _, err := store.CheckpointWorkspaceContext(ctx, spec.Key, next.Lease.Token); err != nil {

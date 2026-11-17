@@ -7,17 +7,17 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"time"
-	"unicode/utf8"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/benchstate"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/cachepolicy"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/execution"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/finiteio"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/history"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/operationcontrol"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/output"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/payloadstage"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/stageexec"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspace"
 )
@@ -27,24 +27,17 @@ type RunResult struct {
 	Execution    *execution.Execution
 	ExitCode     int
 	LogTruncated bool
+	IO           *finiteio.Output // only a profiled run's sealed exact stdout
 }
+
+// FiniteRun is a profiled run's copied input, stdout bound and helper transport.
+type FiniteRun = payloadstage.FiniteRun
 
 func (m Manager) operational(b *model.Bench) error {
 	if b.Workspace.Phase != "ready" {
 		return errors.New("workspace payload requires a ready workspace lease")
 	}
 	return m.preparable(b)
-}
-func payloadArgs(args []string) error {
-	if len(args) == 0 || len(args) > 128 || args[0] == "" {
-		return errors.New("workspace payload requires 1-128 arguments and a nonempty executable")
-	}
-	for _, arg := range args {
-		if len(arg) > 8192 || !utf8.ValidString(arg) || strings.ContainsRune(arg, 0) {
-			return errors.New("invalid workspace payload argument")
-		}
-	}
-	return nil
 }
 func payloadDir(b *model.Bench, selector string) (string, error) {
 	if selector == "" {
@@ -97,11 +90,12 @@ func (m Manager) payloadEnvironment(ctx context.Context, b *model.Bench, selecto
 // Run prepares all current members before a payload under the same ready lease.
 // It leaves stopped execution ownership held for checkpoint/release or explicit
 // continuation; payload history never becomes member preparation evidence.
-func (m Manager) Run(ctx context.Context, key, token, selector string, args []string, offline bool) (result *RunResult, operationErr error) {
+// A finite plan keeps these rules; its IO comes only from payloadstage.Complete.
+func (m Manager) Run(ctx context.Context, key, token, selector string, args []string, offline bool, finite FiniteRun) (result *RunResult, operationErr error) {
 	if err := m.validate(); err != nil {
 		return nil, err
 	}
-	if err := payloadArgs(args); err != nil {
+	if err := payloadstage.Arguments(args); err != nil {
 		return nil, err
 	}
 	if err := ctx.Err(); err != nil {
@@ -127,7 +121,7 @@ func (m Manager) Run(ctx context.Context, key, token, selector string, args []st
 			if result == nil {
 				result = &RunResult{ExitCode: -1}
 			}
-			result.Bench = current
+			result.Bench, result.IO = current, nil
 		}
 	}()
 	if _, err := payloadDir(b, selector); err != nil {
@@ -142,6 +136,7 @@ func (m Manager) Run(ctx context.Context, key, token, selector string, args []st
 		return result, err
 	}
 	var stage *execution.Execution
+	var prepare stageexec.PrepareTransport
 	var env []string
 	var dir, continuation string
 	created := false
@@ -158,6 +153,9 @@ func (m Manager) Run(ctx context.Context, key, token, selector string, args []st
 				return err
 			}
 			if err := m.stopped(b); err != nil {
+				return err
+			}
+			if err := payloadstage.Check(finite); err != nil {
 				return err
 			}
 			if err := m.inspectPayload(ctx, b); err != nil {
@@ -183,9 +181,10 @@ func (m Manager) Run(ctx context.Context, key, token, selector string, args []st
 			if err != nil {
 				return err
 			}
-			env, err = m.payloadEnvironment(ctx, b, selector)
-			if err != nil {
-				return err
+			if finite == nil { // The finite helper builds its own fixed environment.
+				if env, err = m.payloadEnvironment(ctx, b, selector); err != nil {
+					return err
+				}
 			}
 			id, err := model.Nonce()
 			if err != nil {
@@ -204,6 +203,9 @@ func (m Manager) Run(ctx context.Context, key, token, selector string, args []st
 			stage.HostID, stage.BootID = identity.HostID, identity.BootID
 			b.Lease.Execution = stage
 			b.Workspace.Stage = nil
+			if prepare, err = payloadstage.Transport(finite, b, selector); err != nil {
+				return err
+			}
 			continuation = b.Lease.Continuation
 			return operationcontrol.StartHistory(ctx, tx, b, history.Record{ID: id, Key: key, Holder: b.Lease.Holder, StartedAt: time.Now().UTC()})
 		})
@@ -217,7 +219,7 @@ func (m Manager) Run(ctx context.Context, key, token, selector string, args []st
 		return result, errors.Join(err, readErr)
 	}
 	result.Execution = stage
-	runner := stageexec.Runner{Open: func() (*output.Capture, error) { return m.openCapture(ctx, key, token, continuation, stage) }, Backend: m.Backend, StartPrepared: func(ctx context.Context, cmd *exec.Cmd, e *execution.Execution, launch stageexec.Launch) error {
+	runner := stageexec.Runner{Prepare: prepare, Open: func() (*output.Capture, error) { return m.openCapture(ctx, key, token, continuation, stage) }, Backend: m.Backend, StartPrepared: func(ctx context.Context, cmd *exec.Cmd, e *execution.Execution, launch stageexec.Launch) error {
 		return m.Gate(key, func() error {
 			return m.Update(func(rows benchstate.Database, tx *sql.Tx) error {
 				b, err := owned(rows, key, token)
@@ -229,6 +231,9 @@ func (m Manager) Run(ctx context.Context, key, token, selector string, args []st
 				}
 				if b.Lease.Continuation != continuation || b.Lease.Execution == nil || b.Lease.Execution.ID != e.ID || b.Lease.Execution.Phase != "starting" || b.Workspace.Stage != nil {
 					return errors.New("workspace payload was stopped or replaced")
+				}
+				if err := payloadstage.Check(finite); err != nil {
+					return err
 				}
 				if err := m.inspectPayload(ctx, b); err != nil {
 					return err
@@ -254,13 +259,17 @@ func (m Manager) Run(ctx context.Context, key, token, selector string, args []st
 	}, Stop: func() (*execution.Execution, error) {
 		return m.completeExecution(key, token, stage)
 	}, Cancel: func() { _, _ = m.Stop(key, token, false) }, Seal: func(c *output.Capture, exit *int, truncated bool) error { return m.Seal(stage.ID, c, exit, truncated) }}
-	outcome, runErr := runner.Run(ctx, stageexec.Plan{Execution: stage, Dir: dir, Args: append([]string(nil), args...), Environment: env})
+	outcome, runErr := runner.Run(ctx, stageexec.Plan{Execution: stage, Dir: dir, Args: append([]string(nil), args...), Environment: env, ResultLimitBytes: payloadstage.Limit(finite)})
 	if outcome != nil {
 		result.Execution, result.ExitCode, result.LogTruncated = outcome.Execution, outcome.ExitCode, outcome.LogTruncated
 	}
 	result.Bench, err = m.ownedCurrent(key, token)
 	if err == nil && result.Bench != nil && result.Bench.Lease != nil && (result.Bench.Lease.StopRequested || result.Bench.Lease.Continuation != continuation) {
 		err = errors.New("workspace payload continuation was revoked; stopped outcome retained")
+	}
+	// Known nonzero exits keep exact stdout; any other failure leaves Output nil.
+	if finite != nil && err == nil && ctx.Err() == nil && (runErr == nil || outcome != nil && outcome.Output != nil) {
+		result.IO, err = payloadstage.Complete(finite, stage, outcome, result.Bench)
 	}
 	return result, errors.Join(runErr, err)
 }

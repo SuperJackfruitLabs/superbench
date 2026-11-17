@@ -39,7 +39,7 @@ func (t *transport) Drain(ctx context.Context, backend interface {
 	return t.Bridge.Drain(ctx, backend)
 }
 
-func workspace(authority serviceidentity.Authority, b *model.Bench, member string, root bool) stageexec.PrepareTransport {
+func workspace(authority serviceidentity.Authority, b *model.Bench, member string, root bool, input []byte, finite bool) stageexec.PrepareTransport {
 	return func(cmd *exec.Cmd, e *execution.Execution) (stageexec.Transport, error) {
 		policy, err := authority.Policy()
 		if err != nil {
@@ -107,7 +107,15 @@ func workspace(authority serviceidentity.Authority, b *model.Bench, member strin
 		if !found {
 			return nil, ErrRegistration
 		}
-		bridge, err := payloadlaunch.Prepare(cmd, payloadlaunch.Target{Key: request.Key, LayoutID: request.LayoutID, Member: member, Root: root, PolicyDigest: request.PolicyDigest, Kind: "payload"}, e, payloadlaunch.GitInput{})
+		target := payloadlaunch.Target{Key: request.Key, LayoutID: request.LayoutID, Member: member, Root: root, PolicyDigest: request.PolicyDigest, Kind: "payload"}
+		var bridge *payloadlaunch.Bridge
+		if finite {
+			// Copied bytes reach the helper frame only; it seals them in a memfd
+			// and binds stdin once after the credential drop. Empty keeps EOF.
+			bridge, err = payloadlaunch.PreparePayloadInput(cmd, target, e, payloadlaunch.PayloadInput{Bytes: input, Limit: payloadexec.MaxPayloadInput})
+		} else {
+			bridge, err = payloadlaunch.Prepare(cmd, target, e, payloadlaunch.GitInput{})
+		}
 		if err != nil {
 			return nil, err
 		}

@@ -16,9 +16,12 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/archivepolicy"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/bench"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/execution"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/finiteio"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/payloadstage"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/protocolv2"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspace"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspaceprep"
 )
 
 var (
@@ -35,9 +38,34 @@ type Result struct {
 	Execution    *execution.Execution
 	ExitCode     *int
 	LogTruncated *bool
+	IO           *finiteio.Output
 	Preparation  []Preparation
 }
-type Manager struct{ Store bench.Store }
+type Manager struct {
+	Store bench.Store
+	// Finite builds a profiled run's plan. Nil means the installed helper; a
+	// host without the complete installed binding refuses before any receipt.
+	Finite func(finiteio.Input) (workspaceprep.FiniteRun, error)
+}
+
+func (m Manager) finite(r protocolv2.Request) (workspaceprep.FiniteRun, error) {
+	if r.IO == nil {
+		return nil, nil
+	}
+	var plan workspaceprep.FiniteRun
+	var err error
+	if m.Finite != nil {
+		plan, err = m.Finite(*r.IO)
+	} else if installed, installedErr := payloadstage.NewInstalled(*r.IO); installedErr == nil {
+		plan = installed
+	} else {
+		err = installedErr
+	}
+	if err != nil || plan == nil {
+		return nil, errors.Join(ErrUnavailable, err)
+	}
+	return plan, nil
+}
 
 // Preflight rejects kind, selector, capability and output-bound failures before
 // a service reserves growth receipts. It never allocates or mutates state.
@@ -46,7 +74,11 @@ func (m Manager) Preflight(r protocolv2.Request) error {
 	if err != nil {
 		return ErrInvalid
 	}
-	if _, err := protocolv2.Parse(raw); err != nil {
+	parse := protocolv2.Parse
+	if r.IO != nil {
+		parse = protocolv2.ParseFinite
+	}
+	if _, err := parse(raw); err != nil {
 		return ErrInvalid
 	}
 	if protocolv2.ReadOnly(r.Operation) {
@@ -73,6 +105,9 @@ func (m Manager) Preflight(r protocolv2.Request) error {
 		if strings.ContainsRune(arg, 0) {
 			return ErrInvalid
 		}
+	}
+	if _, err := m.finite(r); err != nil {
+		return err
 	}
 	if err := m.Store.WithWorkspace(r.Key, creating, nil); err != nil {
 		return err

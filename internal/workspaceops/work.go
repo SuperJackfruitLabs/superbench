@@ -65,7 +65,11 @@ func recoverySpec(r protocolv2.Request, spec workspace.Spec) workspace.RecoveryS
 func (m Manager) work(ctx context.Context, r protocolv2.Request) (out *Result, operationErr error) {
 	token, grant := r.LeaseToken, ""
 	var b *model.Bench
-	var err error
+	// Resolve the plan before acquisition: refusal leaves no ownership effect.
+	finite, err := m.finite(r)
+	if err != nil {
+		return nil, err
+	}
 	if token != "" {
 		if err := m.Store.CheckWorkspaceOwner(r.Key, token, r.Holder); err != nil {
 			return nil, err
@@ -84,7 +88,7 @@ func (m Manager) work(ctx context.Context, r protocolv2.Request) (out *Result, o
 	}
 	defer m.reconcileCanceledWork(ctx, r, token, grant, &out, &operationErr)
 	if r.Operation == "run" {
-		run, runErr := m.Store.RunWorkspaceContext(ctx, r.Key, token, r.RepositoryName, r.Arguments, false)
+		run, runErr := m.Store.RunWorkspaceContext(ctx, r.Key, token, r.RepositoryName, r.Arguments, false, finite)
 		if run == nil {
 			return result(b, grant, grant != ""), runErr
 		}
@@ -93,7 +97,7 @@ func (m Manager) work(ctx context.Context, r protocolv2.Request) (out *Result, o
 		if out == nil {
 			return nil, err
 		}
-		out.Execution = run.Execution
+		out.Execution, out.IO = run.Execution, run.IO
 		if run.ExitCode >= 0 {
 			exit, truncated := run.ExitCode, run.LogTruncated
 			out.ExitCode, out.LogTruncated = &exit, &truncated
@@ -102,7 +106,7 @@ func (m Manager) work(ctx context.Context, r protocolv2.Request) (out *Result, o
 			b, err = m.complete(ctx, r.Key, token)
 			finished := result(b, grant, true)
 			if finished != nil {
-				finished.Execution, finished.ExitCode, finished.LogTruncated = out.Execution, out.ExitCode, out.LogTruncated
+				finished.Execution, finished.ExitCode, finished.LogTruncated, finished.IO = out.Execution, out.ExitCode, out.LogTruncated, out.IO
 				out = finished
 			}
 		}

@@ -87,7 +87,7 @@ func TestManagedWorkspaceRecoveryLifecycle(t *testing.T) {
 	}
 	done := make(chan outcome, 1)
 	go func() {
-		r, e := store.RunWorkspaceContext(ctx, source.Key, held.Lease.Token, "a", []string{"/bin/sh", "-c", `printf ready > "$1"; while [ ! -e "$2" ]; do sleep .02; done`, "source", started, release}, false)
+		r, e := store.RunWorkspaceContext(ctx, source.Key, held.Lease.Token, "a", []string{"/bin/sh", "-c", `printf ready > "$1"; while [ ! -e "$2" ]; do sleep .02; done`, "source", started, release}, false, nil)
 		done <- outcome{r, e}
 	}()
 	defer func() { _ = os.WriteFile(release, []byte("release"), 0600) }()
