@@ -13,7 +13,10 @@ import (
 	"syscall"
 )
 
-const formatVersion = "superbench.quota-journal.v2"
+// formatVersion 3 pins no device number. Version 2 pinned the st_dev of the
+// ledger, its lock and its database, which btrfs and LVM can change at boot.
+const formatVersion = "superbench.quota-journal.v3"
+const deviceFormatVersion = "superbench.quota-journal.v2"
 
 type formatIntent struct {
 	Version string `json:"version"`
@@ -21,14 +24,14 @@ type formatIntent struct {
 	Nonce   string `json:"nonce"`
 }
 
+// formatReady pins the ledger, lock and database inodes. Their filesystem is
+// pinned by the authority, which hashes its reboot-stable identity; within one
+// boot all three must also share the ledger's current device.
 type formatReady struct {
-	Device         uint64 `json:"device"`
-	Inode          uint64 `json:"inode"`
-	LockDevice     uint64 `json:"lock_device"`
-	LockInode      uint64 `json:"lock_inode"`
-	DatabaseDevice uint64 `json:"database_device"`
-	DatabaseInode  uint64 `json:"database_inode"`
-	Authority      string `json:"authority"`
+	Inode         uint64 `json:"inode"`
+	LockInode     uint64 `json:"lock_inode"`
+	DatabaseInode uint64 `json:"database_inode"`
+	Authority     string `json:"authority"`
 }
 
 // ErrReadyAuthority is a ready record whose pinned storage authority differs
@@ -36,6 +39,11 @@ type formatReady struct {
 // hashing the mount ID always gets it; it is never adopted or rewritten.
 var ErrReadyAuthority = fmt.Errorf("%w: the ready record pins a storage authority that the mounted data volume, storage policy and ledger no longer match; "+
 	"a ledger initialized by an earlier SuperBench revision (which pinned the mount ID) must be reinitialized, see \"Reinitialize the indexed ledger\" in docs/pilot-installation.md", ErrAuthority)
+
+// ErrReadyFormat is a format file from a revision that pinned device numbers.
+// It is never converted: the ledger is reinitialized.
+var ErrReadyFormat = fmt.Errorf("%w: the ledger was initialized by an earlier SuperBench revision that pinned the state filesystem's device number, which can change at boot; "+
+	"it must be reinitialized, see \"Reinitialize the indexed ledger\" in docs/pilot-installation.md", ErrAuthority)
 
 func formatPath(directory string) string { return directory + ".format-v2" }
 
@@ -94,7 +102,7 @@ func openExisting(ctx context.Context, cfg Config, owner uint32) (*Control, erro
 		return nil, err
 	}
 	st := li.Sys().(*syscall.Stat_t)
-	if ready.Device != uint64(st.Dev) || ready.Inode != uint64(st.Ino) {
+	if ready.Inode != uint64(st.Ino) {
 		return nil, ErrAuthority
 	}
 	pins := func() error {
@@ -112,7 +120,7 @@ func openExisting(ctx context.Context, cfg Config, owner uint32) (*Control, erro
 		if err := checkAnchor(cfg.Directory, owner, fi, raw); err != nil {
 			return err
 		}
-		return checkFormatObjects(cfg.Directory, owner, ready)
+		return checkFormatObjects(cfg.Directory, owner, ready, uint64(ledger.Sys().(*syscall.Stat_t).Dev))
 	}
 	c := &Control{config: cfg, owner: owner, authority: ready.Authority}
 	c.verify = func(ctx context.Context) error {
@@ -153,7 +161,13 @@ func parseFormat(directory string, raw []byte) (formatReady, error) {
 	if len(raw) > 2048 || len(parts) != 3 || len(parts[2]) != 0 {
 		return ready, ErrAuthority
 	}
-	if json.Unmarshal(parts[0], &intent) != nil || json.Unmarshal(parts[1], &ready) != nil {
+	if json.Unmarshal(parts[0], &intent) != nil {
+		return ready, ErrAuthority
+	}
+	if intent.Version == deviceFormatVersion {
+		return ready, ErrReadyFormat
+	}
+	if json.Unmarshal(parts[1], &ready) != nil {
 		return ready, ErrAuthority
 	}
 	ci, _ := json.Marshal(intent)
@@ -184,10 +198,12 @@ func checkAnchor(directory string, owner uint32, info os.FileInfo, expected []by
 	return nil
 }
 
-func checkFormatObjects(directory string, owner uint32, ready formatReady) error {
-	for path, expected := range map[string][2]uint64{
-		filepath.Join(directory, "operations.lock"):                        {ready.LockDevice, ready.LockInode},
-		filepath.Join(directory, "operations", "indexed-v2", "journal.db"): {ready.DatabaseDevice, ready.DatabaseInode},
+// checkFormatObjects compares the lock and database with the ready record's
+// inodes and with device, the ledger directory's st_dev in this boot.
+func checkFormatObjects(directory string, owner uint32, ready formatReady, device uint64) error {
+	for path, inode := range map[string]uint64{
+		filepath.Join(directory, "operations.lock"):                        ready.LockInode,
+		filepath.Join(directory, "operations", "indexed-v2", "journal.db"): ready.DatabaseInode,
 	} {
 		info, err := os.Lstat(path)
 		if err != nil {
@@ -197,7 +213,7 @@ func checkFormatObjects(directory string, owner uint32, ready formatReady) error
 			return ErrAuthority
 		}
 		st := info.Sys().(*syscall.Stat_t)
-		if uint64(st.Dev) != expected[0] || uint64(st.Ino) != expected[1] {
+		if uint64(st.Dev) != device || uint64(st.Ino) != inode {
 			return ErrAuthority
 		}
 	}

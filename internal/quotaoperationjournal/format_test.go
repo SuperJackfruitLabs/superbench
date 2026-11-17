@@ -1,8 +1,11 @@
 package quotaoperationjournal
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -100,6 +103,68 @@ func TestChangedReadyAuthorityRefusesWithReinitializeGuidance(t *testing.T) {
 	}
 	if _, err = s.OpenExisting(context.Background()); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// The ready record pins no device number, so a boot that renumbers the state
+// filesystem opens it; within one boot the lock and database must still share
+// the ledger's device.
+func TestReadyRecordPinsNoDeviceNumber(t *testing.T) {
+	s := freshFixture(t)
+	if _, err := s.InitializeFresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(s.formatPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ready map[string]any
+	if err = json.Unmarshal(bytes.Split(raw, []byte{'\n'})[1], &ready); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"inode", "lock_inode", "database_inode", "authority"} {
+		delete(ready, key)
+	}
+	if len(ready) != 0 {
+		t.Fatalf("ready record pins more than inodes and authority: %v", ready)
+	}
+	parsed, err := parseFormat(s.Directory, raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Lstat(s.Directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	device := uint64(info.Sys().(*syscall.Stat_t).Dev)
+	if err = checkFormatObjects(s.Directory, s.owner, parsed, device); err != nil {
+		t.Fatal(err)
+	}
+	if err = checkFormatObjects(s.Directory, s.owner, parsed, device+1); err != ErrAuthority {
+		t.Fatalf("lock and database on another device than the ledger: %v", err)
+	}
+}
+
+// A format file from the revision that pinned device numbers is refused with
+// the reinitialize step, never read as if its devices were still current.
+func TestDevicePinningFormatRefusesWithReinitializeGuidance(t *testing.T) {
+	s := freshFixture(t)
+	if _, err := s.InitializeFresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Lstat(s.Directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := info.Sys().(*syscall.Stat_t)
+	old := fmt.Sprintf(`{"version":"superbench.quota-journal.v2","ledger":%q,"nonce":%q}`+"\n"+`{"device":%d,"inode":%d,"lock_device":%d,"lock_inode":1,"database_device":%d,"database_inode":2,"authority":%q}`+"\n",
+		s.Directory, strings.Repeat("cd", 32), st.Dev, st.Ino, st.Dev, st.Dev, s.Identity.Authority)
+	if err = os.WriteFile(s.formatPath(), []byte(old), 0600); err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.OpenExisting(context.Background())
+	if !errors.Is(err, ErrAuthority) || !errors.Is(err, ErrReadyFormat) || !strings.Contains(err.Error(), "Reinitialize the indexed ledger") {
+		t.Fatalf("device-pinning format: %v", err)
 	}
 }
 

@@ -71,6 +71,12 @@ Staging writes only below the supplied physical absolute root.
 
 ### Mount the data volume persistently
 
+The quota state, `/var/lib/superbench-quota`, must be on an ext4, XFS or btrfs
+filesystem with a UUID (the root filesystem usually is). Its device number can
+change at boot, so the helper recognises that filesystem by its UUID; on tmpfs,
+overlay or a filesystem without one, `initialize-indexed` refuses before it
+writes a ready record.
+
 Mount the dedicated XFS filesystem at `/srv/superbench-data` with project quotas
 before installing, and make the mount survive a reboot. The installer creates
 the directory only later, so create the mountpoint first, as root:
@@ -254,7 +260,10 @@ start unless the helper's `operation-info` opens the indexed journal.
 
 A ready record written by an earlier SuperBench revision pinned the data mount's
 mount ID, which is different inside the service unit's private namespace and
-after a reboot. With it, benchd refuses to start with `fresh_payload` on, and
+after a reboot, or the state filesystem's device number, which btrfs and LVM can
+change at boot. The second fails with `the ledger was initialized by an earlier
+SuperBench revision that pinned the state filesystem's device number`, and the
+installer refuses it the same way. With it, benchd refuses to start with `fresh_payload` on, and
 `bench-quota operation-info` fails with `quota operation journal authority
 changed: the ready record pins a storage authority that ... no longer match`. The
 record is never adopted or rewritten. Such hosts were first installs with no work
