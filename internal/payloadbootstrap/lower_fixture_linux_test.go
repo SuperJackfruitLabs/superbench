@@ -25,6 +25,7 @@ import (
 	"syscall"
 	"testing"
 
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/freshrecovery/fixture"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/lowerfixture"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/mountnsfixture"
@@ -46,7 +47,7 @@ func TestFreshIndexedMaterializerLowerFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = requireUnusedLowerIdentities(); err != nil {
+	if err = fixture.RequireUnusedIdentities(); err != nil {
 		t.Fatal(err)
 	}
 	t.Log("LOWER_UNUSED_UID_GID_PROCESS_INVENTORY_PASS")
