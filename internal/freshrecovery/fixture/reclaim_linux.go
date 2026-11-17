@@ -124,6 +124,7 @@ ln -s . api/out/loop
 mkfifo api/out/fifo
 mkfifo root-fifo
 ln api/out/file api/out/hard
+ln "$2" api/out/hard-outside 2>/dev/null || :
 d=api/out/deep; i=0
 while [ "$i" -lt 200 ]; do d="$d/d"; i=$((i+1)); done
 mkdir -p "$d"; printf x > "$d/f"
@@ -137,7 +138,52 @@ chmod 500 .
 func (e *env) assertOutsideIntact() {
 	e.t.Helper()
 	assertBytes(e.t, filepath.Join(e.p.Root, "benches", "existing", "owned-sentinel"), []byte("existing retained"))
-	assertBytes(e.t, filepath.Join(e.p.Root, "benches", "registered", "api", "payload.txt"), []byte("source-api\n"))
+	victim := filepath.Join(e.p.Root, "benches", "registered", "api", "payload.txt")
+	assertBytes(e.t, victim, []byte("source-api\n"))
+	// A hard link the payload made to it, if XFS allowed one across
+	// projects, went with the tree; the file itself keeps its one name.
+	if st := mustInfo(e.t, victim).Sys().(*syscall.Stat_t); st.Nlink != 1 {
+		e.t.Fatalf("outside file has %d links", st.Nlink)
+	}
+}
+
+// inUse starts a payload process with its working directory in the bench,
+// inside a populated scope beneath the policy's cgroup root, as a run is.
+func (e *env) inUse(b bench) func() {
+	t := e.t
+	t.Helper()
+	root := os.Getenv("SUPERBENCH_LOWER_CGROUP")
+	scope := filepath.Join(root, hash("reclaim-in-use")[:32])
+	if err := os.Mkdir(scope, 0755); err != nil {
+		t.Fatal(err)
+	}
+	fd, err := syscall.Open(scope, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_CLOEXEC, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer syscall.Close(fd)
+	cmd := exec.Command("/bin/sleep", "600")
+	cmd.Dir = filepath.Join(b.allocation.Path, "api")
+	cmd.Env = []string{"PATH=/usr/bin:/bin"}
+	cmd.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: payloadUID, Gid: payloadGID, Groups: []uint32{}}, UseCgroupFD: true, CgroupFD: fd}
+	if err = cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	return func() {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		deadline := time.Now().Add(10 * time.Second)
+		for {
+			raw, _ := os.ReadFile(filepath.Join(scope, "cgroup.events"))
+			if strings.Contains(string(raw), "populated 0") || time.Now().After(deadline) {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		if err := os.Remove(scope); err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 // assertReclaimed requires the leaf gone, zero usage, the tombstone and the
@@ -189,6 +235,19 @@ func (e *env) reclaims() {
 	}
 	e.assertOutsideIntact()
 	t.Log("FRESH_RECLAIM_REFUSED_BEFORE_RETENTION_PASS")
+
+	// Root refuses a bench in use itself, whatever the daemon recorded.
+	stop := e.inUse(a)
+	if _, err = e.reclaim(t.Context(), a); !errors.Is(err, freshrecovery.ErrReclaimBusy) || strings.Contains(err.Error(), "effects may have occurred") {
+		stop()
+		t.Fatalf("a bench in use: %v", err)
+	}
+	stop()
+	if p := e.intentPhase(a.spec.Key); p != "completed" {
+		t.Fatalf("a refused busy reclaim moved the intent to %s", p)
+	}
+	assertBytes(t, filepath.Join(a.allocation.Path, "api", "payload.txt"), []byte("source-api\n"))
+	t.Log("FRESH_RECLAIM_REFUSED_WHILE_IN_USE_PASS")
 
 	// The daemon's route is sudo: the reclaim admits it, as no recovery step does.
 	e.hostileWrite(a, 50)
