@@ -23,7 +23,7 @@ import (
 // ObserveAbsent reads a Fresh reservation only after its fixed leaf is absent
 // and both usage reports uniquely prove zero. It never writes or deletes data.
 func ObserveAbsent(ctx context.Context, p hoststorage.Policy, key string) (Approval, error) {
-	a, _, err := run(ctx, p, key, nil)
+	a, _, err := run(ctx, p, key, nil, false)
 	return a, err
 }
 
@@ -35,11 +35,25 @@ func RetireAbsent(ctx context.Context, p hoststorage.Policy, approved Approval) 
 	if approved.validate(p) != nil {
 		return hoststorage.Assignment{}, ErrRetirement
 	}
-	_, a, err := run(ctx, p, approved.Key, &approved)
+	_, a, err := run(ctx, p, approved.Key, &approved, false)
 	return a, err
 }
 
-func run(ctx context.Context, p hoststorage.Policy, key string, approved *Approval) (Approval, hoststorage.Assignment, error) {
+// RetireReclaimed is RetireAbsent for the reclaim of a released Fresh bench,
+// the one step the daemon starts through the fixed helper's sudo route. It
+// admits that caller as well as direct root. Its caller must hold the reclaim
+// operation's reservation and operations.lock and must already have retained
+// the bootstrap intent's reclaiming phase; the leaf must be gone. An exact
+// retry after the tombstone returns it without writing.
+func RetireReclaimed(ctx context.Context, p hoststorage.Policy, approved Approval) (hoststorage.Assignment, error) {
+	if approved.validate(p) != nil {
+		return hoststorage.Assignment{}, ErrRetirement
+	}
+	_, a, err := run(ctx, p, approved.Key, &approved, true)
+	return a, err
+}
+
+func run(ctx context.Context, p hoststorage.Policy, key string, approved *Approval, helper bool) (Approval, hoststorage.Assignment, error) {
 	var zero Approval
 	var noAssignment hoststorage.Assignment
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -50,7 +64,7 @@ func run(ctx context.Context, p hoststorage.Policy, key string, approved *Approv
 	}
 	var observed Approval
 	var result hoststorage.Assignment
-	err := hold(ctx, p, key, original, func(h held) error {
+	err := hold(ctx, p, key, original, helper, func(h held) error {
 		if approved != nil && h.observed != *approved {
 			return ErrRetirement
 		}
@@ -129,11 +143,11 @@ type held struct {
 
 // hold takes the allocation lock, selects the row through the Fresh rules, pins
 // the benches parent on the dedicated data mount and holds the data root open.
-func hold(ctx context.Context, p hoststorage.Policy, key string, original *hoststorage.Assignment, action func(held) error) error {
+func hold(ctx context.Context, p hoststorage.Policy, key string, original *hoststorage.Assignment, helper bool, action func(held) error) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if os.Getuid() != 0 || os.Geteuid() != 0 || os.Getenv("SUDO_UID") != "" || p.Validate() != nil || p.OperationJournal != "indexed-v2" || !allocationledger.Key.MatchString(key) {
+	if !admitted(os.Getuid(), os.Geteuid(), os.Getenv("SUDO_UID"), helper) || p.Validate() != nil || p.OperationJournal != "indexed-v2" || !allocationledger.Key.MatchString(key) {
 		return ErrRetirement
 	}
 	if err := storagecustody.RootOwnedDirectory(p.Ledger, true); err != nil {
@@ -265,7 +279,21 @@ func Select(ctx context.Context, p hoststorage.Policy, key string, action func(s
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	return hold(ctx, p, key, nil, func(h held) error {
+	return hold(ctx, p, key, nil, false, func(h held) error {
+		return action(Selection{Approval: h.observed, FilesystemUUID: h.ledger.FilesystemUUID}, h.check, h.syncData)
+	})
+}
+
+// SelectReclaimed is Select for the reclaim of a released Fresh bench: it
+// admits the fixed helper's sudo caller as well as direct root, under the
+// same preconditions as RetireReclaimed.
+func SelectReclaimed(ctx context.Context, p hoststorage.Policy, key string, action func(s Selection, recheck, sync func() error) error) error {
+	if action == nil {
+		return ErrRetirement
+	}
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	return hold(ctx, p, key, nil, true, func(h held) error {
 		return action(Selection{Approval: h.observed, FilesystemUUID: h.ledger.FilesystemUUID}, h.check, h.syncData)
 	})
 }

@@ -3,7 +3,18 @@
 // directories Begin creates) and setting the never-set quota limits of a reserved
 // project. Each step is plan, review, then effect under a retained approval.
 // Root never deletes a file, never deletes recursively and never adopts storage.
-// Only cmd/bench-quota may import this package.
+// Reclaim is the one step the daemon starts: it reaches it through the fixed
+// helper's sudo route, bound to its own reserved reclaim operation, and the
+// payload account deletes the tree. Its threat model: root trusts the daemon
+// that the bench's work is checkpointed, because that evidence lives in the
+// daemon-owned mirror and remote, which root cannot observe. Root checks
+// itself that the request names a completed bootstrap's own leaf and
+// allocation under the workspace's reclaim identity. Its "not in use" check
+// (ErrReclaimBusy) is best-effort and point in time, and its attribution of an
+// open file to the bench by project ID is only as good as the payload's
+// inability to relabel quota projects. The guarantees are the backstops after
+// the purge: root removes only an empty leaf, and retires the project only at
+// zero usage. Only cmd/bench-quota may import this package.
 package freshrecovery
 
 import (

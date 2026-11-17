@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/cleanworker"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/freshliveness"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/payloadpolicy"
 	"golang.org/x/sys/unix"
 )
@@ -28,17 +29,23 @@ const workerTimeout = 20 * time.Minute
 
 const cgroup2Magic = 0x63677270
 
-// runWorker runs the daemon-uid clean worker once: bench-quota re-executes its
-// own running image, /proc/self/exe, as "bench-quota clean-worker UID GID". The
-// child gets the daemon credentials with no supplementary groups, SIGKILL when
+// runWorker runs the clean worker once: bench-quota re-executes its own running
+// image, /proc/self/exe, as "bench-quota clean-worker UID GID". The child gets
+// the credentials of the account its mode names (workerAccount: the daemon to
+// observe or delete a leak, the payload to purge a reclaimed tree), with no
+// supplementary groups, SIGKILL when
 // the forking thread dies, its own transient cgroup, an empty environment,
 // Dir=/ and only descriptors 0-2. Root writes one bounded frame and reads one
 // bounded reply, which it returns only after decoding it as data. Before it
 // returns, the cgroup is killed, found empty and removed.
 func runWorker(ctx context.Context, p payloadpolicy.Policy, request cleanworker.Request) (cleanworker.Reply, error) {
 	frame, err := cleanworker.EncodeRequest(request)
-	if err != nil || p.DaemonUID == 0 || p.DaemonGID == 0 {
+	if err != nil {
 		return cleanworker.Reply{}, errors.Join(ErrRecovery, err)
+	}
+	uid, gid, err := workerAccount(p, request.Mode)
+	if err != nil {
+		return cleanworker.Reply{}, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, workerTimeout)
 	defer cancel()
@@ -57,7 +64,7 @@ func runWorker(ctx context.Context, p payloadpolicy.Policy, request cleanworker.
 		// goroutine exits. It stays alive until the worker is reaped, because
 		// Pdeathsig fires when the forking thread, not the process, exits.
 		runtime.LockOSThread()
-		out, err := spawn(ctx, p, frame, s)
+		out, err := spawn(ctx, uid, gid, frame, s, watched(request.Mode))
 		done <- result{out, err}
 	}()
 	res := <-done
@@ -73,7 +80,7 @@ func runWorker(ctx context.Context, p payloadpolicy.Policy, request cleanworker.
 }
 
 // spawn runs on a locked thread that it restricts first.
-func spawn(ctx context.Context, p payloadpolicy.Policy, frame []byte, s *scope) ([]byte, error) {
+func spawn(ctx context.Context, uid, gid uint32, frame []byte, s *scope, watchProgress bool) ([]byte, error) {
 	rootKeyring, err := restrictThread()
 	if err != nil {
 		return nil, err
@@ -84,7 +91,7 @@ func spawn(ctx context.Context, p payloadpolicy.Policy, frame []byte, s *scope) 
 		return nil, fmt.Errorf("close_range: %w", err)
 	}
 	cmd := exec.CommandContext(ctx, "/proc/self/exe")
-	cmd.Args = append([]string{"bench-quota", cleanworker.Command}, cleanworker.Arguments(cleanworker.Identity{UID: p.DaemonUID, GID: p.DaemonGID, Keyring: rootKeyring})...)
+	cmd.Args = append([]string{"bench-quota", cleanworker.Command}, cleanworker.Arguments(cleanworker.Identity{UID: uid, GID: gid, Keyring: rootKeyring})...)
 	cmd.Env = []string{}
 	cmd.Dir = "/"
 	stdin, err := cmd.StdinPipe()
@@ -97,7 +104,7 @@ func spawn(ctx context.Context, p payloadpolicy.Policy, frame []byte, s *scope) 
 	}
 	diagnostic := &capped{max: 64 << 10}
 	cmd.Stderr = diagnostic
-	cmd.SysProcAttr = workerAttributes(p, s.fd)
+	cmd.SysProcAttr = workerAttributes(uid, gid, s.fd)
 	cmd.Cancel = s.kill
 	cmd.WaitDelay = 2 * time.Second
 	if err = cmd.Start(); err != nil {
@@ -105,7 +112,20 @@ func spawn(ctx context.Context, p payloadpolicy.Policy, frame []byte, s *scope) 
 	}
 	// A refusal, a kill or a cancelled context closes the worker's stdout, so
 	// the exchange cannot outlive the worker. Wait follows every read.
-	out, exchangeErr := exchange(stdout, stdin, frame)
+	var watch func(io.Reader) ([]byte, error)
+	var ready func(io.Reader, []byte) error
+	if watchProgress {
+		// A purge runs as the payload account, which can stop it, before or
+		// after its ready line; a worker that reports nothing for PurgeIdle is
+		// killed rather than left holding operations.lock until workerTimeout.
+		watch = func(r io.Reader) ([]byte, error) {
+			return freshliveness.WatchedRead(r, freshliveness.PurgeIdle, s.kill, cleanworker.MaxFrame)
+		}
+		ready = func(r io.Reader, buf []byte) error {
+			return freshliveness.WatchedReadFull(r, buf, freshliveness.PurgeIdle, s.kill)
+		}
+	}
+	out, exchangeErr := exchange(stdout, stdin, frame, ready, watch)
 	if exchangeErr != nil {
 		_ = s.kill()
 	}
@@ -124,10 +144,14 @@ func spawn(ctx context.Context, p payloadpolicy.Policy, frame []byte, s *scope) 
 // untraced, in its own session, with only stdio, exactly the daemon's
 // credentials and a keyring that is not root's. Nothing reaches a worker
 // that refused or was traced before it became non-dumpable. It then reads
-// the bounded reply to EOF.
-func exchange(stdout io.Reader, stdin io.WriteCloser, frame []byte) ([]byte, error) {
+// the bounded reply to EOF; readReady and watch replace the plain reads for a
+// watched worker.
+func exchange(stdout io.Reader, stdin io.WriteCloser, frame []byte, readReady func(io.Reader, []byte) error, watch func(io.Reader) ([]byte, error)) ([]byte, error) {
+	if readReady == nil {
+		readReady = func(r io.Reader, buf []byte) error { _, err := io.ReadFull(r, buf); return err }
+	}
 	ready := make([]byte, len(cleanworker.Ready))
-	if _, err := io.ReadFull(stdout, ready); err != nil || string(ready) != cleanworker.Ready {
+	if err := readReady(stdout, ready); err != nil || string(ready) != cleanworker.Ready {
 		stdin.Close()
 		return nil, errors.Join(ErrRecovery, err)
 	}
@@ -137,6 +161,9 @@ func exchange(stdout io.Reader, stdin io.WriteCloser, frame []byte) ([]byte, err
 	}
 	if err != nil {
 		return nil, err
+	}
+	if watch != nil {
+		return watch(stdout)
 	}
 	out, err := io.ReadAll(io.LimitReader(stdout, cleanworker.MaxFrame+1))
 	if err != nil {
@@ -148,13 +175,13 @@ func exchange(stdout io.Reader, stdin io.WriteCloser, frame []byte) ([]byte, err
 	return out, nil
 }
 
-// workerAttributes are the worker's process attributes: the daemon's
+// workerAttributes are the worker's process attributes: the account's
 // credentials with no groups, a session of its own (no controlling tty and out
 // of the operator's foreground process group), SIGKILL when the forking thread
 // dies, and its own cgroup.
-func workerAttributes(p payloadpolicy.Policy, cgroup int) *syscall.SysProcAttr {
+func workerAttributes(uid, gid uint32, cgroup int) *syscall.SysProcAttr {
 	return &syscall.SysProcAttr{
-		Credential:  &syscall.Credential{Uid: p.DaemonUID, Gid: p.DaemonGID, Groups: []uint32{}},
+		Credential:  &syscall.Credential{Uid: uid, Gid: gid, Groups: []uint32{}},
 		Setsid:      true,
 		Pdeathsig:   syscall.SIGKILL,
 		UseCgroupFD: true,
@@ -353,28 +380,11 @@ func sweep(root string) {
 		}
 		path := filepath.Join(root, entry.Name())
 		events, err := os.ReadFile(filepath.Join(path, "cgroup.events"))
-		if err != nil || !unpopulated(events) {
+		if err != nil || !freshliveness.Unpopulated(events) {
 			continue
 		}
 		_ = unix.Rmdir(path)
 	}
-}
-
-// unpopulated parses cgroup.events: exactly one "populated" key whose value is
-// 0, whatever the surrounding whitespace.
-func unpopulated(events []byte) bool {
-	found := 0
-	for _, line := range strings.Split(string(events), "\n") {
-		f := strings.Fields(line)
-		if len(f) == 0 || f[0] != "populated" {
-			continue
-		}
-		if len(f) != 2 || f[1] != "0" {
-			return false
-		}
-		found++
-	}
-	return found == 1
 }
 
 func (s *scope) kill() error {
@@ -395,7 +405,7 @@ func (s *scope) fence() error {
 		if err != nil {
 			return err
 		}
-		if unpopulated(raw) {
+		if freshliveness.Unpopulated(raw) {
 			return os.Remove(s.path)
 		}
 		if time.Now().After(deadline) {

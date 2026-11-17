@@ -78,9 +78,10 @@ func TestArchitecture(t *testing.T) {
 				"internal/storageproof":                {"internal/quotahelper", "internal/allocationledger", "internal/storagecustody"},
 				"internal/allocationledger":            {"internal/quotapolicy"},
 				"internal/freshcleanup":                {"internal/payloadpolicy", "internal/quotaoperation", "internal/reap"},
-				"internal/cleanworker":                 {"internal/reap"}, // The daemon-uid worker: frames and self-checks only.
+				"internal/cleanworker":                 {"internal/reap"}, // The unprivileged worker: frames, self-checks, owner-only deletion.
+				"internal/freshliveness":               {},                // Root's cgroup and /proc view of a bench in use; no authority.
 				"internal/freshretirement":             {"internal/allocationledger", "internal/hoststorage", "internal/storagecustody", "internal/storageproof"},
-				"internal/freshrecovery":               {"internal/cleanworker", "internal/freshcleanup", "internal/freshretirement", "internal/gitcontrol", "internal/hoststorage", "internal/payloadbootstrap", "internal/payloadpolicy", "internal/retainedfile", "internal/storagecustody"},
+				"internal/freshrecovery":               {"internal/cleanworker", "internal/freshliveness", "internal/freshcleanup", "internal/quotahelper", "internal/freshretirement", "internal/gitcontrol", "internal/hoststorage", "internal/payloadbootstrap", "internal/payloadpolicy", "internal/retainedfile", "internal/storagecustody"},
 				"internal/freshrecovery/fixture":       {"internal/cleanworker", "internal/freshcleanup", "internal/freshrecovery", "internal/freshretirement", "internal/hoststorage", "internal/payloadbootstrap", "internal/payloadexec", "internal/quotahelper", "internal/quotaoperation", "internal/quotaoperationcontrol", "internal/quotaoperationjournal", "internal/retainedfile"},
 				"internal/hoststorage":                 {"internal/allocationledger", "internal/quotaoperationjournal", "internal/storagecustody", "internal/quotapolicy", "internal/storageproof", "internal/hostlayout", "internal/hostpolicy", "internal/quotahelper", "internal/model", "internal/output"},
 				"internal/payloadcache":                {"internal/cachepolicy", "internal/payloadpolicy"},
@@ -122,7 +123,8 @@ func TestArchitecture(t *testing.T) {
 				"internal/history":                     {"internal/reap"},
 				"internal/retention":                   {"internal/history", "internal/reap"},
 				"internal/maintenance":                 {"internal/retention", "internal/reap"},
-				"internal/workspaceops":                {"internal/finiteio", "internal/payloadstage", "internal/workspaceprep", "internal/bench", "internal/execution", "internal/model", "internal/protocolv2", "internal/workspace", "internal/archivepolicy"},
+				"internal/workspacereclaim":            {"internal/benchstate", "internal/freshtree", "internal/hoststorage", "internal/model", "internal/operationcontrol", "internal/payloadbootstrap", "internal/quotahelper", "internal/serviceidentity", "internal/workspace", "internal/workspacepolicy"},
+				"internal/workspaceops":                {"internal/workspacereclaim", "internal/finiteio", "internal/payloadstage", "internal/workspaceprep", "internal/bench", "internal/execution", "internal/model", "internal/protocolv2", "internal/workspace", "internal/archivepolicy"},
 				"internal/workspaceapi":                {"internal/bench", "internal/model", "internal/protocolv2", "internal/workspaceops"},
 				"internal/operationreceipts":           {"internal/operationcontrol", "internal/finiteio"},
 				"internal/operationbody":               {"internal/protocolv2"},                                                         // Body bound and profile classification only.
@@ -154,7 +156,7 @@ func TestArchitecture(t *testing.T) {
 			if p == "github.com/pelletier/go-toml/v2" && rel == "internal/setup" && filepath.Base(path) == "config.go" {
 				allowed = true
 			}
-			if p == "golang.org/x/sys/unix" && (rel == "internal/service" && filepath.Base(path) == "peer_darwin.go" || rel == "internal/retainedfile" && filepath.Base(path) == "publish_linux.go" || rel == "internal/freshretirement" && filepath.Base(path) == "retire_linux.go" || rel == "internal/freshrecovery" && strings.HasSuffix(path, "_linux.go")) {
+			if p == "golang.org/x/sys/unix" && (rel == "internal/service" && filepath.Base(path) == "peer_darwin.go" || rel == "internal/retainedfile" && filepath.Base(path) == "publish_linux.go" || rel == "internal/freshretirement" && filepath.Base(path) == "retire_linux.go" || rel == "internal/cleanworker" && filepath.Base(path) == "purge_linux.go" || rel == "internal/freshliveness" && (filepath.Base(path) == "liveness_linux.go" || filepath.Base(path) == "adapter_unix.go") || rel == "internal/freshrecovery" && strings.HasSuffix(path, "_linux.go")) {
 				allowed = true
 			}
 			if !allowed {

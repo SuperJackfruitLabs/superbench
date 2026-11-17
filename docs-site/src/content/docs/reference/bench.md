@@ -103,7 +103,7 @@ daemon; without it, the command uses local state. The client never retries on it
 to v1.
 
 Operations: `create`, `recover`, `lease`, `setup`, `run`, `checkpoint`, `release`, `stop`,
-`stop_admin`, `archive`, `status`, `host_status`, `plan-reap`, `reap`, and the reviewed local
+`stop_admin`, `archive`, `reclaim`, `status`, `host_status`, `plan-reap`, `reap`, and the reviewed local
 procedures `inspect-history`, `reconcile-history`, `inspect-initialization`,
 `claim-initialization`, `continue-initialization`, `inspect-transfer`, `begin-transfer`,
 `continue-transfer`, `inspect-missing-transfer`, `begin-missing-transfer`,

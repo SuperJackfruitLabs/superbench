@@ -22,6 +22,7 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/protocolv2"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspace"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspaceprep"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspacereclaim"
 )
 
 var (
@@ -238,6 +239,23 @@ func (m Manager) Execute(ctx context.Context, r protocolv2.Request, uid uint32) 
 	case "archive":
 		b, err := m.Store.ArchiveWorkspaceContext(ctx, r.Key, archivepolicy.DefaultGrace, nil)
 		return result(b, "", false), err
+	case "reclaim":
+		return m.reclaim(ctx, r.Key)
 	}
 	return nil, ErrInvalid
+}
+
+// reclaim deletes a released Fresh workspace's tree and retires its quota
+// project through the fixed helper, under the same host lock and managed Git
+// context as archive. A refusal from the workspace's own state is a conflict.
+func (m Manager) reclaim(ctx context.Context, key string) (*Result, error) {
+	admin, ctx, err := m.Store.WorkspaceArchiveAdministration(ctx)
+	if err != nil {
+		return nil, err
+	}
+	b, err := (workspacereclaim.Manager{State: admin.State, Data: admin.Data, Timeout: admin.Timeout, Within: admin.Within, Git: admin.Git}).Reclaim(ctx, key)
+	if errors.Is(err, workspacereclaim.ErrConflict) || errors.Is(err, workspacereclaim.ErrLegacy) {
+		err = errors.Join(ErrConflict, err)
+	}
+	return result(b, "", false), err
 }

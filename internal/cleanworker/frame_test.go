@@ -25,7 +25,7 @@ func observed() Reply {
 
 func TestFramesRoundTripOnlyInTheirCanonicalForm(t *testing.T) {
 	approved := tree()
-	for _, r := range []Request{{Version, Observe, "/srv/data/benches/card", nil}, {Version, Delete, "/srv/data/benches/card", &approved}} {
+	for _, r := range []Request{{Version, Observe, "/srv/data/benches/card", nil, nil}, {Version, Delete, "/srv/data/benches/card", &approved, nil}} {
 		raw, err := EncodeRequest(r)
 		if err != nil {
 			t.Fatal(err)
@@ -52,14 +52,14 @@ func TestFramesRoundTripOnlyInTheirCanonicalForm(t *testing.T) {
 		}
 	}
 	for name, r := range map[string]Request{
-		"version":          {"v0", Observe, "/srv/data/benches/card", nil},
-		"relative":         {Version, Observe, "srv/data", nil},
-		"unclean":          {Version, Observe, "/srv/data/../etc", nil},
-		"filesystem-root":  {Version, Observe, "/", nil},
-		"nul":              {Version, Observe, "/srv/\x00", nil},
-		"observe-approved": {Version, Observe, "/srv/data/benches/card", &approved},
-		"delete-no-tree":   {Version, Delete, "/srv/data/benches/card", nil},
-		"no-mode":          {Version, "", "/srv/data/benches/card", nil},
+		"version":          {"v0", Observe, "/srv/data/benches/card", nil, nil},
+		"relative":         {Version, Observe, "srv/data", nil, nil},
+		"unclean":          {Version, Observe, "/srv/data/../etc", nil, nil},
+		"filesystem-root":  {Version, Observe, "/", nil, nil},
+		"nul":              {Version, Observe, "/srv/\x00", nil, nil},
+		"observe-approved": {Version, Observe, "/srv/data/benches/card", &approved, nil},
+		"delete-no-tree":   {Version, Delete, "/srv/data/benches/card", nil, nil},
+		"no-mode":          {Version, "", "/srv/data/benches/card", nil, nil},
 	} {
 		if _, err := EncodeRequest(r); !errors.Is(err, ErrWorker) {
 			t.Errorf("%s request encoded: %v", name, err)

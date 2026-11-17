@@ -1,7 +1,9 @@
 // Package freshretirement retires only an absent Fresh allocation's reservation.
 // It never deletes paths, configures quotas, or proves controller quiescence.
 // A maintenance caller must separately bind retained bootstrap provenance,
-// permanent operation denial and actual stopped-controller authority.
+// permanent operation denial and actual stopped-controller authority. The
+// reclaim of a released bench is the one caller the fixed helper's sudo route
+// reaches; it binds its own reserved operation and retained reclaiming intent.
 package freshretirement
 
 import (

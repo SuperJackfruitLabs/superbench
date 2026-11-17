@@ -285,7 +285,8 @@ quotes when it reports the worker's diagnostics.
 | `allocating` (c) | daemon-owned leaf with the fixed directories | plan-clean, clean, leaf removal, absent retirement |
 | `begun`, `staging`, `materialized_unfenced`, `staged` | daemon-owned leaf, fixed directories, Git trees | plan-clean, clean, leaf removal, absent retirement |
 | `transferring` | mixed root, daemon and payload owners | parked: every step refuses |
-| `completed` | a registered layout | not a leak |
+| `completed` | a registered layout | not a leak; reclaim it once released |
+| `reclaiming`, `reclaimed` | a reclaim's retained intent | reclaim only: rerun the same reclaim |
 
 `KEY.controls`, its `git-controls` journal and every retained approval stay as
 evidence.
@@ -296,3 +297,62 @@ these shapes to a retired tombstone, including a `staged` leak with Git trees
 made by the actual Begin and Materialize, with the real daemon-uid worker. Its
 markers are listed in `internal/freshrecovery/fixture`. Like the other lower
 fixtures it replaces only the booted maintenance gate.
+
+## Reclaiming a released bench
+
+Reclaim is not a recovery step: the daemon starts it, through the fixed
+helper's sudo route (`bench-quota reclaim-payload`), after it has recorded the
+bench `reclaiming`. Its operation identity derives from the workspace's key and
+ID; root recomputes it and refuses any other. Its reservation holds
+`operations.lock`, so no bootstrap, recovery or retirement step runs beside it.
+
+What root trusts and what it checks:
+
+- **Checkpointed: trusted from the daemon.** Whether the bench's work is
+  checkpointed and durable lives in the daemon-owned mirror and the remote,
+  which root cannot observe. A compromised daemon can have root delete work it
+  never checkpointed.
+- **Not in use: a best-effort check by root.** Root refuses with "the bench is
+  in use" while any cgroup beneath the policy's cgroup root, nested ones too, is
+  populated with a process that has any task whose working directory, root,
+  open file or file mapping is on the data volume in the bench's project, or
+  while such a payload-account process runs anywhere. A malformed
+  `cgroup.events`, an entry on the data volume root cannot attribute, and a
+  process with live tasks root cannot read all count as use. Root checks before
+  it retains `reclaiming` and again before the purge. This is a point-in-time
+  check: a process can start between it and the purge, and the project ID that
+  attributes an open file to the bench is only as reliable as the payload's
+  inability to relabel quota projects, which a separate change will confine.
+- **The guarantees are the backstops after the purge.** Root removes only an
+  empty leaf, so anything written during the purge stops the reclaim, and it
+  saves the tombstone only when the project's usage is zero, so a file still
+  held open, or still charged to the project anywhere on the volume, stops it
+  too. Either way the reclaim stays `reclaiming` and the same reclaim retries.
+- **Provenance: checked by root.** The retained `completed` intent must match
+  the request, and the leaf must be the bench's own (the recorded inode,
+  payload-owned, in the assigned project) with fenced Git controls.
+
+Then, in order, and each step safe to repeat:
+
+1. the intent moves to `reclaiming`, before any effect;
+2. the clean worker, through the same hardened spawn but as the payload account,
+   deletes the tree: by name relative to held directories, never following a
+   symlink or opening a FIFO, socket or device, never entering another device,
+   mount, project or owner, at most 64 directories open, with a step bound;
+3. root removes the empty leaf under the allocation lock;
+4. root proves the leaf gone and usage zero, syncs the data filesystem and saves
+   the tombstone;
+5. the intent moves to `reclaimed`.
+
+A completed bench whose leaf is already missing refuses; inspect it with the
+steps above. Errors after step 1, and every error of a retry whose intent is
+already `reclaiming`, say `effects may have occurred; retry the same reclaim`.
+
+The purge worker runs as the payload account, so the payload can stop it. The
+worker reports progress at least once a second; root kills one that reports
+nothing for 30 seconds, instead of holding `operations.lock` until the 20-minute
+worker timeout. The reclaim then fails with "the payload account is still active
+in the bench", as it does when entries reappear after the purge or usage stays
+above zero because a payload process still holds a file. Stop the bench's
+processes and rerun the same reclaim.
+

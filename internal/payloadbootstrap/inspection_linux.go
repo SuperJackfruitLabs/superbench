@@ -74,7 +74,7 @@ func (m *Manager) inspectionHeld(s Spec, denied bool) (Inspection, error) {
 	intentSum, specSum := sha256.Sum256(raw), sha256.Sum256(spec)
 	result := Inspection{Version: InspectionVersion, Key: s.Key, ID: s.ID,
 		SpecSHA256: hex.EncodeToString(specSum[:]), IntentSHA256: hex.EncodeToString(intentSum[:]),
-		PolicyDigest: i.PolicyDigest, Phase: i.Phase, Operation: m.operation, OperationDenied: denied,
+		PolicyDigest: i.PolicyDigest, Phase: i.Phase, Operation: i.Operation, OperationDenied: denied,
 		RecordedAllocation: i.Allocation, RecordedRoot: i.Root, RecordedControls: i.Controls,
 		CommandSHA256: i.CommandSHA256, CommandCompleted: i.CommandCompleted}
 	if err := m.check(); err != nil {

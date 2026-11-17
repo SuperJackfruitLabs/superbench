@@ -55,18 +55,33 @@ end-to-end card result:
   with `fresh checkpoint export exceeds the 64 MiB per-member bundle cap`, and
   a retry cannot succeed. Keep large generated or binary files out of the
   checkpointed branches.
-- **Fresh benches are not yet reclaimable; release keeps the allocation.**
-  Release returns the lease but keeps the bench's full reservation, and archive
-  and reap refuse a Fresh workspace. Size the volume for every Fresh bench you
-  will create until a reclaim path exists. Before each launch and lease, benchd
-  checks a Fresh bench's pinned allocation with the helper's read-only
-  `verify bench KEY`; the helper refuses the ordinary bench apply for it.
+- **Reclaim a Fresh bench after its card.** Release returns the lease but keeps
+  the bench's full reservation, and archive and reap refuse a Fresh workspace.
+  `bench workspace reclaim --socket SOCKET KEY` (v2 operation `reclaim`, operator
+  only) returns it: the daemon checks from its own records that the bench is
+  released, idle and clean at a checkpoint the mirror and remote confirm, records
+  it `reclaiming`, and the fixed helper deletes the tree as the payload account,
+  removes the empty leaf and retires the quota project. The bench ends
+  `reclaimed` and a later create can use the space. `reclaiming` never returns to
+  `ready`: after any failure, rerun the same command. A large tree holds the
+  helper's operation lock while it is deleted, so other creates wait. No
+  automatic policy reclaims yet; the caller that finishes a card reclaims it.
+  Root trusts the daemon that the work is checkpointed (that evidence is in the
+  daemon's mirror, which root cannot see). Root's own "in use" check is
+  best-effort and point in time; what it guarantees is that it removes only an
+  empty leaf and retires the project only at zero usage, and it stops the
+  deletion if the payload account interferes with it. See [Reclaiming a released bench](fresh-bootstrap-recovery.md#reclaiming-a-released-bench).
+  Before each launch and lease, benchd checks a Fresh bench's pinned allocation
+  with the helper's read-only `verify bench KEY`; the helper refuses the ordinary
+  bench apply for it.
 - **A refused or failed Fresh create keeps its record.** A Fresh create that fails
   after its intent is recorded, including a `capacity_exhausted` refusal, leaves the
   workspace at `materializing` or `initializing` with its `initialization`
-  lease, and no supported command removes that record yet. Reinitializing the
-  storage (below) does not remove it either: the records live in
-  `/var/lib/superbench`, which that procedure backs up but keeps.
+  lease, and no supported command removes that record yet. Reclaim refuses it:
+  it covers only a released, `ready` bench, and covering a bench whose
+  initialization failed is a planned follow-up. Reinitializing the storage
+  (below) does not remove it either: the records live in `/var/lib/superbench`,
+  which that procedure backs up but keeps.
 - **Harness configuration in the payload home.** The payload helper sets `HOME`
   from each bench's Fresh layout. Nothing yet places a harness's provider
   configuration there, and the harness adapter refuses to provision credentials.
@@ -322,7 +337,9 @@ python3 deploy/linux/install.py --bin-dir /absolute/build/bin --root / --managed
   `--previous`.
 - **Rollback.** Stop the unit and run the same command with the backup's
   binaries as `--bin-dir`, the backup's `SHA256SUMS` as `--sums`, and the new
-  build's `SHA256SUMS` as `--previous`.
+  build's `SHA256SUMS` as `--previous`. Once any bench has been reclaimed (or a
+  reclaim started), a build without reclaim refuses to start: it cannot read the
+  state's `reclaiming` and `reclaimed` records. Roll forward instead.
 - **Other flags.** `--upgrade` combines with the flags of the original install
   (`--prepare`, `--identity`, `--activation`, `--storage`). They keep their own
   rules, and only the executables get upgrade semantics.

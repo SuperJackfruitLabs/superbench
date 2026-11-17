@@ -36,6 +36,7 @@ Besides `version` and `operation`:
 | `stop` | `key`, `lease_token` | (none) | Fence the holder's supervised execution. |
 | `stop_admin` | `key` | (none) | Operator stop without the holder's token; returns the retained capability only after fencing succeeds. |
 | `archive` | `key` | (none) | Freeze the whole workspace read-only. Never approves deletion. |
+| `reclaim` | `key` | (none) | Delete a released Fresh workspace's tree and retire its quota, ending at phase `reclaimed`. A legacy workspace is refused. |
 
 `create`, `recover`, `lease`, `run` and `setup` are growth operations: they need a `request_id`
 and get durable receipts. `status` and `host_status` are open to readers; everything else needs an
@@ -78,8 +79,9 @@ bytes; see [Errors](/api/errors/). Results are closed shapes:
   checkpoint, a pending generation, the recovery source and the archive record), an optional
   `grant` with a `lease_token`, and an optional `root_path`.
   A workspace's `phase` is one of `materializing`, `initializing`, `prepared`, `ready`,
-  `archived`, `reaping` or `reaped`; while it is being initialized, its lease holder is
-  `initialization`.
+  `archived`, `reaping`, `reaped`, `reclaiming` or `reclaimed`; while it is being initialized,
+  its lease holder is `initialization`. `reclaiming` never returns to `ready`: repeat the same
+  `reclaim`.
 - **Run outcome**: a mutation plus the `execution` (ID and a phase of `starting`, `running` or
   `stopped`), `exit_code` and `log_truncated`.
 - **Setup outcome**: a run outcome plus a `preparation` status for each member.

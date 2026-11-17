@@ -159,7 +159,7 @@ func (m *Manager) checkRoot(i intent, owner uint32) error {
 // A reserved intent carries provenance only. It cannot assert any allocation,
 // physical node, Git result or ownership transfer before those effects exist.
 func (m *Manager) validateIntent(s Spec, i intent) error {
-	if m == nil || !m.operation.Valid() || !sha256Pattern.MatchString(m.digest) || s.Validate() != nil || !reflect.DeepEqual(i.Spec, s) || i.Operation != m.operation || i.PolicyDigest != m.digest || i.CommandSHA256 != "" && !sha256Pattern.MatchString(i.CommandSHA256) || i.CommandCompleted && i.CommandSHA256 == "" {
+	if m == nil || !m.operation.Valid() || !sha256Pattern.MatchString(m.digest) || s.Validate() != nil || !reflect.DeepEqual(i.Spec, s) || i.Operation != m.operation && !reclaimable(m.reclaim, i.Operation, m.operation, i.Phase) || i.PolicyDigest != m.digest || i.CommandSHA256 != "" && !sha256Pattern.MatchString(i.CommandSHA256) || i.CommandCompleted && i.CommandSHA256 == "" {
 		return ErrBootstrap
 	}
 	if i.Phase == "reserved" {
@@ -172,7 +172,7 @@ func (m *Manager) validateIntent(s Spec, i intent) error {
 		return ErrBootstrap
 	}
 	switch i.Phase {
-	case "allocating", "begun", "staging", "materialized_unfenced", "staged", "transferring", "completed":
+	case "allocating", "begun", "staging", "materialized_unfenced", "staged", "transferring", "completed", "reclaiming", "reclaimed":
 		return nil
 	default:
 		return ErrBootstrap

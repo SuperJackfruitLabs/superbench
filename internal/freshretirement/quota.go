@@ -56,3 +56,10 @@ func ordered(absent, unused, sync, save func() error) error {
 	}
 	return nil
 }
+
+// admitted is who may hold a Fresh allocation: root, and not a sudo caller,
+// except for the reclaim entry points (helper), whose authority is the
+// reclaim operation's reservation that the fixed helper holds.
+func admitted(uid, euid int, sudo string, helper bool) bool {
+	return uid == 0 && euid == 0 && (sudo == "" || helper)
+}
