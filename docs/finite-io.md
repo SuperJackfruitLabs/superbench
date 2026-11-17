@@ -20,8 +20,8 @@ SuperBench treats the input and stdout as opaque bytes. It parses neither.
 
 The service has a `proposedFiniteIO` field, like `proposedCancellation` and
 `proposedRegistrationObservation`. Only `finite_io` in the root-owned activation
-file `/etc/superbench/activation.json` sets it (see
-[pilot installation](pilot-installation.md#activation)). No request field, header,
+file `/etc/superbench/activation.json` sets it, together with `fresh_payload` and
+`cancellation` (see [pilot installation](pilot-installation.md#activation)). No request field, header,
 environment variable or command-line flag can. With the file absent, or the gate
 off:
 

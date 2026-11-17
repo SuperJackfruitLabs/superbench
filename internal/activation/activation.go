@@ -54,6 +54,36 @@ func (s *Switches) field(name string) *bool {
 	return nil
 }
 
+// Check refuses a combination that would strand durable state, before benchd
+// opens its socket (the dependency table in docs/pilot-installation.md):
+//   - fresh_payload needs cancellation: only the cancellation path claims the
+//     operation scope Fresh materialization requires. Without it every v2 create
+//     or recover would leave a durable materializing record behind.
+//   - fresh_payload needs the installed payload policy and service identity,
+//     which identity resolves, for the same reason.
+//   - finite_io and registration_observation act only on Fresh payload trees,
+//     so they need fresh_payload.
+//
+// receipt_lookup and cancellation have no prerequisite.
+func (s Switches) Check(identity func() error) error {
+	switch {
+	case s.FiniteIO && !s.FreshPayload:
+		return refuse("finite_io requires fresh_payload")
+	case s.RegistrationObservation && !s.FreshPayload:
+		return refuse("registration_observation requires fresh_payload")
+	case s.FreshPayload && !s.Cancellation:
+		return refuse("fresh_payload requires cancellation")
+	case !s.FreshPayload:
+		return nil
+	case identity == nil:
+		return refuse("fresh_payload requires the installed service identity")
+	}
+	if err := identity(); err != nil {
+		return refuse("fresh_payload requires the installed payload policy and service identity: " + err.Error())
+	}
+	return nil
+}
+
 func refuse(why string) error { return fmt.Errorf("%w: %s", ErrActivation, why) }
 
 // Parse accepts one JSON object with the exact version and any subset of the

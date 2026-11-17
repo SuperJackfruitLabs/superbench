@@ -178,8 +178,24 @@ version and any of five switches, each a literal `true` or `false`:
 
 An omitted switch is off. An unknown, duplicated or non-boolean key, a missing or
 different version, or trailing data refuses startup. `receipt_lookup` and
-`cancellation` also move the socket to the private connection classes: each
-connection carries one response.
+`cancellation` also move the socket to the private connection classes. Any of
+`receipt_lookup`, `cancellation` and `registration_observation` makes each
+connection carry one response (`Connection: close`); `registration_observation`
+does this even on its own.
+
+Some switches depend on others. benchd checks these at start, before it opens
+the socket, and refuses a file that breaks one:
+
+| Switch | Requires | Why |
+| --- | --- | --- |
+| `fresh_payload` | `cancellation` | Fresh materialization runs inside the operation scope that only the cancellation path claims. Without it every v2 `create` or `recover` would record a durable `materializing` workspace and then fail. |
+| `fresh_payload` | the installed payload policy and service identity | benchd resolves `/etc/superbench/service-identity.json` (with `--identity`, above) for its own uid at start, for the same reason. |
+| `finite_io` | `fresh_payload` | A finite run executes only on a Fresh payload tree. |
+| `registration_observation` | `fresh_payload` | Observation reads only a Fresh payload tree. |
+| `receipt_lookup`, `cancellation` | nothing | |
+
+So the registered launch, which needs all five, sets every switch to `true`, and
+`receipt_lookup` or `cancellation` may run alone.
 
 benchd refuses to start unless the file is a single-link regular file of at most
 4 KiB, owned by root and not group- or world-writable, and every directory from

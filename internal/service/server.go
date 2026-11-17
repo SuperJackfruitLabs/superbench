@@ -18,6 +18,7 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/bench"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/maintenance"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/protocol"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/serviceidentity"
 )
 
 type Config struct {
@@ -69,6 +70,10 @@ func serve(ctx context.Context, c Config, proposed bool) error {
 	a := c.Activation
 	if proposed {
 		a.Cancellation, a.ReceiptLookup = true, true
+	}
+	// Refuse a combination that would strand workspaces before any state or socket.
+	if err := a.Check(func() error { _, err := serviceidentity.ResolveService(); return err }); err != nil {
+		return err
 	}
 	c.Store.ProposedFreshPayload = a.FreshPayload
 	private := a.Cancellation || a.ReceiptLookup
