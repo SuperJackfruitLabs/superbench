@@ -17,7 +17,7 @@ func testPurger(project func(fd int) (uint32, error)) *purger {
 	if project == nil {
 		project = func(int) (uint32, error) { return 10000, nil }
 	}
-	return &purger{uid: uint32(os.Getuid()), project: 10000, limit: purgeSteps, projectOf: project}
+	return &purger{uid: uint32(os.Getuid()), project: 10000, limit: purgeSteps, depth: purgeDepth, tries: liftTries, projectOf: project}
 }
 
 func targetOf(t *testing.T, path string) Target {
@@ -255,4 +255,78 @@ func TestPurgeStepBoundStopsAndTheSamePurgeContinues(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertEmpty(t, root)
+}
+
+// An entry on another device is never removed or entered, wherever it is.
+func TestPurgeNeverCrossesToAnotherDevice(t *testing.T) {
+	for _, name := range []string{"mounted-file", "mounted-dir"} {
+		root := filepath.Join(t.TempDir(), "card")
+		write(t, filepath.Join(root, "a", "mounted-file"), "keep", 0o600)
+		write(t, filepath.Join(root, "a", "mounted-dir", "kept"), "keep", 0o600)
+		p := testPurger(nil)
+		p.afterStat = func(n string, st *unix.Stat_t) {
+			if n == name {
+				st.Dev++
+			}
+		}
+		if err := p.run(root, targetOf(t, root)); err == nil || !strings.Contains(err.Error(), "another filesystem") {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if _, err := os.Lstat(filepath.Join(root, "a", name)); err != nil {
+			t.Fatalf("%s removed across a device: %v", name, err)
+		}
+	}
+}
+
+// A lift tries a bounded number of fresh names, never replacing one.
+func TestPurgeLiftIsBoundedAndNeverReplaces(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "card")
+	write(t, filepath.Join(root, "x", "deep", "f"), "x", 0o600)
+	for i := 1; i <= 3; i++ {
+		write(t, filepath.Join(root, liftName(uint64(i))), "keep", 0o600)
+	}
+	rootFD, err := unix.Open(root, unix.O_RDONLY|unix.O_DIRECTORY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unix.Close(rootFD)
+	x, err := unix.Open(filepath.Join(root, "x"), unix.O_RDONLY|unix.O_DIRECTORY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unix.Close(x)
+	p := testPurger(nil)
+	p.root, p.tries = rootFD, 3
+	if err = p.lift(x, "deep"); err == nil || !strings.Contains(err.Error(), "no free name") {
+		t.Fatalf("unbounded lift: %v", err)
+	}
+	for i := 1; i <= 3; i++ {
+		if raw, err := os.ReadFile(filepath.Join(root, liftName(uint64(i)))); err != nil || string(raw) != "keep" {
+			t.Fatalf("a lift replaced %s: %v", liftName(uint64(i)), err)
+		}
+	}
+	if _, err = os.Lstat(filepath.Join(root, "x", "deep", "f")); err != nil {
+		t.Fatalf("the deep directory moved without a free name: %v", err)
+	}
+	p.tries = liftTries
+	if err = p.lift(x, "deep"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = os.Lstat(filepath.Join(root, liftName(4), "f")); err != nil {
+		t.Fatalf("lift: %v", err)
+	}
+}
+
+// A working purge reports progress at least once a second.
+func TestPurgeReportsProgress(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "card")
+	for i := range 50 {
+		write(t, filepath.Join(root, fmt.Sprintf("f%02d", i)), "x", 0o600)
+	}
+	ticks := 0
+	p := testPurger(nil)
+	p.progress = func() { ticks++ }
+	if err := p.run(root, targetOf(t, root)); err != nil || ticks == 0 {
+		t.Fatalf("progress: %d %v", ticks, err)
+	}
 }
