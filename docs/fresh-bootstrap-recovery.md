@@ -285,7 +285,8 @@ quotes when it reports the worker's diagnostics.
 | `allocating` (c) | daemon-owned leaf with the fixed directories | plan-clean, clean, leaf removal, absent retirement |
 | `begun`, `staging`, `materialized_unfenced`, `staged` | daemon-owned leaf, fixed directories, Git trees | plan-clean, clean, leaf removal, absent retirement |
 | `transferring` | mixed root, daemon and payload owners | parked: every step refuses |
-| `completed` | a registered layout | not a leak |
+| `completed` | a registered layout | not a leak; reclaim it once released |
+| `reclaiming`, `reclaimed` | a reclaim's retained intent | reclaim only: rerun the same reclaim |
 
 `KEY.controls`, its `git-controls` journal and every retained approval stay as
 evidence.
@@ -296,3 +297,29 @@ these shapes to a retired tombstone, including a `staged` leak with Git trees
 made by the actual Begin and Materialize, with the real daemon-uid worker. Its
 markers are listed in `internal/freshrecovery/fixture`. Like the other lower
 fixtures it replaces only the booted maintenance gate.
+
+## Reclaiming a released bench
+
+Reclaim is not a recovery step: the daemon starts it, through the fixed
+helper's sudo route (`bench-quota reclaim-payload`), for a released bench it has
+recorded `reclaiming`. Its operation identity derives from the workspace's key
+and ID, and its reservation holds `operations.lock`, so no bootstrap, recovery
+or retirement step runs beside it. Root binds the retained `completed` intent to
+the request and requires the bench's own leaf (the recorded inode, payload-owned,
+in the assigned project) and fenced Git controls. Then, in order, and each step
+safe to repeat:
+
+1. the intent moves to `reclaiming`, before any effect;
+2. the clean worker, through the same hardened spawn but as the payload account,
+   deletes the tree: by name relative to held directories, never following a
+   symlink or opening a FIFO, socket or device, never entering another device,
+   mount, project or owner, at most 64 directories open, with a step bound;
+3. root removes the empty leaf under the allocation lock;
+4. root proves the leaf gone and usage zero, syncs the data filesystem and saves
+   the tombstone;
+5. the intent moves to `reclaimed`.
+
+A completed bench whose leaf is already missing refuses; inspect it with the
+steps above. Errors after step 1 say `effects may have occurred; retry the same
+reclaim`.
+

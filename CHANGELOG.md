@@ -6,6 +6,12 @@ stamps the section `## vX.Y.Z — YYYY-MM-DD`, and the release notes quote it.
 
 ## Unreleased
 
+- A released Fresh bench can be reclaimed: `bench workspace reclaim KEY` (v2 operation
+  `reclaim`) deletes its payload-private tree as the payload account, removes the empty leaf
+  and retires its quota project, so a later create can use the space. Before, every Fresh
+  create kept its reservation for good and a host filled up after a few cards. The bench ends
+  `reclaimed`; `reclaiming` never returns to `ready`, and after any failure the same command
+  continues. A legacy workspace is refused and keeps archive and reap.
 - A Fresh workspace now runs its whole lifecycle on an installed service. `bench workspace
   create` stopped at `initializing` with `registered payload allocation requires its retained
   bootstrap authority`, because setup, runs and lease reapplied the bench quota through the
@@ -28,8 +34,7 @@ stamps the section `## vX.Y.Z — YYYY-MM-DD`, and the release notes quote it.
   payload helper, as the payload account: inspection, preparation inputs, setup, runs,
   checkpoint and release. A checkpoint imports new commits into the daemon's mirror as a
   bounded Git bundle exported by the payload, checked strictly in a quarantine before any
-  object reaches the mirror. Fresh benches are not yet reclaimable: release keeps the
-  allocation. Some steps refuse a Fresh workspace before
+  object reaches the mirror. Some steps refuse a Fresh workspace before
   touching it:
   - archive, transfer and cross-host export;
   - setup from a lockfile, or with explicit cache settings.
