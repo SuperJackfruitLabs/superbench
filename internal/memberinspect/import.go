@@ -227,24 +227,27 @@ func (i Inspector) importGit(ctx context.Context, dir string, stdin []byte, args
 		"-c", "protocol.allow=never", "-c", "protocol.file.allow=always",
 		"-c", "transfer.fsckObjects=true", "-c", "fetch.fsckObjects=true",
 		"-c", "pack.threads=1", "-c", "index.threads=1", "-c", "core.bigFileThreshold=1m",
-		// Pack windows count against the address-space limit: keep them far below it.
-		"-c", "core.packedGitWindowSize=32m", "-c", "core.packedGitLimit=256m", "-c", "core.deltaBaseCacheLimit=64m",
 		"-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "credential.helper=",
 		"-c", "gc.auto=0", "-c", "maintenance.auto=false", "-c", "fetch.writeCommitGraph=false",
 		"-C", dir}
 	argv = append(argv, args...)
+	limit := i.ImportMemoryKiB
+	if limit == 0 {
+		limit = DefaultImportMemoryKiB
+	}
 	var cmd *exec.Cmd
 	if runtime.GOOS == "linux" {
-		limit := i.ImportMemoryKiB
-		if limit == 0 {
-			limit = DefaultImportMemoryKiB
-		}
 		cmd = exec.CommandContext(ctx, "/bin/sh", append([]string{"-c", `ulimit -v "$0" && exec /usr/bin/git "$@"`, strconv.FormatUint(limit, 10)}, argv...)...)
 	} else {
 		cmd = exec.CommandContext(ctx, "/usr/bin/git", argv...)
 	}
 	cmd.Dir = "/"
-	cmd.Env = []string{"PATH=/usr/bin:/bin", "HOME=/nonexistent", "LC_ALL=C", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null",
+	global, err := packWindows(limit)
+	if err != nil {
+		return "", err
+	}
+	defer os.Remove(global)
+	cmd.Env = []string{"PATH=/usr/bin:/bin", "HOME=/nonexistent", "LC_ALL=C", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=" + global,
 		"GIT_TERMINAL_PROMPT=0", "GIT_NO_REPLACE_OBJECTS=1", "GIT_ATTR_NOSYSTEM=1", "GIT_TEMPLATE_DIR="}
 	out, stderr := &importOutput{}, &importOutput{}
 	cmd.Stdout, cmd.Stderr, cmd.Stdin = out, stderr, bytes.NewReader(stdin)
@@ -256,4 +259,38 @@ func (i Inspector) importGit(ctx context.Context, dir string, stdin []byte, args
 		return "", fmt.Errorf("import git %s: %w: %s", args[0], err, strings.TrimSpace(stderr.String()))
 	}
 	return out.String(), nil
+}
+
+// PackWindows scales Git's pack mapping to the address-space limit: each
+// process maps at most a quarter of it, in windows of a sixteenth.
+func PackWindows(limitKiB uint64) (window, total uint64) {
+	window, total = limitKiB/16, limitKiB/4
+	if window < 1<<10 {
+		window = 1 << 10
+	}
+	if total < 4*window {
+		total = 4 * window
+	}
+	return window, total
+}
+
+// packWindows writes the pack bounds as the import's only global config. A
+// file, not -c, because the local transport clears GIT_CONFIG_PARAMETERS for
+// the upload-pack and pack-objects it starts in the quarantine; they map the
+// mirror's packs through the alternate and must keep the same bounds.
+func packWindows(limitKiB uint64) (string, error) {
+	window, total := PackWindows(limitKiB)
+	f, err := os.CreateTemp("", "superbench-import-*.gitconfig")
+	if err != nil {
+		return "", err
+	}
+	_, err = fmt.Fprintf(f, "[core]\n\tpackedGitWindowSize = %dk\n\tpackedGitLimit = %dk\n\tdeltaBaseCacheLimit = %dk\n[pack]\n\tthreads = 1\n\twindowMemory = %dk\n", window, total, window, window)
+	if closeErr := f.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		os.Remove(f.Name())
+		return "", err
+	}
+	return f.Name(), nil
 }
