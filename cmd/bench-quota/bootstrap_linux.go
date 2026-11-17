@@ -22,6 +22,9 @@ func runBootstrapCommand(args []string, override bool, input *os.File, output io
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
+	if isRecoveryCommand(args[0]) {
+		return runRecoveryCommand(ctx, args, override, input, output)
+	}
 	if args[0] == "initialize-indexed" {
 		if len(args) != 1 || os.Getuid() != 0 || os.Geteuid() != 0 || os.Getenv("SUDO_UID") != "" {
 			return errBootstrapCommand
@@ -101,7 +104,7 @@ func runBootstrapCommand(args []string, override bool, input *os.File, output io
 
 func parseBootstrapCommand(args []string) (string, quotaoperation.Identity, error) {
 	var zero quotaoperation.Identity
-	if len(args) != 7 || (args[0] != "bootstrap-payload" && args[0] != "inspect-bootstrap-payload" && args[0] != "plan-retire-bootstrap" && args[0] != "retire-bootstrap") {
+	if len(args) != 7 || (args[0] != "bootstrap-payload" && args[0] != "inspect-bootstrap-payload" && args[0] != "plan-retire-bootstrap" && args[0] != "retire-bootstrap" && !isRecoveryCommand(args[0])) {
 		return "", zero, errBootstrapCommand
 	}
 	i := quotaoperation.Identity{OperationID: args[2], Epoch: args[3], StateIdentity: args[4], Authority: args[5], BinarySHA256: args[6]}
