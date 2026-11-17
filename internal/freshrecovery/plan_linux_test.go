@@ -220,5 +220,11 @@ func TestStepsRefuseWithoutADirectRootManager(t *testing.T) {
 		if _, err := Repair(ctx, m, s, repair); err == nil || strings.Contains(err.Error(), "effects may have occurred") {
 			t.Errorf("repair without a manager: %v", err)
 		}
+		if _, err := PlanClean(ctx, m, s); err == nil {
+			t.Error("cleanup plan without a manager")
+		}
+		if _, err := Clean(ctx, m, s, strings.Repeat("a", 64)); err == nil || strings.Contains(err.Error(), "effects may have occurred") {
+			t.Errorf("cleanup without a manager: %v", err)
+		}
 	}
 }

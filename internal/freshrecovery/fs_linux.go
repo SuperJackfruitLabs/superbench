@@ -212,36 +212,51 @@ func projectID(f *os.File) (uint32, error) {
 // before the first effect. When existing is set the step is a retry after the
 // effect, so the approval must already exist; it is never created afresh then.
 func retain(ledger, key, step string, raw []byte, existing bool) error {
-	parent := filepath.Join(ledger, "payload-cleanups")
-	name := key + "." + step + ".json"
+	return retainFile(ledger, key+"."+step+".json", raw, existing, MaxPlan)
+}
+
+// retainFile publishes raw exactly once as LEDGER/payload-cleanups/name, up to
+// limit bytes, with the same existing-approval rule as retain.
+func retainFile(ledger, name string, raw []byte, existing bool, limit int) error {
 	if existing {
 		// The leaf is already gone: without this step's approval it was not ours.
-		if _, err := os.Lstat(filepath.Join(parent, name)); err != nil {
+		if _, err := os.Lstat(filepath.Join(ledger, "payload-cleanups", name)); err != nil {
 			return errors.Join(ErrRecovery, err)
 		}
 	}
-	if err := storagecustody.RootOwnedDirectory(ledger, true); err != nil {
+	parent, err := cleanups(ledger)
+	if err != nil {
 		return err
+	}
+	if err = retainedfile.Publish(parent, name, raw, limit); errors.Is(err, retainedfile.ErrRefused) {
+		return errors.Join(ErrRecovery, err)
+	}
+	return err
+}
+
+// cleanups returns LEDGER/payload-cleanups, created root-owned and private
+// beneath the root-owned ledger, with the ledger fsynced.
+func cleanups(ledger string) (string, error) {
+	parent := filepath.Join(ledger, "payload-cleanups")
+	if err := storagecustody.RootOwnedDirectory(ledger, true); err != nil {
+		return "", err
 	}
 	if err := os.Mkdir(parent, 0700); err != nil && !errors.Is(err, os.ErrExist) {
-		return err
+		return "", err
 	}
 	if err := storagecustody.RootOwnedDirectory(parent, true); err != nil {
-		return err
+		return "", err
 	}
 	d, err := os.Open(ledger)
 	if err != nil {
-		return err
+		return "", err
 	}
 	err = d.Sync()
 	d.Close()
 	if err != nil {
-		return err
+		return "", err
 	}
-	if err = retainedfile.Publish(parent, name, raw, MaxPlan); errors.Is(err, retainedfile.ErrRefused) {
-		return errors.Join(ErrRecovery, err)
-	}
-	return err
+	return parent, nil
 }
 
 // bounded keeps at most 64 KiB of a fixed tool's output.

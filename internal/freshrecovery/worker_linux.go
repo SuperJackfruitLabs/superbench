@@ -1,0 +1,245 @@
+//go:build linux
+
+package freshrecovery
+
+import (
+	"bytes"
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strconv"
+	"strings"
+	"syscall"
+	"time"
+
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/cleanworker"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/payloadpolicy"
+	"golang.org/x/sys/unix"
+)
+
+// workerTimeout bounds one worker run, observation or deletion.
+const workerTimeout = 20 * time.Minute
+
+const cgroup2Magic = 0x63677270
+
+// runWorker runs the daemon-uid clean worker once: bench-quota re-executes its
+// own running image, /proc/self/exe, as "bench-quota clean-worker UID GID". The
+// child gets the daemon credentials with no supplementary groups, SIGKILL when
+// the forking thread dies, its own transient cgroup, an empty environment,
+// Dir=/ and only descriptors 0-2. Root writes one bounded frame and reads one
+// bounded reply, which it returns only after decoding it as data. Before it
+// returns, the cgroup is killed, found empty and removed.
+func runWorker(ctx context.Context, p payloadpolicy.Policy, request cleanworker.Request) (cleanworker.Reply, error) {
+	frame, err := cleanworker.EncodeRequest(request)
+	if err != nil || p.DaemonUID == 0 || p.DaemonGID == 0 {
+		return cleanworker.Reply{}, errors.Join(ErrRecovery, err)
+	}
+	ctx, cancel := context.WithTimeout(ctx, workerTimeout)
+	defer cancel()
+	s, err := newScope(p.CgroupRoot)
+	if err != nil {
+		return cleanworker.Reply{}, err
+	}
+	type result struct {
+		out []byte
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		// The thread is never unlocked: it carries no_new_privs and an empty
+		// bounding set into the fork, and Go ends a locked thread when its
+		// goroutine exits. It stays alive until the worker is reaped, because
+		// Pdeathsig fires when the forking thread, not the process, exits.
+		runtime.LockOSThread()
+		out, err := spawn(ctx, p, frame, s)
+		done <- result{out, err}
+	}()
+	res := <-done
+	fenceErr := s.fence()
+	if res.err != nil || fenceErr != nil {
+		return cleanworker.Reply{}, errors.Join(res.err, fenceErr)
+	}
+	reply, err := cleanworker.DecodeReply(res.out, request.Mode)
+	if err != nil {
+		return cleanworker.Reply{}, errors.Join(ErrRecovery, err)
+	}
+	return reply, nil
+}
+
+// spawn runs on a locked thread that it restricts first.
+func spawn(ctx context.Context, p payloadpolicy.Policy, frame []byte, s *scope) ([]byte, error) {
+	if err := restrictThread(); err != nil {
+		return nil, err
+	}
+	// Only stdio reaches the child: anything bench-quota inherited without
+	// close-on-exec is marked so here. Go opens its own descriptors that way.
+	if err := unix.CloseRange(3, ^uint(0), unix.CLOSE_RANGE_CLOEXEC); err != nil {
+		return nil, fmt.Errorf("close_range: %w", err)
+	}
+	cmd := exec.CommandContext(ctx, "/proc/self/exe")
+	cmd.Args = append([]string{"bench-quota", cleanworker.Command}, cleanworker.Arguments(cleanworker.Identity{UID: p.DaemonUID, GID: p.DaemonGID})...)
+	cmd.Env = []string{}
+	cmd.Dir = "/"
+	cmd.Stdin = bytes.NewReader(frame)
+	out, diagnostic := &capped{max: cleanworker.MaxFrame}, &capped{max: 64 << 10}
+	cmd.Stdout, cmd.Stderr = out, diagnostic
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Credential:  &syscall.Credential{Uid: p.DaemonUID, Gid: p.DaemonGID, Groups: []uint32{}},
+		Pdeathsig:   syscall.SIGKILL,
+		UseCgroupFD: true,
+		CgroupFD:    s.fd,
+	}
+	cmd.Cancel = s.kill
+	cmd.WaitDelay = 2 * time.Second
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("clean worker: %w: %s", err, strings.TrimSpace(string(diagnostic.raw)))
+	}
+	if out.over || diagnostic.over {
+		return nil, ErrRecovery
+	}
+	return out.raw, nil
+}
+
+// restrictThread sets no_new_privs and empties the capability bounding set on
+// the calling (locked) thread only, so the forked worker inherits both. The
+// thread keeps its effective capabilities for clone3 and the credential drop.
+func restrictThread() error {
+	if _, _, e := unix.RawSyscall(unix.SYS_PRCTL, unix.PR_SET_NO_NEW_PRIVS, 1, 0); e != 0 {
+		return fmt.Errorf("no_new_privs: %w", e)
+	}
+	raw, err := os.ReadFile("/proc/sys/kernel/cap_last_cap")
+	if err != nil || len(raw) > 32 {
+		return errors.Join(ErrRecovery, err)
+	}
+	last, err := strconv.Atoi(strings.TrimSpace(string(raw)))
+	if err != nil || last < 0 || last > 63 {
+		return errors.Join(ErrRecovery, err)
+	}
+	for c := 0; c <= last; c++ {
+		if _, _, e := unix.RawSyscall(unix.SYS_PRCTL, unix.PR_CAPBSET_DROP, uintptr(c), 0); e != 0 {
+			return fmt.Errorf("drop bounding capability %d: %w", c, e)
+		}
+	}
+	return nil
+}
+
+// capped keeps at most max bytes and records an overflow.
+type capped struct {
+	raw  []byte
+	max  int
+	over bool
+}
+
+func (c *capped) Write(raw []byte) (int, error) {
+	if len(c.raw)+len(raw) > c.max {
+		c.over = true
+		return 0, ErrRecovery
+	}
+	c.raw = append(c.raw, raw...)
+	return len(raw), nil
+}
+
+// scope is one worker's transient cgroup.
+type scope struct {
+	path string
+	fd   int
+}
+
+// newScope creates a private cgroup for one worker beneath the payload policy's
+// cgroup root, the delegated root the bootstrap's Git runner uses. While the
+// service is stopped systemd may have removed that delegated cgroup; then the
+// scope goes beneath bench-quota's own cgroup instead. Either way the worker
+// runs in a cgroup of its own that root kills and removes before it returns.
+func newScope(policyRoot string) (*scope, error) {
+	root, err := scopeRoot(policyRoot)
+	if err != nil {
+		return nil, err
+	}
+	var fs unix.Statfs_t
+	if actual, err := filepath.EvalSymlinks(root); err != nil || actual != root {
+		return nil, errors.Join(ErrRecovery, err)
+	}
+	if err = unix.Statfs(root, &fs); err != nil || fs.Type != cgroup2Magic {
+		return nil, errors.Join(ErrRecovery, err)
+	}
+	if _, err = os.Stat(filepath.Join(root, "cgroup.controllers")); err != nil {
+		return nil, errors.Join(ErrRecovery, err)
+	}
+	var random [16]byte
+	if _, err = rand.Read(random[:]); err != nil {
+		return nil, err
+	}
+	path := filepath.Join(root, "superbench-clean-"+hex.EncodeToString(random[:]))
+	if err = os.Mkdir(path, 0700); err != nil {
+		return nil, err
+	}
+	if _, err = os.Stat(filepath.Join(path, "cgroup.kill")); err != nil {
+		_ = os.Remove(path)
+		return nil, errors.Join(ErrRecovery, err)
+	}
+	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
+	if err != nil {
+		_ = os.Remove(path)
+		return nil, &os.PathError{Op: "open", Path: path, Err: err}
+	}
+	return &scope{path: path, fd: fd}, nil
+}
+
+// scopeRoot is the policy's cgroup root when it exists, otherwise the cgroup
+// v2 directory this process runs in.
+func scopeRoot(policyRoot string) (string, error) {
+	info, err := os.Lstat(policyRoot)
+	if err == nil {
+		if !info.IsDir() {
+			return "", ErrRecovery
+		}
+		return policyRoot, nil
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return "", err
+	}
+	raw, err := os.ReadFile("/proc/self/cgroup")
+	if err != nil || len(raw) > 64<<10 {
+		return "", errors.Join(ErrRecovery, err)
+	}
+	for _, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
+		if own, ok := strings.CutPrefix(line, "0::"); ok && strings.HasPrefix(own, "/") && filepath.Clean(own) == own {
+			return filepath.Join("/sys/fs/cgroup", own), nil
+		}
+	}
+	return "", ErrRecovery
+}
+
+func (s *scope) kill() error {
+	return os.WriteFile(filepath.Join(s.path, "cgroup.kill"), []byte("1"), 0600)
+}
+
+// fence kills anything left in the scope, waits until it is unpopulated and
+// removes it. A scope that will not empty is an error: the maintenance gate
+// would then refuse the next step on the live daemon-uid process anyway.
+func (s *scope) fence() error {
+	unix.Close(s.fd)
+	if err := s.kill(); err != nil {
+		return err
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		raw, err := os.ReadFile(filepath.Join(s.path, "cgroup.events"))
+		if err != nil {
+			return err
+		}
+		if bytes.Contains(raw, []byte("populated 0\n")) {
+			return os.Remove(s.path)
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("clean worker cgroup %s still populated", s.path)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}

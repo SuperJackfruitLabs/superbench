@@ -10,13 +10,15 @@ import (
 	"testing"
 )
 
+var recoveryCommands = []string{"plan-remove-empty-bootstrap-leaf", "remove-empty-bootstrap-leaf", "plan-repair-bootstrap-quota", "repair-bootstrap-quota", "plan-clean-bootstrap", "clean-bootstrap"}
+
 func recoveryArgs(command string) []string {
 	h := strings.Repeat("a", 64)
 	return []string{command, "card", h, strings.Repeat("b", 32), h, h, h}
 }
 
 func TestRecoveryCommandsTakeTheOriginalIdentity(t *testing.T) {
-	for _, command := range []string{"plan-remove-empty-bootstrap-leaf", "remove-empty-bootstrap-leaf", "plan-repair-bootstrap-quota", "repair-bootstrap-quota"} {
+	for _, command := range recoveryCommands {
 		if !isRecoveryCommand(command) {
 			t.Fatalf("%s is not routed", command)
 		}
@@ -30,7 +32,7 @@ func TestRecoveryCommandsTakeTheOriginalIdentity(t *testing.T) {
 			}
 		}
 	}
-	for _, other := range []string{"clean-bootstrap", "remove-bootstrap-leaf", "repair-bootstrap", ""} {
+	for _, other := range []string{"clean-worker", "plan-clean-bootstrap-leaf", "remove-bootstrap-leaf", "repair-bootstrap", ""} {
 		if isRecoveryCommand(other) {
 			t.Fatalf("%q routed as recovery", other)
 		}
@@ -43,7 +45,7 @@ func TestRecoveryCommandsRefuseBeforeInputAndAuthority(t *testing.T) {
 	if os.Getuid() == 0 {
 		t.Fatal("ordinary test requires an unprivileged user")
 	}
-	for _, command := range []string{"plan-remove-empty-bootstrap-leaf", "remove-empty-bootstrap-leaf", "plan-repair-bootstrap-quota", "repair-bootstrap-quota"} {
+	for _, command := range recoveryCommands {
 		path := t.TempDir() + "/input"
 		if err := os.WriteFile(path, []byte(`{"Spec":{}}`), 0600); err != nil {
 			t.Fatal(err)
@@ -71,5 +73,13 @@ func TestRecoveryCommandsRefuseBeforeInputAndAuthority(t *testing.T) {
 			t.Fatalf("%s missed the guarded dispatch: %v", command, err)
 		}
 		f.Close()
+	}
+}
+
+// The worker is selected only by its exact first argument, before any flag or
+// policy parsing; an operator flag in front of it is an ordinary command.
+func TestCleanWorkerIsNotARouteAfterFlags(t *testing.T) {
+	if err := run([]string{"--policy", "/etc/superbench/storage.json", "clean-worker", "1", "1"}); err == nil || !strings.Contains(err.Error(), "usage") {
+		t.Fatalf("clean-worker reached through flag parsing: %v", err)
 	}
 }

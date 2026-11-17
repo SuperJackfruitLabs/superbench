@@ -131,6 +131,20 @@ func ParseRepair(raw []byte) (payloadbootstrap.Spec, RepairPlan, error) {
 	return request.Spec, request.Plan, nil
 }
 
+// ParseClean accepts only the canonical bounded {Spec, PlanSHA256}: the plan
+// itself is read from LEDGER/payload-cleanups under the lock, by that digest.
+func ParseClean(raw []byte) (payloadbootstrap.Spec, string, error) {
+	var request struct {
+		Spec       payloadbootstrap.Spec
+		PlanSHA256 string
+	}
+	err := canonical(raw, &request)
+	if err != nil || request.Spec.Validate() != nil || len(request.PlanSHA256) != 64 || !isHex(request.PlanSHA256) {
+		return payloadbootstrap.Spec{}, "", ErrRecovery
+	}
+	return request.Spec, request.PlanSHA256, nil
+}
+
 // canonical decodes raw only if it is exactly the compact encoding of its value,
 // so no unknown, reordered or duplicate field survives.
 func canonical[T any](raw []byte, request *T) error {
