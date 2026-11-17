@@ -260,16 +260,34 @@ func (e *env) recoverDaemon(l *leak) {
 	e.finish(l, plan, got)
 }
 
-// isolatedWorker finds the one live daemon-uid process, the worker, and
-// requires it to lead its own session with no controlling tty, to be
-// non-dumpable (procfs then shows its files as root's) and to run in a
-// transient worker cgroup.
-func (e *env) isolatedWorker() {
-	t := e.t
-	t.Helper()
+// isolatedWorker waits, up to a few seconds, until the one live daemon-uid
+// process, the worker, is seen after its self-checks: leading its own session
+// with no controlling tty, non-dumpable (procfs then shows its per-process
+// files, such as mem, as root's), untraced, in a transient worker cgroup, with no_new_privs, an empty
+// bounding set and no groups. It is called once the worker has visibly started
+// deleting, and the procfs view is re-read until it settles. It returns the
+// last refusal instead of failing, so the caller can stop the cleanup and let
+// it remove its cgroup before the test fails.
+func (e *env) isolatedWorker() error {
+	// Hold the worker mid-delete while it is inspected; the caller's cancel
+	// then kills its cgroup, which takes a stopped process too.
+	_ = e.checkWorker(syscall.SIGSTOP)
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		err := e.checkWorker(0)
+		if err == nil || time.Now().After(deadline) {
+			return err
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// checkWorker checks every daemon-uid process; a nonzero signal is sent to
+// each first.
+func (e *env) checkWorker(signal syscall.Signal) error {
 	entries, err := os.ReadDir("/proc")
 	if err != nil {
-		t.Fatal(err)
+		return err
 	}
 	found := 0
 	for _, entry := range entries {
@@ -283,28 +301,45 @@ func (e *env) isolatedWorker() {
 			continue
 		}
 		found++
+		if signal != 0 {
+			_ = syscall.Kill(pid, signal)
+			continue
+		}
+		cmdline, _ := os.ReadFile(filepath.Join(dir, "cmdline"))
 		stat, err := os.ReadFile(filepath.Join(dir, "stat"))
 		if err != nil {
-			t.Fatal(err)
+			return err
 		}
 		f := strings.Fields(string(stat[bytes.LastIndexByte(stat, ')')+1:]))
 		if len(f) < 5 || f[3] != strconv.Itoa(pid) || f[4] != "0" {
-			t.Fatalf("worker %d shares a session or has a tty: %q", pid, stat)
+			return fmt.Errorf("worker %d shares a session or has a tty: %q", pid, stat)
 		}
-		if st := mustInfo(t, dir).Sys().(*syscall.Stat_t); st.Uid != 0 || st.Gid != 0 {
-			t.Fatalf("worker %d is dumpable: /proc entry owned by %d:%d", pid, st.Uid, st.Gid)
+		// A non-dumpable process's per-process files are root's. The
+		// /proc/PID directory itself keeps the task's owner on current
+		// kernels, so it is not the signal.
+		for _, file := range []string{"mem", "environ", "fd"} {
+			info, err := os.Lstat(filepath.Join(dir, file))
+			if err != nil {
+				return err
+			}
+			if st := info.Sys().(*syscall.Stat_t); st.Uid != 0 || st.Gid != 0 {
+				return fmt.Errorf("worker %d (%q) is dumpable: /proc/%d/%s owned by %d:%d; status %s", pid, cmdline, pid, file, st.Uid, st.Gid, status)
+			}
 		}
 		cgroup, err := os.ReadFile(filepath.Join(dir, "cgroup"))
 		if err != nil || !strings.Contains(string(cgroup), "/superbench-clean-") {
-			t.Fatalf("worker %d outside a worker cgroup: %q %v", pid, cgroup, err)
+			return fmt.Errorf("worker %d outside a worker cgroup: %q %v", pid, cgroup, err)
 		}
-		if !strings.Contains(string(status), "\nNoNewPrivs:\t1\n") || !strings.Contains(string(status), "\nCapBnd:\t0000000000000000\n") || !strings.Contains(string(status), "\nGroups:\t\n") {
-			t.Fatalf("worker %d status: %s", pid, status)
+		for _, want := range []string{"\nTracerPid:\t0\n", "\nNoNewPrivs:\t1\n", "\nCapBnd:\t0000000000000000\n", "\nGroups:\t\n"} {
+			if !strings.Contains(string(status), want) {
+				return fmt.Errorf("worker %d status lacks %q: %s", pid, want, status)
+			}
 		}
 	}
 	if found != 1 {
-		t.Fatalf("%d daemon-uid processes during the delete, want the worker alone", found)
+		return fmt.Errorf("%d daemon-uid processes during the delete, want the worker alone", found)
 	}
+	return nil
 }
 
 // staleScope leaves an empty worker cgroup as a crash would, beneath the
@@ -639,8 +674,12 @@ func (e *env) workerKilled() {
 	for {
 		if _, statErr := os.Lstat(last); errors.Is(statErr, os.ErrNotExist) {
 			// The real worker, mid-delete: it must have passed its own checks.
-			e.isolatedWorker()
+			workerErr := e.isolatedWorker()
 			cancel()
+			if workerErr != nil {
+				<-done
+				t.Fatal(workerErr)
+			}
 			err = <-done
 			break
 		}
@@ -650,6 +689,8 @@ func (e *env) workerKilled() {
 		default:
 		}
 		if time.Now().After(deadline) {
+			cancel()
+			<-done
 			t.Fatal("deletion never started")
 		}
 		time.Sleep(time.Millisecond)
