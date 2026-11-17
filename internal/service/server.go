@@ -48,6 +48,9 @@ type Server struct {
 	closing                         bool
 }
 
+// The installed prerequisites fresh_payload needs; only tests replace them.
+var freshIdentity, freshStorage = freshreadiness.Identity, freshreadiness.Storage
+
 func Serve(ctx context.Context, c Config) error { return serve(ctx, c, false) }
 
 func serve(ctx context.Context, c Config, proposed bool) error {
@@ -74,7 +77,7 @@ func serve(ctx context.Context, c Config, proposed bool) error {
 		a.Cancellation, a.ReceiptLookup = true, true
 	}
 	// Refuse a combination that would strand workspaces before any state or socket.
-	if err := a.Check(freshreadiness.Identity, freshreadiness.Storage); err != nil {
+	if err := a.Check(freshIdentity, freshStorage); err != nil {
 		return err
 	}
 	private := a.Cancellation || a.ReceiptLookup
@@ -316,9 +319,9 @@ func (s *Server) dispatch(r protocol.Request) (any, error) {
 		if e != nil {
 			return nil, e
 		}
-		items := make([]*benchDTO, 0, len(states))
+		items := make([]*scalarapi.BenchDTO, 0, len(states))
 		for i := range states {
-			items = append(items, benchView(&states[i], false))
+			items = append(items, scalarapi.BenchView(&states[i], false))
 		}
 		return map[string]any{"benches": items}, nil
 	case "host_status":
@@ -336,13 +339,13 @@ func (s *Server) dispatch(r protocol.Request) (any, error) {
 		} else {
 			b, e = store.CreateColdContext(s.ctx, r.Key, options, r.Operation == "recover")
 		}
-		return map[string]any{"bench": benchView(b, e != nil)}, e
+		return map[string]any{"bench": scalarapi.BenchView(b, e != nil)}, e
 	case "lease":
 		b, e := store.LeaseContext(s.ctx, r.Key, r.Holder)
-		return map[string]any{"bench": benchView(b, true)}, e
+		return map[string]any{"bench": scalarapi.BenchView(b, true)}, e
 	case "checkpoint":
 		b, e := store.Checkpoint(r.Key, r.LeaseToken)
-		return map[string]any{"bench": benchView(b, false)}, e
+		return map[string]any{"bench": scalarapi.BenchView(b, false)}, e
 	case "release":
 		e := store.Release(r.Key, r.LeaseToken)
 		if e != nil {
@@ -351,21 +354,21 @@ func (s *Server) dispatch(r protocol.Request) (any, error) {
 		return map[string]any{"released": r.Key}, nil
 	case "stop", "stop_admin":
 		b, e := store.Stop(r.Key, r.LeaseToken, r.Operation == "stop_admin")
-		return map[string]any{"bench": benchView(b, true)}, e
+		return map[string]any{"bench": scalarapi.BenchView(b, true)}, e
 	case "run":
 		checkpoint := true
 		if r.Checkpoint != nil {
 			checkpoint = *r.Checkpoint
 		}
 		result, e := store.Run(s.ctx, r.Key, r.Holder, r.Arguments, checkpoint)
-		return runView(result), e
+		return scalarapi.RunView(result), e
 	case "setup":
 		offline := false
 		if r.Offline != nil {
 			offline = *r.Offline
 		}
 		result, e := store.Setup(s.ctx, r.Key, r.Holder, offline)
-		return runView(result), e
+		return scalarapi.RunView(result), e
 	}
 	return nil, errors.New("unknown operation")
 }

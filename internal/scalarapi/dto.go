@@ -1,9 +1,7 @@
-package service
+package scalarapi
 
 import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/bench"
-	"net/url"
-	"strings"
 )
 
 type executionDTO struct {
@@ -18,7 +16,9 @@ type leaseDTO struct {
 	Token     string        `json:"token,omitempty"`
 	Execution *executionDTO `json:"execution,omitempty"`
 }
-type benchDTO struct {
+
+// BenchDTO is the v1 bench view; lease tokens appear only where token is set.
+type BenchDTO struct {
 	Key         string    `json:"key"`
 	Repository  string    `json:"repository"`
 	Branch      string    `json:"branch"`
@@ -39,11 +39,11 @@ func executionView(e *bench.Execution) *executionDTO {
 	}
 	return &executionDTO{ID: e.ID, Phase: e.Phase, LogPath: e.Log, LogLimit: e.LogLimitBytes}
 }
-func benchView(b *bench.Bench, token bool) *benchDTO {
+func BenchView(b *bench.Bench, token bool) *BenchDTO {
 	if b == nil {
 		return nil
 	}
-	v := &benchDTO{Key: b.Key, Repository: displayRepository(b.Repo), Branch: b.Branch, Path: b.Path, Checkpoint: b.Checkpoint, ProjectID: b.ProjectID, QuotaBytes: b.QuotaBytes, QuotaInodes: b.QuotaInodes, ArchivedAt: b.ArchivedAt, Reaping: b.ReapingDigest != "" && b.ReapedAt == "", ReapedAt: b.ReapedAt}
+	v := &BenchDTO{Key: b.Key, Repository: DisplayRepository(b.Repo), Branch: b.Branch, Path: b.Path, Checkpoint: b.Checkpoint, ProjectID: b.ProjectID, QuotaBytes: b.QuotaBytes, QuotaInodes: b.QuotaInodes, ArchivedAt: b.ArchivedAt, Reaping: b.ReapingDigest != "" && b.ReapedAt == "", ReapedAt: b.ReapedAt}
 	if b.Lease != nil {
 		mode := "cooperative"
 		if b.Lease.Execution != nil {
@@ -56,25 +56,9 @@ func benchView(b *bench.Bench, token bool) *benchDTO {
 	}
 	return v
 }
-func runView(r *bench.RunResult) any {
+func RunView(r *bench.RunResult) any {
 	if r == nil {
 		return nil
 	}
-	return map[string]any{"bench": benchView(r.Bench, true), "execution": executionView(r.Execution), "exit_code": r.ExitCode, "log_truncated": r.LogTruncated}
-}
-
-func displayRepository(repository string) string {
-	if !strings.Contains(repository, "://") {
-		return repository
-	}
-	u, e := url.Parse(repository)
-	if e != nil {
-		return "[repository unavailable]"
-	}
-	if u.User != nil {
-		u.User = url.User(u.User.Username())
-	}
-	u.RawQuery = ""
-	u.Fragment = ""
-	return u.String()
+	return map[string]any{"bench": BenchView(r.Bench, true), "execution": executionView(r.Execution), "exit_code": r.ExitCode, "log_truncated": r.LogTruncated}
 }
