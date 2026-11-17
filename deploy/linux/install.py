@@ -196,6 +196,31 @@ def masked_unit(root):
     return path, path.is_symlink() and os.readlink(path) == "/dev/null"
 
 
+def check_data_mount(path=DATA_ROOT, mountinfo="/proc/self/mountinfo", stat=os.stat):
+    """Refuse unless path is the root of a mounted XFS filesystem enforcing project quotas.
+
+    Without the mount, state and the ledger would describe the root filesystem's
+    directory, and the volume mounted over it later would not match them.
+    """
+    hint = "; mount the data volume (persistently, see docs/pilot-installation.md) first"
+    try:
+        separate = stat(path).st_dev != stat(os.path.dirname(path)).st_dev
+    except FileNotFoundError:
+        separate = False
+    if not separate:
+        raise ValueError(path + " is not a mounted filesystem" + hint)
+    found = None
+    for line in Path(mountinfo).read_text().splitlines():
+        mount, _, source = line.partition(" - ")
+        fields, tail = mount.split(), source.split()
+        if len(fields) >= 5 and fields[4] == path and len(tail) >= 3:
+            found = fields[3], tail[0], tail[2].split(",")  # the last mount is the visible one
+    if found is None or found[0] != "/" or found[1] != "xfs":
+        raise ValueError(path + " must be the root of a mounted XFS filesystem" + hint)
+    if not {"prjquota", "pquota"} & set(found[2]) or "pqnoenforce" in found[2]:
+        raise ValueError(path + " must be mounted with enforced project quotas (prjquota)" + hint)
+
+
 UNIT_INSTALLED = ("the service unit is already installed; the indexed ledger can only be "
                   "initialized during a first install. See docs/pilot-installation.md")
 
@@ -410,7 +435,7 @@ def main(argv=None):
     print("Installed payload; service has not been started or enabled.")
 
 
-def apply(args, run=subprocess.run, lookup=account_ids):
+def apply(args, run=subprocess.run, lookup=account_ids, mounted=check_data_mount):
     """Install what the checked arguments ask for, preparing the host if asked."""
     entries = payload(args.bin_dir, args.managed)
     if args.activation:
@@ -420,6 +445,10 @@ def apply(args, run=subprocess.run, lookup=account_ids):
     if storage is not None:
         budgets = read_budgets(storage)
         state = storage_state(args.root)
+        data = checked_path(args.root, DATA_ROOT[1:])
+        mounted(str(data))
+        if state == "fresh" and data.is_dir() and os.listdir(data):
+            raise ValueError(str(data) + " must be empty for a first install of the indexed ledger")
         mask, masked = masked_unit(args.root)
         if state == "fresh" and os.path.lexists(mask) and not masked:
             raise ValueError(UNIT_INSTALLED)

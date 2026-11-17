@@ -67,9 +67,45 @@ These are the four binaries required by the managed installer. The payload
 helper must be a static Linux executable for the target architecture; do not
 omit it or substitute a dynamically linked build. Review the staged files,
 owners, modes, systemd unit, wrapper and sudo rule before applying anything.
-Staging writes only below the supplied physical absolute root. Write the reviewed
-byte **and** inode budgets for the dedicated data volume to a root-owned file, for
-example `/root/superbench-budgets.json` (the eight fields of
+Staging writes only below the supplied physical absolute root.
+
+### Mount the data volume persistently
+
+Mount the dedicated XFS filesystem at `/srv/superbench-data` with project quotas
+before installing, and make the mount survive a reboot. With a block device, add
+an `/etc/fstab` line using the filesystem's UUID (`blkid -s UUID -o value DEVICE`):
+
+```text
+UUID=FILESYSTEM-UUID  /srv/superbench-data  xfs  defaults,prjquota  0  2
+```
+
+For a filesystem image on a staging host, use a root-owned image outside the
+state and data directories:
+
+```text
+/var/lib/superbench-data.img  /srv/superbench-data  xfs  loop,prjquota  0  0
+```
+
+Instead of fstab, a systemd mount unit named `srv-superbench\x2ddata.mount`
+(`systemd-escape -p --suffix=mount /srv/superbench-data`) with `What=`, `Where=`,
+`Type=xfs` and `Options=prjquota`, enabled with `WantedBy=local-fs.target`, does
+the same. After `systemctl daemon-reload`, mount it (`mount /srv/superbench-data`
+or `systemctl start 'srv-superbench\x2ddata.mount'`) and check it with
+`findmnt /srv/superbench-data` and `xfs_quota -x -c 'state -p' /srv/superbench-data`
+(project accounting and enforcement both `ON`). Do not add `nofail` or `noauto`.
+
+The service unit has `RequiresMountsFor=/srv/superbench-data`, so systemd mounts
+the volume before benchd and does not start benchd without it. The quota ledger is
+bound to the filesystem UUID: mount the same filesystem every time (a different
+loop device number is fine). The installer's `--storage` refuses to write the
+storage policy unless `/srv/superbench-data` is a separate mounted XFS filesystem
+root with enforced project quotas (`prjquota`, not `pqnoenforce`) and, on a first
+install, empty.
+
+### Install on the host
+
+Write the reviewed byte **and** inode budgets for the dedicated data volume to a
+root-owned file, for example `/root/superbench-budgets.json` (the eight fields of
 [the storage policy example](storage.md), and nothing else):
 
 ```json
@@ -128,20 +164,23 @@ that `bench-quota initialize-indexed` created on an empty filesystem. With any
 other policy every Fresh `create` stops at `materializing` with `operation_failed`.
 `--storage`:
 
-1. writes root-owned `/etc/superbench/storage.json` (mode 0644) from the budgets
+1. checks that `/srv/superbench-data` is the root of a mounted XFS filesystem
+   with enforced project quotas, and empty on a first install, before it writes
+   anything ([above](#mount-the-data-volume-persistently));
+2. writes root-owned `/etc/superbench/storage.json` (mode 0644) from the budgets
    file, the `superbench` account's numeric IDs, the data root, the ledger
    `/var/lib/superbench-quota/ledger` and `"OperationJournal": "indexed-v2"`;
-2. masks the service (a `/dev/null` link in place of its unit file) and runs
+3. masks the service (a `/dev/null` link in place of its unit file) and runs
    `bench-quota initialize-indexed` once, as direct root. That command only
    initializes: it refuses unless the service is masked and stopped, nothing
    runs as either SuperBench account, the data filesystem is empty with no quota
    projects, and the ledger does not exist yet;
-3. installs the unit file in place of the mask and reloads systemd.
+4. installs the unit file in place of the mask and reloads systemd.
 
 Run it as part of the first install, before `configure-host` and before the
 service ever starts. Rerunning the same command is safe: a host whose ledger is
-already initialized skips step 2, and a run that stopped after step 2 finishes
-step 3. If `initialize-indexed` fails, the service stays masked without its unit
+already initialized skips step 3, and a run that stopped after step 3 finishes
+step 4. If `initialize-indexed` fails, the service stays masked without its unit
 file; fix the reported cause and rerun the same command. The installer refuses,
 before it changes anything, when:
 

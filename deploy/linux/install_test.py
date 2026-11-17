@@ -12,7 +12,8 @@ import unittest
 import subprocess
 
 from install import (ACTIVATION_FILE, ACTIVATION_SWITCHES, CGROUP_ROOT, POLICY_FILE, REGISTRY_FILE,
-                     QUOTA_HELPER, STORAGE_FILE, UNIT_FILE, MissingAccount, account_ids,
+                     DATA_ROOT, QUOTA_HELPER, STORAGE_FILE, UNIT_FILE, MissingAccount, account_ids,
+                     check_data_mount,
                      activation_document, apply, checked_path, identity_documents, install,
                      installed_identity, main, payload, preflight_identity, read_budgets, static_helper,
                      storage_document, storage_state)
@@ -350,6 +351,7 @@ class IndexedStorage(unittest.TestCase):
         self.budgets.write_text(json.dumps(BUDGETS))
         self.bins = binaries(self.root / "bin")
         self.commands = []
+        self.mounts = []
         self.fail_initialize = False
 
     def args(self, **overrides):
@@ -374,8 +376,11 @@ class IndexedStorage(unittest.TestCase):
             (quota / "ledger.format-v2").write_bytes(b"anchor")
             (quota / "ledger").mkdir()
 
+    def mounted(self, path):
+        self.mounts.append(path)
+
     def apply(self, **overrides):
-        apply(self.args(**overrides), run=self.run_command, lookup=accounts())
+        apply(self.args(**overrides), run=self.run_command, lookup=accounts(), mounted=self.mounted)
 
     def test_budgets_are_checked_as_the_go_policy_checks_them(self):
         self.assertEqual(read_budgets(self.budgets), BUDGETS)
@@ -440,6 +445,45 @@ class IndexedStorage(unittest.TestCase):
                         path.rmdir()
                     elif os.path.lexists(path):
                         path.unlink()
+
+    def test_storage_is_written_only_onto_the_mounted_empty_data_volume(self):
+        def unmounted(path):
+            raise ValueError(path + " is not a mounted filesystem")
+        with self.assertRaisesRegex(ValueError, "not a mounted filesystem"):
+            apply(self.args(), run=self.run_command, lookup=accounts(), mounted=unmounted)
+        self.assertFalse(os.path.lexists(self.target / STORAGE_FILE))
+        self.assertFalse((self.target / "usr/local/bin/benchd").exists())
+        stray = self.target / DATA_ROOT[1:] / "benches"
+        stray.mkdir(parents=True)
+        with self.assertRaisesRegex(ValueError, "must be empty"):
+            self.apply()
+        self.assertFalse(os.path.lexists(self.target / STORAGE_FILE))
+        stray.rmdir()
+        self.apply()
+        self.assertEqual(self.mounts[-1], str(self.target / DATA_ROOT[1:]))
+
+    def test_mount_check_reads_the_visible_mount(self):
+        def devices(mapping):
+            return lambda path: SimpleNamespace(st_dev=mapping[path])
+        separate = devices({DATA_ROOT: 2, "/srv": 1})
+        info = self.root / "mountinfo"
+        good = "36 25 7:1 / " + DATA_ROOT + " rw,relatime - xfs /dev/loop1 rw,attr2,inode64,prjquota\n"
+        info.write_text(good)
+        check_data_mount(DATA_ROOT, info, separate)
+        with self.assertRaisesRegex(ValueError, "not a mounted filesystem"):
+            check_data_mount(DATA_ROOT, info, devices({DATA_ROOT: 1, "/srv": 1}))
+        with self.assertRaisesRegex(ValueError, "not a mounted filesystem"):
+            check_data_mount(str(self.root / "absent"), info)
+        for bad, message in [
+                ("", "root of a mounted XFS"),
+                (good.replace(" xfs ", " ext4 "), "root of a mounted XFS"),
+                (good.replace(" / " + DATA_ROOT, " /sub " + DATA_ROOT), "root of a mounted XFS"),
+                (good.replace(",prjquota", ""), "enforced project quotas"),
+                (good.replace("prjquota", "prjquota,pqnoenforce"), "enforced project quotas"),
+                (good + "40 36 0:5 / " + DATA_ROOT + " rw - tmpfs tmpfs rw\n", "root of a mounted XFS")]:
+            info.write_text(bad)
+            with self.assertRaisesRegex(ValueError, message, msg=bad):
+                check_data_mount(DATA_ROOT, info, separate)
 
     def test_storage_needs_identity_and_a_direct_root_login(self):
         for flags, environment, message in [
