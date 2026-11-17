@@ -1,3 +1,7 @@
+// The runtime otherwise keeps the cgroup cpu.max file open to update
+// GOMAXPROCS, and the clean worker's descriptor check would refuse it.
+//go:debug containermaxprocs=0
+
 // bench-quota exposes fixed-policy assignments, never arbitrary quota commands.
 package main
 
@@ -6,6 +10,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/cleanworker"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage"
 	"io"
 	"os"
@@ -13,6 +18,11 @@ import (
 )
 
 func main() {
+	// Root re-executes this image as the daemon-uid clean worker. It is
+	// dispatched before any flag or policy parsing, and does its own checks.
+	if len(os.Args) > 1 && os.Args[1] == cleanworker.Command {
+		os.Exit(cleanworker.Main(os.Args[2:], os.Stdin, os.Stdout, os.Stderr))
+	}
 	if e := run(os.Args[1:]); e != nil {
 		fmt.Fprintln(os.Stderr, "bench-quota:", e)
 		os.Exit(1)

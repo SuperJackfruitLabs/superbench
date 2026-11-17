@@ -36,11 +36,14 @@ func runRecoveryCommand(ctx context.Context, args []string, override bool, input
 	var spec payloadbootstrap.Spec
 	var leaf freshrecovery.LeafPlan
 	var repair freshrecovery.RepairPlan
+	var planSHA string
 	switch args[0] {
 	case "remove-empty-bootstrap-leaf":
 		spec, leaf, err = freshrecovery.ParseLeaf(raw)
 	case "repair-bootstrap-quota":
 		spec, repair, err = freshrecovery.ParseRepair(raw)
+	case "clean-bootstrap":
+		spec, planSHA, err = freshrecovery.ParseClean(raw)
 	default:
 		spec, err = payloadbootstrap.ParseSpec(raw)
 	}
@@ -68,6 +71,10 @@ func runRecoveryCommand(ctx context.Context, args []string, override bool, input
 		result, err = freshrecovery.PlanRepair(ctx, manager, spec)
 	case "repair-bootstrap-quota":
 		result, err = freshrecovery.Repair(ctx, manager, spec, repair)
+	case "plan-clean-bootstrap":
+		result, err = freshrecovery.PlanClean(ctx, manager, spec)
+	case "clean-bootstrap":
+		result, err = freshrecovery.Clean(ctx, manager, spec, planSHA)
 	}
 	if err != nil {
 		return err

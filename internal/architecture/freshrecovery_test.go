@@ -12,13 +12,20 @@ import (
 
 // Fresh recovery is direct-root operator code. Only the quota helper command
 // may link it; its privileged fixture compiles only under freshstoragefixture.
+// The daemon-uid clean worker and the cleanup model are reached only through
+// it, and neither the daemon nor the payload helper can reach any of them.
 func TestFreshRecoveryIsReachedOnlyFromTheQuotaCommand(t *testing.T) {
 	root := filepath.Join("..", "..")
 	module := "forge.superjackfruit.com/SuperJackfruitLabs/superbench/"
 	allowed := map[string]map[string]bool{
 		module + "internal/freshrecovery":         {"cmd/bench-quota": true, "internal/freshrecovery/fixture": true},
 		module + "internal/freshrecovery/fixture": {},
+		module + "internal/cleanworker":           {"cmd/bench-quota": true, "internal/freshrecovery": true, "internal/freshrecovery/fixture": true},
+		module + "internal/freshcleanup":          {"internal/freshrecovery": true, "internal/freshrecovery/fixture": true},
 	}
+	// Every import of every non-test file, whatever its build tags: a superset
+	// of any one build's graph, so reachability below is conservative.
+	graph := map[string][]string{}
 	found := map[string]bool{}
 	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -51,6 +58,9 @@ func TestFreshRecoveryIsReachedOnlyFromTheQuotaCommand(t *testing.T) {
 			if err != nil {
 				return err
 			}
+			if strings.HasPrefix(p, module) {
+				graph[rel] = append(graph[rel], strings.TrimPrefix(p, module))
+			}
 			if importers, guarded := allowed[p]; guarded && !importers[rel] {
 				t.Errorf("%s: %s may not import %s", path, rel, p)
 			}
@@ -62,5 +72,27 @@ func TestFreshRecoveryIsReachedOnlyFromTheQuotaCommand(t *testing.T) {
 	}
 	if !found["internal/freshrecovery/fixture"] {
 		t.Error("recovery fixture package not found")
+	}
+	for _, start := range []string{"cmd/benchd", "cmd/bench-payload", "cmd/bench"} {
+		seen := map[string]bool{start: true}
+		queue := []string{start}
+		for len(queue) > 0 {
+			next := queue[0]
+			queue = queue[1:]
+			for _, p := range graph[next] {
+				if !seen[p] {
+					seen[p] = true
+					queue = append(queue, p)
+				}
+			}
+		}
+		if len(seen) < 2 {
+			t.Errorf("%s import graph not found", start)
+		}
+		for guarded := range allowed {
+			if seen[strings.TrimPrefix(guarded, module)] {
+				t.Errorf("%s reaches %s", start, guarded)
+			}
+		}
 	}
 }

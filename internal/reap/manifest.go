@@ -41,6 +41,11 @@ func inspect(root, relative string, recoverable bool) (Entry, error) {
 	defer handle.Close()
 	return inspectAt(handle, relative, recoverable)
 }
+
+// beforeOpen runs between the Lstat and the open of a regular file. It is nil
+// except in tests, which use it to swap the entry for a FIFO.
+var beforeOpen func(relative string)
+
 func inspectAt(root *os.Root, relative string, recoverable bool) (Entry, error) {
 	st, e := root.Lstat(relative)
 	if e != nil {
@@ -64,7 +69,12 @@ func inspectAt(root *os.Root, relative string, recoverable bool) (Entry, error) 
 	writer := io.MultiWriter(hash, object1, object256)
 	switch {
 	case st.Mode().IsRegular():
-		f, e := root.OpenFile(relative, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+		if beforeOpen != nil {
+			beforeOpen(relative)
+		}
+		// O_NONBLOCK: a FIFO swapped in after the Lstat must not block the open.
+		// The identity check below then refuses it.
+		f, e := root.OpenFile(relative, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 		if e != nil {
 			return v, e
 		}
@@ -73,7 +83,8 @@ func inspectAt(root *os.Root, relative string, recoverable bool) (Entry, error) 
 			f.Close()
 			return v, e
 		}
-		if !os.SameFile(st, opened) {
+		// A replacement can reuse the inode number, so require the type too.
+		if !os.SameFile(st, opened) || !opened.Mode().IsRegular() {
 			f.Close()
 			return v, errors.New("file changed during snapshot")
 		}

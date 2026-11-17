@@ -1,9 +1,9 @@
 # Retained Fresh bootstrap evidence
 
 Fresh payload materialization remains disabled. Interrupted or cancelled Fresh
-allocations are recovered by the direct-root operator steps below; a leaf that
-still holds daemon-owned files or Git trees has no recovery command yet.
-Inspection alone does not release quota, repair a workspace or authorize retry.
+allocations are recovered by the direct-root operator steps below, from phase
+`reserved` through `staged`; a `transferring` tree stays parked. Inspection
+alone does not release quota, repair a workspace or authorize retry.
 
 On Linux, a direct root operator can inspect the original bootstrap intent:
 
@@ -142,7 +142,7 @@ fixed list and never deletes recursively. Anything else in the leaf refuses
 the plan, and the effect re-observes the leaf before it retains anything. A
 retry that finds the leaf already absent succeeds only with the same retained
 approval. A daemon-owned leaf that still holds Begin's directories or Git trees
-needs the daemon-uid cleanup worker, which is not implemented yet.
+is emptied first by the daemon-uid cleanup below.
 
 **Quota repair** is only for phase `reserved` after the leaf is absent. It
 proves the leaf is absent below the pinned parent with no child mount, the data
@@ -156,13 +156,138 @@ already hold exactly those caps are an idempotent success. Any other row, a
 nonzero usage, a soft cap or a foreign cap refuses. It never runs `Apply`,
 `mkdir`, `project -s`, a chown or an adoption.
 
-Typical orders: a `reserved` leak with the leaf absent and no rows: repair,
-then retire. With an empty leaf: leaf removal, repair (a no-op if the caps were
-already set), then retire. An `allocating` (a) or (b) leak: leaf removal, then
-retire.
+## Daemon-owned cleanup
+
+A leaf the daemon already owns, holding Begin's fixed directories, Git trees or
+anything else the daemon wrote, is emptied by a worker running as the daemon,
+never by root. Root never opens the tree's files and never deletes a file.
+
+```sh
+bench-quota plan-clean-bootstrap KEY OPERATION_ID EPOCH STATE_ID AUTHORITY BINARY_SHA256 < original-spec.json
+bench-quota clean-bootstrap      KEY OPERATION_ID EPOCH STATE_ID AUTHORITY BINARY_SHA256 < clean-request.json
+```
+
+Both follow the rules above: the original six identity arguments, direct root,
+no sudo, no `--policy`, bounded input read to EOF before any lock, the original
+operation's permanent denial, the stopped and masked service checked before and
+after every effect, Fresh selection under the allocation lock, and an unchanged
+retained inspection.
+
+**Planning** requires a phase from `allocating` to `staged` and derives the
+owner from it: the leaf must be the recorded inode, a daemon-owned `0700`
+directory on the pinned device with the assigned project. For `allocating` this
+is case (c), after Begin handed the leaf to the daemon; a root-owned leaf is
+case (b) and uses leaf removal. `KEY.controls` must be the recorded root-owned
+private directory, and its `git-controls` journal must be absent, empty, or hold
+only unattributed controls whose cgroups are empty (the rules
+`gitcontrol.Recover` uses, checked without changing anything).
+
+A crashed Git step during materialization can leave an intent in
+`git-controls` whose cgroup root no longer exists. The root is the service's
+delegated cgroup, and systemd removes it when the stopped service's cgroup
+empties. Planning refuses such an intent, by design, because it cannot inspect
+a scope it cannot find. To proceed:
+
+1. Read the `Root` field of each `LEDGER/payload-bootstrap/KEY.controls/git-controls/*.json`
+   intent. Do not edit or remove the intent.
+2. Confirm that the path is absent. Confirm also that the service is still
+   stopped and masked: the gate checks this too.
+3. As root, run `mkdir` on that exact path. On cgroup v2 this creates a new,
+   empty cgroup. The intent's own scope, `Root/ID`, then reads as absent, which
+   proves the old Git run ended.
+4. Run `plan-clean-bootstrap` and `clean-bootstrap`.
+5. Run `rmdir` on that exact path. Do this before the service is unmasked:
+   systemd recreates it on start.
+
+Never create the scope directory `Root/ID` itself. Never remove an intent to get
+past this refusal. The worker then
+observes the tree, read-only, and root validates its reply as a cleanup approval:
+the binding equals the retained inspection, the owner is the daemon for the root
+and every entry, the quota assignment is the selected one, the root is `0700` at
+the recorded device and inode, the parent is the pinned root-owned `benches`,
+entries are only directories, regular files and symlinks with unique inodes and
+one link (files and symlinks), in canonical order, and every directory has owner
+`rwx` and every regular file owner read, so the worker can always traverse,
+re-hash and unlink what it approved. A file the daemon cannot read, a directory
+it cannot search or write, a special file or a hard link refuses the plan before
+anything is retained.
+
+The plan is published as `LEDGER/payload-cleanups/KEY.plan.json` (root `0600`,
+up to 16 MiB), atomically replacing an earlier plan; planning again is how a
+plan is refreshed. The command prints `{"Path":…,"SHA256":…}`. A plan is not
+authority: once `KEY.json` exists no plan can be published, and the effect
+accepts a plan only by its exact digest.
+
+**Cleaning** reads `{"Spec":…,"PlanSHA256":…}` (canonical, lowercase hex). It
+finds the plan by that digest (the retained `KEY.json` when it exists), parses
+it against the current inspection, owner and assignment, and has the worker
+observe the tree again: a tree that changed in any way since review is refused
+before anything is retained, so plan again. It then retains the plan's bytes as
+`LEDGER/payload-cleanups/KEY.json` with the atomic link-and-fsync publication,
+checks the gate, has the worker delete exactly the approved contents in reverse
+order (re-inspecting each entry beneath an `os.Root`, never following a symlink
+and never removing the leaf), checks the gate, has the worker observe the leaf
+as empty with its device, inode and mode unchanged, and fsyncs the leaf. After
+retention an error reads "effects may have occurred; retry the same plan". A
+retry, after a lost reply, a crash or a killed worker, accepts approved entries
+that are already gone and refuses anything changed or new. A retry after the
+leaf itself has been removed succeeds only with the matching retained approval.
+
+**The worker** is bench-quota's own running image, `/proc/self/exe`, started as
+`bench-quota clean-worker UID GID` and dispatched before any flag or policy
+parsing. It runs with the daemon's uid and gid and no supplementary groups,
+its own session (no controlling tty, outside the operator's process group),
+`SIGKILL` if the forking thread dies, an empty environment, `Dir=/`, only
+descriptors 0-2, and a transient cgroup of its own that root kills, finds empty
+and removes before it continues. Before creating one, root removes any empty
+`superbench-clean-*` cgroup a crash left beneath the same parent; it never
+touches a populated one. The cgroup goes beneath the payload policy's
+cgroup root, the delegated root the bootstrap's Git runner uses; while the
+service is stopped systemd may have removed that cgroup, and then it goes
+beneath bench-quota's own cgroup. Root forks the worker from a locked thread
+that first sets `no_new_privs`, empties its capability bounding set and joins a
+new anonymous session keyring (`KEYCTL_JOIN_SESSION_KEYRING` with a NULL name).
+Session keyrings belong to thread credentials, so only that thread and the
+worker it forks leave root's keyring, and every worker thread shares the new one
+for the worker's whole life. If root's own session keyring has already been
+revoked or expired, for example by an ended login, it counts as none. Root then
+passes the old keyring's serial, or 0, to the worker. Before
+reading its request the worker makes itself non-dumpable (so no daemon-uid
+process can ptrace it) and sets `no_new_privs`. It then lists `/proc/self/fd`
+and requires only 0-2, and requires `/proc/self/stat` to show it leading its own
+session with no controlling tty. It proves through the system calls and `/proc/self/status` that
+it holds exactly the daemon's uid and gid in every slot, no groups and empty
+capability sets, and refuses root. `/proc/self/status` must also show no
+tracer. A process that attached between the exec and the worker becoming
+non-dumpable stays attached, so this check closes that window; no attach can
+succeed after it. Last, it requires its session keyring to be live and not the
+serial root passed, so it never holds root's keyring. Only then does it write a
+fixed ready line, and root sends the request only after reading that exact line.
+Root removes the worker's cgroup on every return path. If bench-quota itself
+dies, `Pdeathsig` kills the worker, and the next run sweeps the empty cgroup. It reads one bounded
+request frame and writes one bounded reply, which root decodes as data and
+quotes when it reports the worker's diagnostics.
+
+## Recovery flow per phase
+
+| Phase | What is left | Steps, in order |
+|---|---|---|
+| `reserved`, no ledger row | nothing | none: no quota is held |
+| `reserved`, leaf absent | no files; the limits may never have been set | quota repair, absent retirement |
+| `reserved`, empty leaf | root `0700` leaf, project 0 or assigned | leaf removal, quota repair (a no-op if the caps are set), absent retirement |
+| `allocating` (a) | empty root `0700` leaf | leaf removal, absent retirement |
+| `allocating` (b) | root leaf with a prefix of the fixed directories | leaf removal (fixed names), absent retirement |
+| `allocating` (c) | daemon-owned leaf with the fixed directories | plan-clean, clean, leaf removal, absent retirement |
+| `begun`, `staging`, `materialized_unfenced`, `staged` | daemon-owned leaf, fixed directories, Git trees | plan-clean, clean, leaf removal, absent retirement |
+| `transferring` | mixed root, daemon and payload owners | parked: every step refuses |
+| `completed` | a registered layout | not a leak |
+
+`KEY.controls`, its `git-controls` journal and every retained approval stay as
+evidence.
 
 The privileged child selector `TestFreshRecoveryFixture` runs inside the lower
 fixture (build tag `freshstoragefixture`) and recovers real leaks in each of
-these shapes to a retired tombstone. Its markers are listed in
-`internal/freshrecovery/fixture`. Like the other lower fixtures it replaces only
-the booted maintenance gate.
+these shapes to a retired tombstone, including a `staged` leak with Git trees
+made by the actual Begin and Materialize, with the real daemon-uid worker. Its
+markers are listed in `internal/freshrecovery/fixture`. Like the other lower
+fixtures it replaces only the booted maintenance gate.

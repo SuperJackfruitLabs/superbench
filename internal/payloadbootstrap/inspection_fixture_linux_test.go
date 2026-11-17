@@ -1,5 +1,6 @@
 //go:build linux && freshstoragefixture
 
+//go:debug containermaxprocs=0
 package payloadbootstrap_test
 
 import (

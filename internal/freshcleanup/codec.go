@@ -13,8 +13,8 @@ import (
 func digest(raw []byte) string                  { sum := sha256.Sum256(raw); return hex.EncodeToString(sum[:]) }
 func (a Approval) digestBytes() ([]byte, error) { a.SHA256 = ""; return json.Marshal(a) }
 
-func (a Approval) Bytes(p payloadpolicy.Policy, b Binding) ([]byte, error) {
-	if err := a.Validate(p, b); err != nil {
+func (a Approval) Bytes(p payloadpolicy.Policy, b Binding, owner Owner, assignment Assignment) ([]byte, error) {
+	if err := a.Validate(p, b, owner, assignment); err != nil {
 		return nil, err
 	}
 	return json.Marshal(a)
@@ -23,12 +23,12 @@ func (a Approval) Bytes(p payloadpolicy.Policy, b Binding) ([]byte, error) {
 // Parse requires the canonical complete model, allowing only JSON whitespace.
 // Duplicate/unknown/reordered fields and tampered metadata refuse. Successful
 // parsing does not authorize any cleanup, retry or change to the original intent.
-func Parse(raw []byte, p payloadpolicy.Policy, b Binding) (Approval, error) {
+func Parse(raw []byte, p payloadpolicy.Policy, b Binding, owner Owner, assignment Assignment) (Approval, error) {
 	var a Approval
 	if len(raw) > MaxApproval || !utf8.Valid(raw) || json.Unmarshal(raw, &a) != nil {
 		return Approval{}, ErrApproval
 	}
-	canonical, err := a.Bytes(p, b)
+	canonical, err := a.Bytes(p, b, owner, assignment)
 	var compact bytes.Buffer
 	if err != nil || json.Compact(&compact, raw) != nil || !bytes.Equal(canonical, compact.Bytes()) {
 		return Approval{}, ErrApproval

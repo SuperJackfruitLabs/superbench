@@ -5,14 +5,16 @@ package payloadbootstrap
 import (
 	"context"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/payloadexec"
 )
 
 // Recovery is what one Fresh recovery step sees while Recover holds the original
-// operation's lock and permanent denial: the installed storage policy (its owner
-// is the daemon), the retained inspection, the stopped-service gate and the policy
+// operation's lock and permanent denial: the installed storage and payload
+// policies, the retained inspection, the stopped-service gate and the policy
 // recheck. It grants no Begin, Apply, adoption or retry, and is void afterwards.
 type Recovery struct {
 	Storage     hoststorage.Policy
+	Payload     payloadexec.Policy
 	Inspection  func() (Inspection, error)
 	Gate, Check func() error
 }
@@ -31,7 +33,7 @@ func (m *Manager) Recover(ctx context.Context, s Spec, action func(Recovery) err
 			return f()
 		}
 	}
-	r := Recovery{Storage: m.storage, Gate: live(func() error { return m.maintenanceGate(ctx, m.storage) }), Check: live(m.check)}
+	r := Recovery{Storage: m.storage, Payload: m.policy, Gate: live(func() error { return m.maintenanceGate(ctx, m.storage) }), Check: live(m.check)}
 	r.Inspection = func() (i Inspection, err error) {
 		err = live(func() error { i, err = m.inspectionHeld(s, true); return err })()
 		return i, err
