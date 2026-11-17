@@ -180,7 +180,27 @@ is case (c), after Begin handed the leaf to the daemon; a root-owned leaf is
 case (b) and uses leaf removal. `KEY.controls` must be the recorded root-owned
 private directory, and its `git-controls` journal must be absent, empty, or hold
 only unattributed controls whose cgroups are empty (the rules
-`gitcontrol.Recover` uses, checked without changing anything). The worker then
+`gitcontrol.Recover` uses, checked without changing anything).
+
+A crashed Git step during materialization can leave an intent in
+`git-controls` whose cgroup root no longer exists. The root is the service's
+delegated cgroup, and systemd removes it when the stopped service's cgroup
+empties. Planning refuses such an intent, by design, because it cannot inspect
+a scope it cannot find. To proceed:
+
+1. Read the `Root` field of each `LEDGER/payload-bootstrap/KEY.controls/git-controls/*.json`
+   intent. Do not edit or remove the intent.
+2. Confirm that the path is absent. Confirm also that the service is still
+   stopped and masked: the gate checks this too.
+3. As root, run `mkdir` on that exact path. On cgroup v2 this creates a new,
+   empty cgroup. The intent's own scope, `Root/ID`, then reads as absent, which
+   proves the old Git run ended.
+4. Run `plan-clean-bootstrap` and `clean-bootstrap`.
+5. Run `rmdir` on that exact path. Do this before the service is unmasked:
+   systemd recreates it on start.
+
+Never create the scope directory `Root/ID` itself. Never remove an intent to get
+past this refusal. The worker then
 observes the tree, read-only, and root validates its reply as a cleanup approval:
 the binding equals the retained inspection, the owner is the daemon for the root
 and every entry, the quota assignment is the selected one, the root is `0700` at
@@ -216,18 +236,25 @@ leaf itself has been removed succeeds only with the matching retained approval.
 **The worker** is bench-quota's own running image, `/proc/self/exe`, started as
 `bench-quota clean-worker UID GID` and dispatched before any flag or policy
 parsing. It runs with the daemon's uid and gid and no supplementary groups,
+its own session (no controlling tty, outside the operator's process group),
 `SIGKILL` if the forking thread dies, an empty environment, `Dir=/`, only
 descriptors 0-2, and a transient cgroup of its own that root kills, finds empty
-and removes before it continues. The cgroup goes beneath the payload policy's
+and removes before it continues. Before creating one, root removes any empty
+`superbench-clean-*` cgroup a crash left beneath the same parent; it never
+touches a populated one. The cgroup goes beneath the payload policy's
 cgroup root, the delegated root the bootstrap's Git runner uses; while the
 service is stopped systemd may have removed that cgroup, and then it goes
 beneath bench-quota's own cgroup. Root forks the worker from a locked thread
 that first sets `no_new_privs` and empties its capability bounding set. Before
-reading its request the worker sets `no_new_privs`, lists `/proc/self/fd` and
-requires only 0-2, proves through the system calls and `/proc/self/status` that
+reading its request the worker makes itself non-dumpable (so no daemon-uid
+process can ptrace it) and sets `no_new_privs`. It then lists `/proc/self/fd`
+and requires only 0-2, and requires `/proc/self/stat` to show it leading its own
+session with no controlling tty. It proves through the system calls and `/proc/self/status` that
 it holds exactly the daemon's uid and gid in every slot, no groups and empty
-capability sets, and refuses root. It reads one bounded request frame and
-writes one bounded reply, which root decodes as data.
+capability sets, and refuses root. Last, it leaves root's session keyring for a
+new anonymous one and requires the keyring to have changed. It reads one bounded
+request frame and writes one bounded reply, which root decodes as data and
+quotes when it reports the worker's diagnostics.
 
 ## Recovery flow per phase
 
