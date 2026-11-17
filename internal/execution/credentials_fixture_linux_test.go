@@ -51,7 +51,7 @@ func TestHostStartPreservesActualChildCredentials(t *testing.T) {
 	if err != nil || !info.IsDir() || info.Mode().Perm()&0022 != 0 || info.Sys().(*syscall.Stat_t).Uid != 0 {
 		t.Fatal("credential fixture cgroup ancestry refused", err)
 	}
-	for name, expected := range map[string]string{"cpu.max": "800000 100000", "memory.max": "2147483648", "memory.swap.max": "0", "pids.max": "512"} {
+	for name, expected := range map[string]string{"cpu.max": "200000 100000", "memory.max": "2147483648", "memory.swap.max": "0", "pids.max": "512"} {
 		raw, err := os.ReadFile(filepath.Join(root, name))
 		if err != nil || strings.TrimSpace(string(raw)) != expected {
 			t.Fatalf("credential fixture resource boundary refused: %s: %v", name, err)
