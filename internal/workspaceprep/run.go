@@ -13,13 +13,13 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/cachepolicy"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/execution"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/finiteio"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/freshtree"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/history"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/operationcontrol"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/output"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/payloadstage"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/stageexec"
-	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspace"
 )
 
 type RunResult struct {
@@ -50,8 +50,8 @@ func payloadDir(b *model.Bench, selector string) (string, error) {
 	}
 	return "", errors.New("workspace member selector is not registered")
 }
-func prepared(tx *sql.Tx, b *model.Bench) error {
-	if err := CheckPrepared(b); err != nil {
+func (m Manager) prepared(tx *sql.Tx, b *model.Bench) error {
+	if err := m.Prepared(b); err != nil {
 		return err
 	}
 	for i := range b.Workspace.Preparation {
@@ -62,24 +62,27 @@ func prepared(tx *sql.Tx, b *model.Bench) error {
 	return nil
 }
 func (m Manager) inspectPayload(ctx context.Context, b *model.Bench) error {
-	_, err := (workspace.Lifecycle{State: m.State, Data: m.Data, Git: m.Git}).Inspect(ctx, b, false)
+	_, err := m.lifecycle().Inspect(ctx, b, false)
 	return err
 }
 func (m Manager) payloadEnvironment(ctx context.Context, b *model.Bench, selector string) ([]string, error) {
 	if selector != "" {
 		for _, member := range b.Workspace.Members {
 			if member.Name == selector {
-				c, digest, err := inputs(member.Path)
+				c, digest, err := freshtree.Inputs(ctx, m.Fresh, b, member)
 				if err != nil {
 					return nil, err
 				}
-				return m.environment(ctx, memberPlan{member: member, config: c, digest: digest})
+				return m.environment(ctx, b, memberPlan{member: member, config: c, digest: digest})
 			}
 		}
 		return nil, errors.New("workspace member selector is not registered")
 	}
 	// Omitted repository_name means the aggregate root. No member implicitly
 	// supplies the root's configuration; its caches use the fixed shared policy.
+	if fresh, err := freshtree.Selected(m.Fresh, b); err != nil || fresh {
+		return nil, err // a Fresh root's payload gets only the helper's environment
+	}
 	paths, err := operationcontrol.Value(ctx, func() (cachepolicy.Paths, error) { return cachepolicy.Prepare(m.Data, b.Path, cachepolicy.Settings{}) })
 	if err != nil {
 		return nil, err
@@ -161,7 +164,7 @@ func (m Manager) Run(ctx context.Context, key, token, selector string, args []st
 			if err := m.inspectPayload(ctx, b); err != nil {
 				return err
 			}
-			if err := prepared(tx, b); err != nil {
+			if err := m.prepared(tx, b); err != nil {
 				return err
 			}
 			dir, err = payloadDir(b, selector)
@@ -203,7 +206,10 @@ func (m Manager) Run(ctx context.Context, key, token, selector string, args []st
 			stage.HostID, stage.BootID = identity.HostID, identity.BootID
 			b.Lease.Execution = stage
 			b.Workspace.Stage = nil
-			if prepare, err = payloadstage.Transport(finite, b, selector); err != nil {
+			if prepare, err = payloadstage.Transport(finite, b, selector); err == nil && prepare == nil {
+				prepare, err = freshtree.StageTransport(m.Fresh, b, selector)
+			}
+			if err != nil {
 				return err
 			}
 			continuation = b.Lease.Continuation
@@ -238,7 +244,7 @@ func (m Manager) Run(ctx context.Context, key, token, selector string, args []st
 				if err := m.inspectPayload(ctx, b); err != nil {
 					return err
 				}
-				if err := prepared(tx, b); err != nil {
+				if err := m.prepared(tx, b); err != nil {
 					return err
 				}
 				actual, err := payloadDir(b, selector)

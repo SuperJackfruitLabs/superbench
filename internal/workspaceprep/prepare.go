@@ -11,6 +11,7 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/benchstate"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/cachepolicy"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/execution"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/freshtree"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/history"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/operationcontrol"
@@ -46,27 +47,6 @@ func removeProof(b *model.Bench, name string) {
 		}
 	}
 	b.Workspace.Preparation = kept
-}
-
-func verifyProof(tx *sql.Tx, b *model.Bench, p *model.WorkspacePreparation) error {
-	if p.RunID == "" {
-		return nil
-	}
-	owned := false
-	for _, id := range b.Lease.RetainedRuns {
-		owned = owned || id == p.RunID
-	}
-	if e := b.Lease.Execution; e != nil && e.Phase == "stopped" && e.ID == p.RunID {
-		owned = true
-	}
-	r, err := history.Get(tx, p.RunID)
-	if err != nil {
-		return err
-	}
-	if !owned || r.Key != b.Key || r.File == nil || r.ExitCode == nil || *r.ExitCode != 0 || !r.ReleasedAt.IsZero() {
-		return errors.New("member preparation proof requires an owned sealed successful run")
-	}
-	return nil
 }
 
 func saveProof(tx *sql.Tx, b *model.Bench, plan memberPlan, runID string) error {
@@ -173,7 +153,7 @@ func (m Manager) Prepare(ctx context.Context, key, token, selector string, offli
 		return nil, err
 	}
 	defer m.reconcileCancellation(ctx, key, token, &result, &operationErr)
-	if _, err = (workspace.Lifecycle{State: m.State, Data: m.Data, Git: m.Git}).Inspect(ctx, b, false); err != nil {
+	if _, err = m.lifecycle().Inspect(ctx, b, false); err != nil {
 		return b, err
 	}
 	var plans []memberPlan
@@ -181,7 +161,7 @@ func (m Manager) Prepare(ctx context.Context, key, token, selector string, offli
 		if selector != "" && selector != member.Name {
 			continue
 		}
-		c, digest, e := inputs(member.Path)
+		c, digest, e := freshtree.Inputs(ctx, m.Fresh, b, member)
 		if e != nil {
 			return b, e
 		}
@@ -217,7 +197,7 @@ func (m Manager) Prepare(ctx context.Context, key, token, selector string, offli
 			return e
 		}
 		for _, member := range current.Workspace.Members {
-			_, digest, e := inputs(member.Path)
+			_, digest, e := freshtree.Inputs(ctx, m.Fresh, current, member)
 			if e != nil {
 				return e
 			}
@@ -229,7 +209,7 @@ func (m Manager) Prepare(ctx context.Context, key, token, selector string, offli
 				return e
 			}
 		}
-		if e = CheckPrepared(current); e != nil {
+		if e = m.Prepared(current); e != nil {
 			return e
 		}
 		if current.Workspace.Phase != "ready" {
@@ -264,7 +244,7 @@ func (m Manager) member(ctx context.Context, key, token string, plan memberPlan,
 		if err = m.inspectMember(ctx, b, plan.member.Name); err != nil {
 			return err
 		}
-		_, digest, err := inputs(plan.member.Path)
+		_, digest, err := freshtree.Inputs(ctx, m.Fresh, b, plan.member)
 		if err != nil || digest != plan.digest {
 			return errors.New("workspace preparation inputs changed before execution")
 		}
@@ -312,7 +292,10 @@ func (m Manager) member(ctx context.Context, key, token string, plan memberPlan,
 	return m.execute(ctx, key, token, plan, offline)
 }
 
-func (m Manager) environment(ctx context.Context, plan memberPlan) ([]string, error) {
+func (m Manager) environment(ctx context.Context, b *model.Bench, plan memberPlan) ([]string, error) {
+	if fresh, err := freshtree.Selected(m.Fresh, b); err != nil || fresh {
+		return freshtree.Environment(plan.config, err)
+	}
 	settings := plan.config.CacheSettings()
 	if settings.Private() {
 		tracked, err := m.Git(ctx, plan.member.Path, "ls-files", "--", ".bench/cache")
@@ -328,12 +311,14 @@ func (m Manager) environment(ctx context.Context, plan memberPlan) ([]string, er
 }
 
 // CheckPrepared is a read-only proof check inside the final lifecycle session.
-func CheckPrepared(b *model.Bench) error {
+func CheckPrepared(b *model.Bench) error { return Manager{}.Prepared(b) }
+
+func (m Manager) checkPrepared(ctx context.Context, b *model.Bench) error {
 	if b == nil || b.Workspace == nil || len(b.Workspace.Preparation) != len(b.Workspace.Members) {
 		return errors.New("every workspace member requires preparation evidence")
 	}
 	for _, member := range b.Workspace.Members {
-		c, digest, err := inputs(member.Path)
+		c, digest, err := freshtree.Inputs(ctx, m.Fresh, b, member)
 		if err != nil {
 			return err
 		}
@@ -348,7 +333,7 @@ func CheckPrepared(b *model.Bench) error {
 			if c != nil && c.Hooks() {
 				return errors.New("configured workspace setup requires successful execution evidence")
 			}
-			_, err := setup.FrozenCommandFor(member.Path, cachepolicy.Select(filepath.Dir(filepath.Dir(b.Path)), member.Path, c.CacheSettings()), false)
+			_, err := freshtree.FrozenCommand(ctx, m.Fresh, b, member, c, filepath.Dir(filepath.Dir(b.Path)), false)
 			if !errors.Is(err, setup.ErrNoLockfile) {
 				return errors.New("frozen workspace setup requires successful execution evidence")
 			}

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/benchstate"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/freshtree"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotapolicy"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspace"
@@ -48,6 +49,9 @@ func (m Manager) inspectState(ctx context.Context, a workspacerepair.Manager, ro
 	b := rows[p.SourceKey]
 	if err := workspacepolicy.Validate(b); err != nil {
 		return p, err
+	}
+	if fresh, err := freshtree.Selected(nil, b); err != nil || fresh {
+		return p, errors.Join(freshtree.ErrUnavailable, err) // a Fresh tree is never transferred
 	}
 	if b.Workspace.Transfer != nil || b.Workspace.Phase != "ready" || b.Workspace.Archive != nil || b.Lease != nil || b.Workspace.Stage != nil || b.Workspace.Pending != nil || b.Workspace.Checkpoint == nil || rows[p.TargetKey] != nil {
 		return p, errors.New("transfer requires an unleased ready source with a complete checkpoint and an unused destination")

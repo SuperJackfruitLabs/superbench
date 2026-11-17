@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/benchstate"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/freshtree"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotapolicy"
@@ -65,6 +66,9 @@ func (m Manager) inspectMissingState(ctx context.Context, a workspacerepair.Mana
 	b := rows[p.SourceKey]
 	if err := workspacepolicy.Validate(b); err != nil {
 		return p, err
+	}
+	if fresh, err := freshtree.Selected(nil, b); err != nil || fresh {
+		return p, errors.Join(freshtree.ErrUnavailable, err) // a Fresh tree is never transferred
 	}
 	if b.Workspace.Transfer != nil || b.Workspace.Phase != "ready" || b.Workspace.Archive != nil || b.Workspace.Pending != nil || b.Workspace.Checkpoint == nil || rows[p.TargetKey] != nil || b.Path != filepath.Join(m.Store.Data, "benches", b.Key) {
 		return p, errors.New("missing-source transfer requires a ready source, complete checkpoint, no pending publication and unused destination")

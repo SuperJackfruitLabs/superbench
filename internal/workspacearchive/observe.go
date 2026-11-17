@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/freshtree"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/repository"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/setup"
@@ -16,6 +17,9 @@ var ErrIneligible = errors.New("workspace has no confirmed whole-vector branch-m
 // caller holds the host lock and commits this evidence with the completed seal.
 // Failed observations never reject an otherwise valid checkpoint.
 func NoteCheckpoint(ctx context.Context, mirrors repository.Mirrors, b *model.Bench) {
+	if fresh, err := freshtree.Selected(nil, b); err != nil || fresh {
+		return // merge observation refreshes the checkout as the daemon
+	}
 	w := b.Workspace
 	prior := w.Unmerged
 	w.Unmerged = nil

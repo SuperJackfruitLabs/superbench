@@ -10,6 +10,7 @@ import (
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/benchstate"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/crosshost"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/freshtree"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/handoffguard"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/handoffjournal"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hostidentity"
@@ -36,6 +37,9 @@ func inspect(ctx context.Context, a workspacerepair.Manager, rows benchstate.Dat
 	state, err := handoffjournal.StateID(tx)
 	if err != nil {
 		return p, err
+	}
+	if fresh, err := freshtree.Selected(nil, b); err != nil || fresh {
+		return p, errors.Join(freshtree.ErrUnavailable, err) // a Fresh tree is never exported
 	}
 	if err = a.Lifecycle.Stopped(workspace.Clone(b)); err != nil {
 		return p, err

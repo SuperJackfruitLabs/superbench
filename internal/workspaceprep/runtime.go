@@ -11,6 +11,7 @@ import (
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/benchstate"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/execution"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/freshtree"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/history"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/output"
@@ -38,6 +39,8 @@ type Manager struct {
 	Quota                   func(*model.Bench) error
 	ReserveLog              func(benchstate.Database) (uint64, error)
 	Seal                    func(string, *output.Capture, *int, bool) error
+	// Fresh selects the payload route for a Fresh tree; nil uses freshtree.Select.
+	Fresh freshtree.Selector
 }
 
 func (m Manager) validate() error {
@@ -91,7 +94,7 @@ func (m Manager) stopped(b *model.Bench) error {
 }
 
 func (m Manager) inspectMember(ctx context.Context, b *model.Bench, name string) error {
-	_, err := (workspace.Lifecycle{State: m.State, Data: m.Data, Git: m.Git}).InspectMember(ctx, b, name, false)
+	_, err := m.lifecycle().InspectMember(ctx, b, name, false)
 	return err
 }
 

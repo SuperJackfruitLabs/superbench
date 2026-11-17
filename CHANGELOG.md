@@ -6,6 +6,17 @@ stamps the section `## vX.Y.Z — YYYY-MM-DD`, and the release notes quote it.
 
 ## Unreleased
 
+- A Fresh workspace now initializes. With `fresh_payload` on, `bench workspace create` used to
+  stop at `initializing` with `lstat …/benches/<key>/<member>: permission denied`, because
+  benchd read the payload-private member tree itself. Now it reaches that tree only through the
+  payload helper, as the payload account: inspection, preparation inputs, setup, runs,
+  checkpoint and release. A checkpoint imports new commits into the daemon's mirror as a
+  bounded Git bundle exported by the payload. Some steps refuse a Fresh workspace before
+  touching it:
+  - archive, transfer and cross-host export;
+  - setup from a lockfile, or with explicit cache settings.
+
+  Workspaces in the legacy layout are unchanged.
 - Durable storage records survive a reboot that renumbers a device. The quota ledger's ready
   record and authority identify the state filesystem by its UUID (plus the subvolume on btrfs)
   instead of its device number, and initialization refuses a state filesystem without one.
