@@ -123,9 +123,13 @@ reconciliation on restart. Never infer release from systemd status alone. See
 [service recovery](service.md). `Restart=on-failure` does not retry operations.
 
 To upgrade, stop the service, reconcile outstanding executions with the installed
-binary, back up state and review schema compatibility. The current fresh-installer
-refuses differing installed files rather than performing an unattended upgrade.
-Do not delete private state, receipts or quota ledgers to bypass that refusal.
+binary, back up state and review schema compatibility. A plain rerun refuses
+differing installed files. `--upgrade --previous SHA256SUMS --backup DIR` replaces
+only the four executables. Each must be the previous reviewed build, as a plain
+root-owned file. It is backed up to the new directory and then replaced
+atomically, while the unit is stopped. Every other installed file must stay
+identical ([pilot installation](pilot-installation.md#upgrade-the-executables)).
+Do not delete private state, receipts or quota ledgers to bypass a refusal.
 
 ## Verification
 

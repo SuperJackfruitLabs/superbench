@@ -254,6 +254,45 @@ replaced. To change one, remove it deliberately and review the new file.
 Rerunning the installer accepts identical files and refuses changed ones, so do
 not pass `--activation` again after editing the file.
 
+### Upgrade the executables
+
+A rerun from a newer revision refuses with `existing file differs; refusing
+replacement: /usr/local/bin/bench`, because its executables differ. `--upgrade`
+is the one mode that replaces them:
+
+```sh
+systemctl stop superbench.service
+python3 deploy/linux/install.py --bin-dir /absolute/build/bin --root / --managed \
+  --upgrade --previous /absolute/previous-build/bin/SHA256SUMS \
+  --backup /var/lib/superbench-upgrade/<previous-revision>
+```
+
+- **What it replaces.** Only `bench`, `benchd`, `bench-quota` and
+  `bench-payload`. Every other installed file (the unit, sudo rule, environment,
+  sysusers, tmpfiles and the configuration documents) must still be byte-identical,
+  or the run refuses before it writes anything. A newer revision that changes one
+  of those files needs its own reviewed procedure.
+- **What it refuses.** It replaces an installed executable only if it is a plain
+  root-owned file, mode 0755 with one link, whose SHA-256 is the one `--previous`
+  lists for it. `--previous` is the previous build's `sha256sum` output. A locally
+  patched binary, a symlink, a hard link, a changed mode, or an executable that
+  `--previous` does not list refuses, before any effect.
+- **When it runs.** On the live root, `systemctl show` must report the unit
+  `inactive` or `failed`, with no main process.
+- **Backups.** `--backup` must be a new directory. The installer creates it
+  (mode 0700) and writes each executable it replaces there, with a
+  `SHA256SUMS`, before it replaces anything.
+- **Atomicity.** Each executable is written beside its target, synced, then
+  renamed over it: a reader sees the old file or the new one, never a partial
+  one. If the run stops partway, rerun the same command with a new `--backup`.
+  Executables that already match are skipped, and the rest still match
+  `--previous`.
+- **Rollback.** Stop the unit and run the same command with the backup's
+  binaries as `--bin-dir` and the new build's `SHA256SUMS` as `--previous`.
+- **Other flags.** `--upgrade` combines with the flags of the original install
+  (`--prepare`, `--identity`, `--activation`, `--storage`). They keep their own
+  rules, and only the executables get upgrade semantics.
+
 ### Indexed storage
 
 `--storage` sets up the storage the Fresh payload layout needs. The payload

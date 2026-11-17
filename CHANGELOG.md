@@ -6,6 +6,15 @@ stamps the section `## vX.Y.Z — YYYY-MM-DD`, and the release notes quote it.
 
 ## Unreleased
 
+- `install.py --upgrade --previous SHA256SUMS --backup DIR` replaces the four installed
+  executables with a newer revision's, while the unit is stopped.
+  - Each executable must be the previous reviewed build, as a plain root-owned file. It is
+    backed up to the new directory and then renamed atomically over the old one.
+  - A foreign or changed executable, or any differing configuration file, refuses before any
+    effect.
+
+  A plain rerun still refuses differing files. "Reinitialize the indexed ledger" now uses this
+  mode, unmounts before `mkfs.xfs` and reruns `configure-host`.
 - A Fresh workspace now initializes. With `fresh_payload` on, `bench workspace create` used to
   stop at `initializing` with `lstat …/benches/<key>/<member>: permission denied`, because
   benchd read the payload-private member tree itself. Now it reaches that tree only through the
