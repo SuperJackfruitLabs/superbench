@@ -66,11 +66,12 @@ func TestFiniteIOBodyBudgetAndCanonicalInputBeforeAnyConsumer(t *testing.T) {
 	if _, err := ParseMedia(raw, FiniteIOContentType); err != nil {
 		t.Fatal(err)
 	}
-	raw = append(raw, bytes.Repeat([]byte(" "), finiteio.MaxBody-len(raw))...)
-	if _, err := ParseMedia(raw, FiniteIOContentType); err != nil {
+	// Pad inside the io object: only the io value may use the widened budget.
+	raw = bytes.Replace(raw, []byte(`"io":{`), append([]byte(`"io":{`), bytes.Repeat([]byte(" "), finiteio.MaxBody-len(raw))...), 1)
+	if _, err := ParseMedia(raw, FiniteIOContentType); err != nil || len(raw) != finiteio.MaxBody {
 		t.Fatal("exact profiled body bound refused", err)
 	}
-	if _, err := ParseMedia(append(raw, ' '), FiniteIOContentType); !errors.Is(err, ErrInvalid) {
+	if _, err := ParseMedia(bytes.Replace(raw, []byte(`"io":{`), []byte(`"io":{ `), 1), FiniteIOContentType); !errors.Is(err, ErrInvalid) {
 		t.Fatal("profile body overflow accepted", err)
 	}
 	for _, value := range []string{"YR==", "YQ", "YQ==\\n", "_w=="} {

@@ -1,7 +1,6 @@
 package operationbody
 
 import (
-	"bytes"
 	"encoding/base64"
 	"errors"
 	"net/http/httptest"
@@ -70,7 +69,7 @@ func TestEnabledGateRequiresExactProfileAndIOAgreementWithinBounds(t *testing.T)
 		"profile-without-io":   {protocolv2.FiniteIOContentType, legacyRun, 0},
 		"profile-on-setup":     {protocolv2.FiniteIOContentType, strings.Replace(finiteRun([]byte{0}), `"run"`, `"setup"`, 1), 0},
 		"decoded-input-over":   {protocolv2.FiniteIOContentType, finiteRun(make([]byte, finiteio.MaxBytes+1)), 0},
-		"body-over-2mib":       {protocolv2.FiniteIOContentType, large + strings.Repeat(" ", finiteio.MaxBody-len(large)+1), 413},
+		"body-over-2mib":       {protocolv2.FiniteIOContentType, strings.Replace(large, `"io":{`, `"io":{`+strings.Repeat(" ", finiteio.MaxBody-len(large)+1), 1), 413},
 		"unknown-profile":      {"application/json; profile=unknown", finiteRun([]byte{0}), 415},
 		"duplicate-profile":    {protocolv2.FiniteIOContentType + "; profile=superbench.finite-io.v1", finiteRun([]byte{0}), 415},
 		"unprofiled-over-64ki": {"application/json", finiteRun(make([]byte, 64<<10)), 413},
@@ -80,8 +79,8 @@ func TestEnabledGateRequiresExactProfileAndIOAgreementWithinBounds(t *testing.T)
 			t.Fatal("finite refusal", name, status, err)
 		}
 	}
-	exact := large + strings.Repeat(" ", finiteio.MaxBody-len(large))
-	if _, status, err := classify(t, true, protocolv2.FiniteIOContentType, exact); status != 0 || err != nil || !bytes.HasSuffix([]byte(exact), []byte(" ")) {
+	exact := strings.Replace(large, `"io":{`, `"io":{`+strings.Repeat(" ", finiteio.MaxBody-len(large)), 1)
+	if _, status, err := classify(t, true, protocolv2.FiniteIOContentType, exact); status != 0 || err != nil || len(exact) != finiteio.MaxBody {
 		t.Fatal("exact 2 MiB profiled body refused", status, err)
 	}
 }

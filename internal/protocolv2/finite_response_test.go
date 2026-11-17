@@ -211,3 +211,54 @@ func TestFiniteReceiptLookupAloneRaisesOriginalBodyBound(t *testing.T) {
 		}
 	}
 }
+
+func TestFiniteProfileWidensOnlyTheIOValue(t *testing.T) {
+	base := string(finiteRequestFixture())
+	argv := func(n, size int) string {
+		args := make([]string, n)
+		for i := range args {
+			args[i] = strings.Repeat("a", size)
+		}
+		raw, _ := json.Marshal(args)
+		return strings.Replace(base, `["worker"]`, string(raw), 1)
+	}
+	// About 800 KB of argv under the profile: refused, as without the profile.
+	if _, err := ParseFinite([]byte(argv(101, 8000))); !errors.Is(err, ErrInvalid) {
+		t.Fatal("profile widened argv beyond the request budget", err)
+	}
+	// Metadata just inside 64 KiB, with the largest input, still parses.
+	large := strings.Replace(argv(7, 8000), `"AAEC"`, `"`+strings.Repeat("A", 1398100)+`"`, 1)
+	if _, err := ParseFinite([]byte(large)); err != nil || len(large) <= MaxBody {
+		t.Fatal("legacy-sized metadata with a large input refused", len(large), err)
+	}
+	if _, err := ParseFinite([]byte(argv(9, 8000))); !errors.Is(err, ErrInvalid) {
+		t.Fatal("metadata over 64 KiB accepted", err)
+	}
+}
+
+func TestFiniteCancelAndLookupTargetIsTheExactTypedDigest(t *testing.T) {
+	request, err := ParseFinite(finiteRequestFixture())
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest, _ := request.Digest()
+	cancel, err := NewCancelRequest(request)
+	if err != nil || cancel.TargetRequestID != "run-1" || cancel.TargetDigest != digest {
+		t.Fatal("finite cancel target", cancel, err)
+	}
+	legacy := request
+	legacy.IO = nil
+	plain, err := NewCancelRequest(legacy)
+	if err != nil || plain.TargetDigest == digest {
+		t.Fatal("io absent from the cancel target digest", err)
+	}
+	lookup, err := NewReceiptLookupRequest(request)
+	if err != nil || lookup.TargetDigest != digest {
+		t.Fatal("finite lookup target", err)
+	}
+	setup := request
+	setup.Operation = "setup"
+	if _, err := NewCancelRequest(setup); !errors.Is(err, ErrInvalid) {
+		t.Fatal("io on setup produced a cancel target", err)
+	}
+}
