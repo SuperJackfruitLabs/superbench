@@ -364,12 +364,27 @@ service still masked (do not unmask or start it):
 1. back up `/var/lib/superbench-quota` and the error output;
 2. remove `/var/lib/superbench-quota/ledger` and
    `/var/lib/superbench-quota/ledger.format-v2`, leaving the directory itself;
-3. recreate the data filesystem with project quotas (`mkfs.xfs` on its device or
-   image), update the fstab or mount unit if it names the filesystem UUID, and
-   mount it again; the first install needs an empty filesystem with no quota
-   projects;
+3. recreate the data filesystem with project quotas, as below. The first install
+   needs an empty filesystem with no quota projects;
 4. rerun the same installer command, `--storage` included. It keeps the
    identical `storage.json` and the mask, initializes again and then unmasks.
+
+To recreate the filesystem, unmount it first: `mkfs.xfs` must never run on a
+mounted device. Format the device the volume is mounted from: the fixed loop
+device (above) or the dedicated partition, never an image file through another
+loop device:
+
+```sh
+findmnt -n -o SOURCE /srv/superbench-data              # e.g. /dev/loop7, the fixed loop device
+umount /srv/superbench-data
+mkfs.xfs -f /dev/loop7                                 # the same device
+blkid -s UUID -o value /dev/loop7                      # the new UUID
+# put the new UUID in the fstab line, then: systemctl daemon-reload
+mount /srv/superbench-data
+xfs_quota -x -c 'state -p' /srv/superbench-data        # accounting and enforcement ON
+```
+
+Never format a loop device that another service uses.
 
 benchd also checks the journal at start: with `fresh_payload` on, it refuses to
 start unless the helper's `operation-info` opens the indexed journal.
@@ -398,15 +413,22 @@ the earlier revision installed. To reinitialize the storage as a first install:
    run `systemctl daemon-reload`, so the installer masks the service and
    initializes again instead of refusing an installed unit;
 5. unmount the data volume (`umount /srv/superbench-data`), then recreate the
-   data filesystem as in step 3 of
+   data filesystem as in
    [Recover a partial initialization](#recover-a-partial-initialization) and
    mount it again: its quota owner anchor belongs to the removed ledger, and
    `mkfs.xfs` must never run on a mounted filesystem;
 6. rerun the same installer command, `--storage` included, from the new revision.
-   Leave out `--activation` if you have edited `/etc/superbench/activation.json`;
+   Its executables differ from the installed ones, so add `--upgrade`, with the
+   installed build's `SHA256SUMS` as `--previous`, the new build's as `--sums`
+   and a new `--backup` directory
+   ([Upgrade the executables](#upgrade-the-executables)). Leave out
+   `--activation` if you have edited `/etc/superbench/activation.json`;
 7. rerun `bench configure-host` as the service account, with the same options as
-   in the first install (below): the new filesystem has none of the shared
-   projects it applied.
+   in the first install (below), before the first start: the new filesystem has
+   none of the fixed shared store and mirror projects or their directories, and
+   `configure-host` applies them;
+8. start the service with every switch off, then turn on the switches
+   ([Activation](#activation)).
 
 The same refusal on a host initialized by the current revision means the storage
 really changed: another filesystem is mounted, or the policy, ledger or anchor
