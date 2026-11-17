@@ -89,21 +89,36 @@ func spawn(ctx context.Context, p payloadpolicy.Policy, frame []byte, s *scope) 
 	cmd.Stdin = bytes.NewReader(frame)
 	out, diagnostic := &capped{max: cleanworker.MaxFrame}, &capped{max: 64 << 10}
 	cmd.Stdout, cmd.Stderr = out, diagnostic
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Credential:  &syscall.Credential{Uid: p.DaemonUID, Gid: p.DaemonGID, Groups: []uint32{}},
-		Pdeathsig:   syscall.SIGKILL,
-		UseCgroupFD: true,
-		CgroupFD:    s.fd,
-	}
+	cmd.SysProcAttr = workerAttributes(p, s.fd)
 	cmd.Cancel = s.kill
 	cmd.WaitDelay = 2 * time.Second
 	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("clean worker: %w: %s", err, strings.TrimSpace(string(diagnostic.raw)))
+		return nil, workerError(err, diagnostic.raw)
 	}
 	if out.over || diagnostic.over {
 		return nil, ErrRecovery
 	}
 	return out.raw, nil
+}
+
+// workerAttributes are the worker's process attributes: the daemon's
+// credentials with no groups, a session of its own (no controlling tty and out
+// of the operator's foreground process group), SIGKILL when the forking thread
+// dies, and its own cgroup.
+func workerAttributes(p payloadpolicy.Policy, cgroup int) *syscall.SysProcAttr {
+	return &syscall.SysProcAttr{
+		Credential:  &syscall.Credential{Uid: p.DaemonUID, Gid: p.DaemonGID, Groups: []uint32{}},
+		Setsid:      true,
+		Pdeathsig:   syscall.SIGKILL,
+		UseCgroupFD: true,
+		CgroupFD:    cgroup,
+	}
+}
+
+// workerError quotes the worker's diagnostic: it can name daemon-controlled
+// paths, and must never reach root's terminal as raw bytes.
+func workerError(err error, diagnostic []byte) error {
+	return fmt.Errorf("clean worker: %w: %s", err, strconv.Quote(strings.TrimSpace(string(diagnostic))))
 }
 
 // restrictThread sets no_new_privs and empties the capability bounding set on
@@ -171,11 +186,12 @@ func newScope(policyRoot string) (*scope, error) {
 	if _, err = os.Stat(filepath.Join(root, "cgroup.controllers")); err != nil {
 		return nil, errors.Join(ErrRecovery, err)
 	}
+	sweep(root)
 	var random [16]byte
 	if _, err = rand.Read(random[:]); err != nil {
 		return nil, err
 	}
-	path := filepath.Join(root, "superbench-clean-"+hex.EncodeToString(random[:]))
+	path := filepath.Join(root, scopePrefix+hex.EncodeToString(random[:]))
 	if err = os.Mkdir(path, 0700); err != nil {
 		return nil, err
 	}
@@ -208,12 +224,57 @@ func scopeRoot(policyRoot string) (string, error) {
 	if err != nil || len(raw) > 64<<10 {
 		return "", errors.Join(ErrRecovery, err)
 	}
+	return ownCgroup(raw)
+}
+
+// ownCgroup reads the cgroup v2 path from /proc/self/cgroup: the single
+// "0::/path" line, canonical and absolute.
+func ownCgroup(raw []byte) (string, error) {
+	found := ""
 	for _, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
-		if own, ok := strings.CutPrefix(line, "0::"); ok && strings.HasPrefix(own, "/") && filepath.Clean(own) == own {
-			return filepath.Join("/sys/fs/cgroup", own), nil
+		own, ok := strings.CutPrefix(line, "0::")
+		if !ok {
+			continue
 		}
+		if found != "" || !strings.HasPrefix(own, "/") || filepath.Clean(own) != own || strings.Contains(own, " (deleted)") {
+			return "", ErrRecovery
+		}
+		found = filepath.Join("/sys/fs/cgroup", own)
 	}
-	return "", ErrRecovery
+	if found == "" {
+		return "", ErrRecovery
+	}
+	return found, nil
+}
+
+const scopePrefix = "superbench-clean-"
+
+// staleScope reports a name this code gives a worker cgroup.
+func staleScope(name string) bool {
+	id, ok := strings.CutPrefix(name, scopePrefix)
+	return ok && len(id) == 32 && isHex(id)
+}
+
+// sweep removes worker cgroups an earlier crash left under root, but only
+// empty ones: unpopulated and without child cgroups. rmdir refuses anything
+// else, and a scope that is populated is never touched. Errors are ignored:
+// a leftover scope holds nothing and costs nothing.
+func sweep(root string) {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() || !staleScope(entry.Name()) {
+			continue
+		}
+		path := filepath.Join(root, entry.Name())
+		events, err := os.ReadFile(filepath.Join(path, "cgroup.events"))
+		if err != nil || !bytes.Contains(events, []byte("populated 0\n")) {
+			continue
+		}
+		_ = unix.Rmdir(path)
+	}
 }
 
 func (s *scope) kill() error {
