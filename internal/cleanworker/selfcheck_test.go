@@ -1,0 +1,78 @@
+package cleanworker
+
+import (
+	"errors"
+	"strings"
+	"testing"
+)
+
+const goodStatus = "Name:\tbench-quota\nUmask:\t0022\nState:\tR (running)\nUid:\t61001\t61001\t61001\t61001\nGid:\t61003\t61003\t61003\t61003\nFDSize:\t64\nGroups:\t\nCapInh:\t0000000000000000\nCapPrm:\t0000000000000000\nCapEff:\t0000000000000000\nCapBnd:\t0000000000000000\nCapAmb:\t0000000000000000\nNoNewPrivs:\t1\nSeccomp:\t0\n"
+
+var daemon = Identity{61001, 61003}
+
+func TestStatusRefusesAnyCredentialTheDropDidNotProduce(t *testing.T) {
+	if err := verifyStatus([]byte(goodStatus), daemon); err != nil {
+		t.Fatal("dropped status refused", err)
+	}
+	for name, c := range map[string]struct{ from, to, reason string }{
+		"real-uid":      {"Uid:\t61001", "Uid:\t1000", "Uid"},
+		"saved-uid":     {"61001\t61001\nGid", "61001\t0\nGid", "Uid"},
+		"fs-gid":        {"61003\t61003\nFDSize", "61003\t0\nFDSize", "Gid"},
+		"extra-group":   {"Groups:\t\n", "Groups:\t27\n", "Groups"},
+		"root-group":    {"Groups:\t\n", "Groups:\t0\n", "Groups"},
+		"inheritable":   {"CapInh:\t0000000000000000", "CapInh:\t0000000000000001", "CapInh"},
+		"permitted":     {"CapPrm:\t0000000000000000", "CapPrm:\t0000000000000400", "CapPrm"},
+		"effective":     {"CapEff:\t0000000000000000", "CapEff:\t000001ffffffffff", "CapEff"},
+		"bounding":      {"CapBnd:\t0000000000000000", "CapBnd:\t000001ffffffffff", "CapBnd"},
+		"ambient":       {"CapAmb:\t0000000000000000", "CapAmb:\t0000000000000001", "CapAmb"},
+		"privs":         {"NoNewPrivs:\t1", "NoNewPrivs:\t0", "NoNewPrivs"},
+		"missing-privs": {"NoNewPrivs:\t1\n", "", "NoNewPrivs"},
+		"missing-uid":   {"Uid:\t61001\t61001\t61001\t61001\n", "", "Uid"},
+		"duplicate":     {"Groups:\t\n", "Groups:\t\nGroups:\t\n", "duplicate"},
+	} {
+		raw := strings.Replace(goodStatus, c.from, c.to, 1)
+		if raw == goodStatus {
+			t.Fatalf("%s: fixture replacement did not apply", name)
+		}
+		err := verifyStatus([]byte(raw), daemon)
+		if !errors.Is(err, ErrWorker) || !strings.Contains(err.Error(), c.reason) {
+			t.Errorf("%s status admitted or misreported: %v", name, err)
+		}
+	}
+	if err := verifyStatus([]byte(goodStatus), Identity{61002, 61003}); !errors.Is(err, ErrWorker) {
+		t.Error("another uid admitted", err)
+	}
+	if err := verifyStatus([]byte(goodStatus+strings.Repeat("x", 64<<10)), daemon); !errors.Is(err, ErrWorker) {
+		t.Error("oversize status admitted", err)
+	}
+}
+
+func TestDescriptorsMustBeExactlyStdio(t *testing.T) {
+	if err := verifyDescriptors([]string{".", "..", "0", "1", "2", "3"}, 3); err != nil {
+		t.Fatal("stdio plus the listing descriptor refused", err)
+	}
+	for name, names := range map[string][]string{
+		"inherited":    {"0", "1", "2", "3", "4"},
+		"no-stderr":    {"0", "1", "3"},
+		"stderr-moved": {"0", "1", "5", "3"},
+		"high":         {"0", "1", "2", "3", "1023"},
+		"padded":       {"0", "1", "02", "3"},
+		"not-a-number": {"0", "1", "2", "3", "x"},
+		"negative":     {"0", "1", "2", "3", "-1"},
+	} {
+		if err := verifyDescriptors(names, 3); !errors.Is(err, ErrWorker) {
+			t.Errorf("%s descriptors admitted: %v", name, err)
+		}
+	}
+}
+
+func TestArgumentsAreTwoCanonicalNonzeroIDs(t *testing.T) {
+	if got, err := parseArgs(Arguments(daemon)); err != nil || got != daemon {
+		t.Fatal("canonical arguments refused", got, err)
+	}
+	for _, bad := range [][]string{nil, {"61001"}, {"61001", "61003", "x"}, {"0", "61003"}, {"61001", "0"}, {"061001", "61003"}, {"+61001", "61003"}, {"4294967296", "1"}, {"-1", "1"}} {
+		if _, err := parseArgs(bad); !errors.Is(err, ErrWorker) {
+			t.Errorf("arguments %q admitted: %v", bad, err)
+		}
+	}
+}
