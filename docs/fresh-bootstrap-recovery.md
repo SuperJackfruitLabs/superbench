@@ -1,6 +1,7 @@
 # Retained Fresh bootstrap evidence
 
-Fresh payload materialization remains disabled. Interrupted or cancelled Fresh
+Fresh payload materialization is off unless `fresh_payload` is set in the root-owned
+activation file (see [pilot installation](pilot-installation.md#activation)). Interrupted or cancelled Fresh
 allocations are recovered by the direct-root operator steps below, from phase
 `reserved` through `staged`; a `transferring` tree stays parked. Inspection
 alone does not release quota, repair a workspace or authorize retry.

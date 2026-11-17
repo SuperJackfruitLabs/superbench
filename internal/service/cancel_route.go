@@ -61,8 +61,9 @@ func newOperationIntent(request protocolv2.Request, uid uint32, digest string) (
 	return i, nil
 }
 
+// Only the private listener (cancellation or receipt lookup) has connection classes.
 func (s *Server) promoteNormal(r *http.Request) error {
-	if !s.proposedCancellation {
+	if !s.proposedCancellation && !s.proposedReceiptLookup {
 		return nil
 	}
 	c, _ := r.Context().Value(connectionKey{}).(*peerConn)

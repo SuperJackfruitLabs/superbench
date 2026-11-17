@@ -22,8 +22,8 @@ type Store struct {
 	CgroupRoot    string
 	MirrorTimeout time.Duration
 	controls      context.Context
-	// Enable only after Fresh allocations have a verified operator release/reconcile path.
-	proposedFreshPayload bool
+	// Set only by the service from the root-owned activation file (internal/activation).
+	ProposedFreshPayload bool
 	reapAfterDelete      func() error
 	collectAfterDelete   func() error
 	executor             executionBackend

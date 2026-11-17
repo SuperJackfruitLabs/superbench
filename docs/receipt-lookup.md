@@ -21,5 +21,6 @@ they do not remove the shared database's serialization requirements.
 A missing receipt, including after state replacement, never claims or dispatches
 anything. A client must park the original attempt rather than resending its
 operation body. Any historical token remains private and may be used only under
-the original operation's separate current authorization rules. Public `Serve`
-keeps this route disabled; no request can enable it.
+the original operation's separate current authorization rules. The route is off
+by default. Only `receipt_lookup` in the root-owned activation file turns it on
+(see [pilot installation](pilot-installation.md#activation)); no request can.

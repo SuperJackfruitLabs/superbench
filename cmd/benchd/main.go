@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/activation"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/bench"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/buildinfo"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/service"
@@ -75,7 +77,13 @@ func run() error {
 	if e != nil {
 		return e
 	}
+	// Activation comes only from the fixed root-owned file, never from flags or the environment.
+	switches, e := activation.Load()
+	if e != nil {
+		return fmt.Errorf("%s: %w", activation.FixedPath, e)
+	}
+	log.Printf("activation: %s", switches)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	return service.Serve(ctx, service.Config{Socket: *socket, Store: bench.Store{State: *state, Data: *data, CgroupRoot: *cgroup, MirrorTimeout: *mirrorTimeout}, Operators: ops, Readers: read, MaxActive: *active, RetentionInterval: *retentionInterval, ArchiveInterval: *archiveInterval})
+	return service.Serve(ctx, service.Config{Socket: *socket, Store: bench.Store{State: *state, Data: *data, CgroupRoot: *cgroup, MirrorTimeout: *mirrorTimeout}, Operators: ops, Readers: read, MaxActive: *active, RetentionInterval: *retentionInterval, ArchiveInterval: *archiveInterval, Activation: switches})
 }

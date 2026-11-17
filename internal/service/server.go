@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"mime"
@@ -12,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/activation"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/autoarchive"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/bench"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/maintenance"
@@ -25,12 +27,13 @@ type Config struct {
 	MaxActive          int
 	RetentionInterval  time.Duration
 	ArchiveInterval    time.Duration
+	Activation         activation.Switches // only from the root-owned activation file
 }
 type Server struct {
 	proposedCancellation            bool
 	proposedReceiptLookup           bool
 	proposedRegistrationObservation bool
-	proposedFiniteIO                bool // never set by Serve; see docs/finite-io.md
+	proposedFiniteIO                bool // only Config.Activation sets it; see docs/finite-io.md
 	receiptSlots                    chan struct{}
 	cancelWake                      chan struct{}
 	config                          Config
@@ -63,18 +66,25 @@ func serve(ctx context.Context, c Config, proposed bool) error {
 	if c.ArchiveInterval < time.Second || c.ArchiveInterval > 24*time.Hour {
 		return errors.New("invalid archive interval")
 	}
+	a := c.Activation
 	if proposed {
+		a.Cancellation, a.ReceiptLookup = true, true
+	}
+	c.Store.ProposedFreshPayload = a.FreshPayload
+	private := a.Cancellation || a.ReceiptLookup
+	// An activated daemon never migrates: refuse state an earlier benchd has not brought current.
+	if a.Any() {
 		if err := c.Store.RequireOperationState(); err != nil {
-			return err
+			return fmt.Errorf("activated paths need state migrated by a start without them: %w", err)
 		}
 	}
-	listener, lock, e := listenMode(c.Socket, c.Store.State, proposed)
+	listener, lock, e := listenMode(c.Socket, c.Store.State, private)
 	if e != nil {
 		return e
 	}
 	defer listener.Close()
 	defer lock.Close()
-	if !proposed {
+	if !a.Any() {
 		if e = c.Store.Migrate(); e != nil {
 			return e
 		}
@@ -86,9 +96,9 @@ func serve(ctx context.Context, c Config, proposed bool) error {
 	defer r.Close()
 	lifetime, cancel := context.WithCancel(ctx)
 	defer cancel()
-	s := &Server{config: c, ctx: lifetime, receipts: r, slots: make(chan struct{}, c.MaxActive), proposedCancellation: proposed, proposedReceiptLookup: proposed, receiptSlots: make(chan struct{}, 2), cancelWake: make(chan struct{}, 1)}
+	s := &Server{config: c, ctx: lifetime, receipts: r, slots: make(chan struct{}, c.MaxActive), proposedCancellation: a.Cancellation, proposedReceiptLookup: a.ReceiptLookup, proposedRegistrationObservation: a.RegistrationObservation, proposedFiniteIO: a.FiniteIO, receiptSlots: make(chan struct{}, 2), cancelWake: make(chan struct{}, 1)}
 	operationDone := make(chan struct{})
-	if proposed {
+	if private {
 		go func() {
 			defer close(operationDone)
 			s.runOperationReconciler(lifetime, s.cancelWake, func(err error) { log.Printf("operation reconciliation blocked: %v", err) })

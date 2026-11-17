@@ -1,7 +1,8 @@
 # Operation cancellation candidate
 
-This proposed extension is private and unavailable through production configuration
-or `Serve`. A schema-valid observation is not independent evidence that writers
+This proposed extension is private and off by default. Only `cancellation` in the
+root-owned activation file turns it on (see
+[pilot installation](pilot-installation.md#activation)). A schema-valid observation is not independent evidence that writers
 were stopped. The accepted lifecycle contract is unchanged.
 
 The private transport keeps the existing 64 normal connection reservations and
