@@ -3,7 +3,6 @@
 package freshrecovery
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -354,11 +353,28 @@ func sweep(root string) {
 		}
 		path := filepath.Join(root, entry.Name())
 		events, err := os.ReadFile(filepath.Join(path, "cgroup.events"))
-		if err != nil || !bytes.Contains(events, []byte("populated 0\n")) {
+		if err != nil || !unpopulated(events) {
 			continue
 		}
 		_ = unix.Rmdir(path)
 	}
+}
+
+// unpopulated parses cgroup.events: exactly one "populated" key whose value is
+// 0, whatever the surrounding whitespace.
+func unpopulated(events []byte) bool {
+	found := 0
+	for _, line := range strings.Split(string(events), "\n") {
+		f := strings.Fields(line)
+		if len(f) == 0 || f[0] != "populated" {
+			continue
+		}
+		if len(f) != 2 || f[1] != "0" {
+			return false
+		}
+		found++
+	}
+	return found == 1
 }
 
 func (s *scope) kill() error {
@@ -379,7 +395,7 @@ func (s *scope) fence() error {
 		if err != nil {
 			return err
 		}
-		if bytes.Contains(raw, []byte("populated 0\n")) {
+		if unpopulated(raw) {
 			return os.Remove(s.path)
 		}
 		if time.Now().After(deadline) {

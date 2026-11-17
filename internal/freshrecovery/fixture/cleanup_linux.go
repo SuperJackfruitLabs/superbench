@@ -282,6 +282,21 @@ func (e *env) isolatedWorker() error {
 	}
 }
 
+// statusFields parses /proc/PID/status as the worker's own self-check does:
+// the value after the key's tab, with its whitespace-separated fields joined by
+// single spaces, so trailing or repeated whitespace (an empty Groups line is
+// "Groups:\t \n" on some kernels) never decides a check.
+func statusFields(raw []byte) map[string]string {
+	fields := map[string]string{}
+	for _, line := range strings.Split(string(raw), "\n") {
+		key, value, ok := strings.Cut(line, ":")
+		if ok {
+			fields[key] = strings.Join(strings.Fields(value), " ")
+		}
+	}
+	return fields
+}
+
 // checkWorker checks every daemon-uid process; a nonzero signal is sent to
 // each first.
 func (e *env) checkWorker(signal syscall.Signal) error {
@@ -297,7 +312,8 @@ func (e *env) checkWorker(signal syscall.Signal) error {
 		}
 		dir := filepath.Join("/proc", entry.Name())
 		status, err := os.ReadFile(filepath.Join(dir, "status"))
-		if err != nil || !strings.Contains(string(status), "\nUid:\t"+strconv.Itoa(e.p.OwnerUID)+"\t") {
+		fields := statusFields(status)
+		if err != nil || strings.Fields(fields["Uid"]) == nil || strings.Fields(fields["Uid"])[0] != strconv.Itoa(e.p.OwnerUID) {
 			continue
 		}
 		found++
@@ -330,9 +346,9 @@ func (e *env) checkWorker(signal syscall.Signal) error {
 		if err != nil || !strings.Contains(string(cgroup), "/superbench-clean-") {
 			return fmt.Errorf("worker %d outside a worker cgroup: %q %v", pid, cgroup, err)
 		}
-		for _, want := range []string{"\nTracerPid:\t0\n", "\nNoNewPrivs:\t1\n", "\nCapBnd:\t0000000000000000\n", "\nGroups:\t\n"} {
-			if !strings.Contains(string(status), want) {
-				return fmt.Errorf("worker %d status lacks %q: %s", pid, want, status)
+		for key, want := range map[string]string{"TracerPid": "0", "NoNewPrivs": "1", "CapBnd": "0000000000000000", "Groups": ""} {
+			if got, ok := fields[key]; !ok || got != want {
+				return fmt.Errorf("worker %d status %s is %q, want %q: %s", pid, key, got, want, status)
 			}
 		}
 	}

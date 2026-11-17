@@ -183,3 +183,16 @@ func TestExchangeSendsTheRequestOnlyAfterTheReadyLine(t *testing.T) {
 		t.Error("oversize reply accepted", err)
 	}
 }
+
+func TestUnpopulatedParsesCgroupEvents(t *testing.T) {
+	for _, raw := range []string{"populated 0\nfrozen 0\n", "frozen 0\npopulated 0", "populated\t0 \n"} {
+		if !unpopulated([]byte(raw)) {
+			t.Errorf("%q read as populated", raw)
+		}
+	}
+	for _, raw := range []string{"populated 1\nfrozen 0\n", "", "frozen 0\n", "populated 0\npopulated 1\n", "populated 0 1\n", "populated\n"} {
+		if unpopulated([]byte(raw)) {
+			t.Errorf("%q read as unpopulated", raw)
+		}
+	}
+}
