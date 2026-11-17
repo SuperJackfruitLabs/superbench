@@ -332,6 +332,29 @@ the file exists and refuses to start. At start
 benchd logs one line with the effective switches, for example
 `activation: fresh_payload=false finite_io=false receipt_lookup=false cancellation=false registration_observation=false`.
 
+**Existing non-Fresh workspaces.** `fresh_payload` changes only new v2 `create`
+and `recover`. A v2 workspace that completed in the non-Fresh layout before the
+switch went on (for example one created with `cancellation` on and
+`fresh_payload` off) keeps that layout and can still be leased while Fresh is on:
+lease, setup, run, checkpoint, release and stop work as before. This is
+intended, so that work in flight is not stranded, but that workspace gets none of
+the Fresh guarantees: its commands run as the `superbench` account rather than
+the payload account, without the payload helper, and finite I/O and registration
+observation do not apply to it. It is never converted in place. To move the work
+to the Fresh layout, checkpoint and release it, then create a new workspace from
+the checkpointed branches. An incomplete non-Fresh workspace is not adopted
+either (see [Current gaps](#current-gaps)).
+
+**Cancellation and receipt lookup are API-only.** The `bench` CLI has no cancel
+or receipt-lookup command: both exist for the coordinator, which sends them over
+the socket. An operator who needs one uses an HTTP client on
+`/run/superbench/benchd.sock`: `POST /v2/operations` with `"operation":"cancel"`
+for [cancellation](operation-cancellation.md), or `POST /v2/receipts/lookup`
+for [receipt lookup](receipt-lookup.md). Each names the original request ID and
+the typed digest of the original request, so keep the exact original request
+(the CLI's `--request-id` sets the ID). Cancelling a request ID that was never
+dispatched still records the cancellation, so that ID cannot be used afterwards.
+
 An activated daemon never migrates its state. After installing or upgrading
 benchd, start it once with every switch off so it brings the state current, stop
 it, then edit the file and start it again. Otherwise benchd refuses with
