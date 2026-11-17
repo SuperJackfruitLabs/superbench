@@ -153,31 +153,37 @@ func (a adapter) uses(pid int) (bool, error) {
 }
 
 // task checks one task's cwd, root, descriptors and file mappings. A task
-// that vanished is not use; any other unreadable part is an error.
+// that vanished is not use; unreadable descriptors are an error. Without a
+// readable map_files (unreadable, or absent on a kernel without
+// CONFIG_CHECKPOINT_RESTORE), any mapping on the data device in the task's
+// maps counts, after every other entry is checked.
 func (a adapter) task(base string) (bool, error) {
+	vanished := func() bool { _, err := os.Lstat(base); return gone(err) }
 	paths := []string{filepath.Join(base, "cwd"), filepath.Join(base, "root")}
-	for _, dir := range []string{"fd", "map_files"} {
-		entries, err := os.ReadDir(filepath.Join(base, dir))
-		if gone(err) {
-			if _, statErr := os.Lstat(base); gone(statErr) {
-				return false, nil
-			}
+	fds, err := os.ReadDir(filepath.Join(base, "fd"))
+	if err != nil {
+		if gone(err) && vanished() {
+			return false, nil
 		}
-		if err != nil && !gone(err) {
-			if dir == "map_files" {
-				// Without map_files, any mapping on the data device counts.
-				return a.mapsOnDevice(base)
-			}
-			return false, err
-		}
-		for _, e := range entries {
-			paths = append(paths, filepath.Join(base, dir, e.Name()))
-		}
+		return false, err
+	}
+	for _, e := range fds {
+		paths = append(paths, filepath.Join(base, "fd", e.Name()))
+	}
+	maps, err := os.ReadDir(filepath.Join(base, "map_files"))
+	if err != nil && gone(err) && vanished() {
+		return false, nil
+	}
+	for _, e := range maps {
+		paths = append(paths, filepath.Join(base, "map_files", e.Name()))
 	}
 	for _, path := range paths {
 		if using, err := a.entry(path); err != nil || using {
 			return true, nil
 		}
+	}
+	if err != nil {
+		return a.mapsOnDevice(base)
 	}
 	return false, nil
 }

@@ -186,31 +186,45 @@ func TestInstalledScansEveryTaskAndMapping(t *testing.T) {
 	}
 }
 
-// Without a readable map_files, a mapping of a file on the data device in
-// the task's maps counts as use.
-func TestInstalledFallsBackToMapsWithoutMapFiles(t *testing.T) {
-	if os.Getuid() == 0 {
-		t.Skip("root reads a mode-0 directory")
+// Without a readable map_files, the task's other entries still count, and
+// a mapping of a file on the data device in its maps counts too: map_files
+// unreadable (here a non-directory, which root cannot read as one either), or
+// absent on a kernel without CONFIG_CHECKPOINT_RESTORE.
+func TestInstalledWithoutMapFilesChecksEntriesThenMaps(t *testing.T) {
+	setMaps := func(t *testing.T, task string, device uint64) {
+		t.Helper()
+		line := fmt.Sprintf("7f00-7f01 r-xp 00000000 %02x:%02x 99 /srv/data/benches/card/lib.so\n", unix.Major(device), unix.Minor(device))
+		if err := os.WriteFile(filepath.Join(task, "maps"), []byte(line), 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
+	// (a) map_files unreadable while the task's cwd is in the bench.
 	h := newFakeHost(t)
-	h.process(t, "1500", 4321, "/")
+	h.process(t, "1500", 4321, filepath.Join(h.bench, "api"))
 	task := filepath.Join(h.proc, "1500", "task", "1500")
-	if err := os.Chmod(filepath.Join(task, "map_files"), 0); err != nil {
+	if err := os.Remove(filepath.Join(task, "map_files")); err != nil {
 		t.Fatal(err)
 	}
-	defer os.Chmod(filepath.Join(task, "map_files"), 0o700)
-	other := fmt.Sprintf("%02x:%02x", unix.Major(h.device)+1, unix.Minor(h.device))
-	if err := os.WriteFile(filepath.Join(task, "maps"), []byte("7f00-7f01 r-xp 00000000 "+other+" 99 /lib/x.so\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(task, "map_files"), nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
+	setMaps(t, task, h.device+1)
+	if err := h.adapter().liveness().Idle(); !errors.Is(err, ErrBusy) {
+		t.Fatalf("unreadable map_files hid the cwd: %v", err)
+	}
+	// (b) map_files absent while maps holds a mapping on the data device.
+	h = newFakeHost(t)
+	h.process(t, "1600", 4321, "/")
+	task = filepath.Join(h.proc, "1600", "task", "1600")
+	if err := os.Remove(filepath.Join(task, "map_files")); err != nil {
+		t.Fatal(err)
+	}
+	setMaps(t, task, h.device+1)
 	if err := h.adapter().liveness().Idle(); err != nil {
 		t.Fatalf("another device's mapping counted: %v", err)
 	}
-	own := fmt.Sprintf("%02x:%02x", unix.Major(h.device), unix.Minor(h.device))
-	if err := os.WriteFile(filepath.Join(task, "maps"), []byte("7f00-7f01 r-xp 00000000 "+own+" 99 /srv/data/benches/card/lib.so\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	setMaps(t, task, h.device)
 	if err := h.adapter().liveness().Idle(); !errors.Is(err, ErrBusy) {
-		t.Fatalf("a data-device mapping missed: %v", err)
+		t.Fatalf("absent map_files skipped maps: %v", err)
 	}
 }
