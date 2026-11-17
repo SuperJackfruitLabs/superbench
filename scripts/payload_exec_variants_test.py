@@ -35,9 +35,10 @@ class CausalTransforms(unittest.TestCase):
 
     def test_interposed_input_and_git_statements_survive_final_sweep_mutation(self):
         boundary = '\tphase = "executable"\n\tpath := "/usr/bin/git"\n'
-        for statement in ('\tphase = "input"\n\tif input != nil { _ = bindPayloadInput(input) }\n',
-                          '\tphase = "git-policy"\n\tif err := verifyManagedGit(); err != nil { return err }\n'):
-            execution = MODULE.replace_once(self.execution, '\tphase = "exec"\n', statement + '\tphase = "exec"\n')
+        # Interpose between enterPayload's final sweep and exec.
+        for statement in ('\t*phase = "input"\n\tif input != nil { _ = bindPayloadInput(input) }\n',
+                          '\t*phase = "git-policy"\n\tif err := verifyManagedGit(); err != nil { return err }\n'):
+            execution = MODULE.replace_once(self.execution, '\t*phase = "exec"\n', statement + '\t*phase = "exec"\n')
             variants = MODULE.variants(self.credentials, execution)
             guarded, mutant = variants['late-fd'][1], variants['late-fd-mutant'][1]
             self.assertEqual(guarded.split(boundary)[0], mutant.split(boundary)[0])
@@ -49,7 +50,7 @@ class CausalTransforms(unittest.TestCase):
 
     def test_missing_duplicate_final_sweep_and_executable_boundary_refuse(self):
         boundary = '\tphase = "executable"\n\tpath := "/usr/bin/git"\n'
-        sweep = '\tphase = "descriptors"\n\tif err := descriptorsCloseOnExec(); err != nil {\n\t\treturn err\n\t}\n'
+        sweep = '\t*phase = "descriptors"\n\tif err := descriptorsCloseOnExec(); err != nil {\n\t\treturn err\n\t}\n'
         before, suffix = self.execution.split(boundary)
         for altered in (suffix.replace(sweep, ''), suffix.replace(sweep, sweep + sweep)):
             with self.subTest():

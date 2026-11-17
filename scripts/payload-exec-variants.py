@@ -25,9 +25,10 @@ def variants(credentials, execution):
                         '\t// PRIVATE QA: root-only canary opened after both initial sweeps.\n'
                         '\tif _, err := syscall.Open("/run/superbench-exec-fixture-canary", syscall.O_RDONLY, 0); err != nil { return err }\n'
                         '\tphase = "credentials"\n')
-    final = '\tphase = "descriptors"\n\tif err := descriptorsCloseOnExec(); err != nil {\n\t\treturn err\n\t}\n'
-    # The executable-selection suffix has exactly one final sweep. Its next
-    # statement may be finite stdin binding or Git policy checks, not exec.
+    final = '\t*phase = "descriptors"\n\tif err := descriptorsCloseOnExec(); err != nil {\n\t\treturn err\n\t}\n'
+    # The executable-selection suffix has exactly one final sweep, in the shared
+    # enterPayload after its credential check. Its next statement may be finite
+    # stdin binding (or an interposed statement), not exec.
     boundary = '\tphase = "executable"\n\tpath := "/usr/bin/git"\n'
     if late.count(boundary) != 1:
         raise RuntimeError('causal overlay no longer matches exactly one source boundary')
