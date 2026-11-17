@@ -6,6 +6,13 @@ stamps the section `## vX.Y.Z — YYYY-MM-DD`, and the release notes quote it.
 
 ## Unreleased
 
+- The quota helper's storage authority no longer hashes the data mount's mount ID or device
+  number. A ledger that `install.py --storage` initializes in the host's mount namespace now
+  opens in the service unit's private namespace and after a reboot; before, every start with
+  `fresh_payload` on failed with `quota operation journal authority changed`. A ledger
+  initialized by an earlier revision is refused with a message that points to "Reinitialize the
+  indexed ledger" in `docs/pilot-installation.md`. The data volume must not be mounted with
+  `nouuid`.
 - First release, v0.0.1. SuperBench is an experimental single-host prototype, not a production
   system, and nothing here has been proven beyond what the repository's docs describe. The
   release carries the four commands the managed installer needs: `bench`, `benchd`,

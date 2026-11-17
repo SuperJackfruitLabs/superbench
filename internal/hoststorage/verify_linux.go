@@ -141,7 +141,7 @@ func (p Policy) inspectStorage(ctx context.Context, key string, locked bool, ori
 		if unit == "-b" {
 			want = a.Bytes / 1024
 		}
-		if e = verifyStorageQuota(report, a.ProjectID, want); e != nil {
+		if e = storageproof.VerifyQuota(report, a.ProjectID, want); e != nil {
 			return zero, e
 		}
 	}
@@ -169,19 +169,11 @@ func readStorageFile(path string, max int64) ([]byte, error) {
 }
 
 func managedStorageMount(ctx context.Context, root string, device uint64) (string, string, error) {
-	raw, err := storageCommand(ctx, "/usr/bin/findmnt", "--noheadings", "--raw", "--output", "ID,UUID,FSROOT,TARGET,MAJ:MIN", "--mountpoint", root)
+	raw, err := storageCommand(ctx, "/usr/bin/findmnt", "--noheadings", "--raw", "--output", storageproof.ManagedMountColumns, "--mountpoint", root)
 	if err != nil {
 		return "", "", err
 	}
-	return parseManagedStorageMount(raw, root, device)
-}
-
-func parseManagedStorageMount(raw []byte, root string, device uint64) (string, string, error) {
 	return storageproof.ParseManagedMount(raw, root, device)
-}
-
-func verifyStorageQuota(raw []byte, id uint32, want uint64) error {
-	return storageproof.VerifyQuota(raw, id, want)
 }
 
 func unmanagedStorageMount(root string) (string, error) {

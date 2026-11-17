@@ -5,9 +5,9 @@ package hoststorage
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/storagecustody"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/storageproof"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -97,14 +97,9 @@ func (p Policy) OperationAuthority(ctx context.Context) (string, error) {
 	if data != endData || ledgerRoot != endLedger || mount != endMount || uuid != endUUID {
 		return "", errors.New("operation storage authority changed during inspection")
 	}
-	canonical, err := json.Marshal(struct {
-		Domain                      string
-		Policy                      Policy
-		Data, Ledger                operationRoot
-		Mount, UUID, Header, Anchor string
-	}{"superbench.quota-operation-authority.v1", p, data, ledgerRoot, mount, uuid, header, storageDigest(anchor)})
+	digest, err := storageproof.AuthorityDigest(p, storageproof.Root(data), storageproof.Root(ledgerRoot), mount, uuid, header, storageDigest(anchor))
 	if err != nil {
 		return "", err
 	}
-	return storageDigest(canonical), ctx.Err()
+	return digest, ctx.Err()
 }
