@@ -43,7 +43,7 @@ banner is revised with the rest of the docs.
 
 The honesty rules live in `scripts/honesty.mjs`: no install commands, no version numbers, no local
 host, agent or team names, no "production-ready" or "secure isolation", and "production",
-"sandbox", "released" and "isolates untrusted" only when negated. When a check fails, fix the page,
+"sandbox", "released", "isolates untrusted" and "isolated"/"isolation" only when negated. When a check fails, fix the page,
 not the rule.
 
 ## What is deliberate about it

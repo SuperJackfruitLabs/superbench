@@ -39,11 +39,15 @@ export const OVERCLAIMS = [
   [/\b(?:multi-host|cross-host)\s+(?:coordination|service|leases?)\b/i, 'a multi-host claim'],
 ];
 
-/** Words allowed only when negated: "not production", "not a sandbox", "nothing isolates untrusted code". */
+/**
+ * Words allowed only when negated: "not production", "not a sandbox", "nothing isolates untrusted
+ * code", "no user or mount isolation", "per-bench isolation (none yet)".
+ */
 export const NEGATED_ONLY = [
   [/\bproduction\b/gi, 'the word "production"'],
   [/\bsandbox(?:ed|ing)?\b/gi, 'the word "sandbox"'],
   [/\bisolat\w*\s+untrusted\b/gi, 'isolating untrusted code'],
+  [/\bisolat(?:ed|ion|es|ing|e)\b/gi, 'the words "isolated" or "isolation"'],
   [/\b(?:is|are|was|been|now|already)\s+released\b/gi, 'a claim that it is released'],
 ];
 const NEGATION = /\b(?:not|no|nor|never|nothing|none|isn't|aren't|without|neither)\b/i;
@@ -83,7 +87,9 @@ export function problems(text) {
     for (const m of text.matchAll(re)) {
       // The negation must come in the same sentence, within a few words before the match.
       const before = text.slice(Math.max(0, m.index - 60), m.index).split(/[.!?:;]\s/).pop();
-      if (!NEGATION.test(before)) found.push(`${what}, not negated: "${ctx(m)}"`);
+      // Or a short parenthetical right after it, before the clause ends: "isolation (none yet)".
+      const after = text.slice(m.index + m[0].length, m.index + m[0].length + 20).match(/^\s*\(([^)]*)\)/)?.[1] ?? '';
+      if (!NEGATION.test(before) && !NEGATION.test(after)) found.push(`${what}, not negated: "${ctx(m)}"`);
     }
   }
   return found;
