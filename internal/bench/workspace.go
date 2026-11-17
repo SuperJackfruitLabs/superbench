@@ -51,13 +51,13 @@ func (s Store) workspaceGit(ctx context.Context, dir string, args ...string) (st
 func (s Store) workspacePreparation() workspaceprep.Manager {
 	return workspaceprep.Manager{State: s.State, Data: s.Data, CgroupRoot: s.CgroupRoot,
 		Update: s.transactionSQL, Read: s.read, Gate: s.executionGate, Git: s.workspaceGit,
-		Backend: s.backend(), Admit: s.admit, Quota: s.ensureBenchQuota, ReserveLog: s.reserveLog, Seal: s.sealRunLog}
+		Backend: s.backend(), Admit: s.admit, Quota: s.ensureBenchQuota, FreshQuota: s.workerStorage().VerifyFreshQuota, ReserveLog: s.reserveLog, Seal: s.sealRunLog}
 }
 func (s Store) workspaceLifecycle() workspace.Lifecycle {
 	return workspace.Lifecycle{State: s.State, Data: s.Data, Timeout: s.MirrorTimeout,
 		Within: s.workspaceWithin, Git: s.workspaceGit, Stopped: s.ensureStopped,
 		Prepared: s.workspacePreparation().Prepared, Released: workspaceprep.ReleaseHistory,
-		Admit: s.admit, Allocate: s.allocateWorkspace,
+		Admit: s.admit, Allocate: s.allocateWorkspace, FreshQuota: s.workerStorage().VerifyFreshQuota,
 		NoteCheckpoint: func(ctx context.Context, b *Bench) {
 			workspacearchive.NoteCheckpoint(ctx, repository.Mirrors{State: s.State, Data: s.Data, Timeout: s.MirrorTimeout}, b)
 		}}

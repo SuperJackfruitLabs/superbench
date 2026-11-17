@@ -52,7 +52,9 @@ func helperCommandInput(ctx context.Context, c Config, uid int, guard bool, befo
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	capacityEligible := len(args) > 0 && args[0] == "apply-operation"
+	// A Fresh bootstrap allocates through the same reservation check, so its
+	// canonical capacity refusal is typed like an ordinary apply's.
+	capacityEligible := len(args) > 0 && (args[0] == "apply-operation" || args[0] == "bootstrap-payload")
 	command, args := helperArgs(c, uid, args)
 	cmd := exec.Command(command, args...)
 	if input != nil {

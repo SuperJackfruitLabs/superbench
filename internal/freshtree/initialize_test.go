@@ -150,6 +150,20 @@ type fixture struct {
 	payload *payload
 	staged  *model.Bench
 	gate    sync.Mutex
+	// verified counts read-only checks of the pinned Fresh allocation.
+	verified int
+}
+
+// errLegacyQuota is the helper's refusal of a legacy apply for an allocation
+// that its retained bootstrap authority owns.
+var errLegacyQuota = errors.New("registered payload allocation requires its retained bootstrap authority")
+
+func (f *fixture) freshQuota(b *model.Bench) error {
+	if b.Path != f.payload.root || b.ProjectID != 10000 || b.QuotaBytes != 1<<30 || b.QuotaInodes != 1000 {
+		return errors.New("fresh quota verification saw another allocation")
+	}
+	f.verified++
+	return nil
 }
 
 func (f *fixture) within(fn func(workspace.Update) error) error {
@@ -226,12 +240,12 @@ func (f *fixture) manager(fresh freshtree.Selector) workspaceprep.Manager {
 			}
 			return fn(rows)
 		})
-	}, Gate: func(_ string, fn func() error) error { f.gate.Lock(); defer f.gate.Unlock(); return fn() }, Git: daemonGit, Admit: func() error { return nil }, Quota: func(*model.Bench) error { return nil }, ReserveLog: func(benchstate.Database) (uint64, error) { return 4096, nil }, Seal: func(string, *output.Capture, *int, bool) error { return errors.New("no execution expected") }, Fresh: fresh}
+	}, Gate: func(_ string, fn func() error) error { f.gate.Lock(); defer f.gate.Unlock(); return fn() }, Git: daemonGit, Admit: func() error { return nil }, Quota: func(*model.Bench) error { return errLegacyQuota }, FreshQuota: f.freshQuota, ReserveLog: func(benchstate.Database) (uint64, error) { return 4096, nil }, Seal: func(string, *output.Capture, *int, bool) error { return errors.New("no execution expected") }, Fresh: fresh}
 }
 
 func (f *fixture) lifecycle(fresh freshtree.Selector) workspace.Lifecycle {
 	m := f.manager(fresh)
-	return workspace.Lifecycle{State: f.state, Data: f.data, Git: daemonGit, Within: f.within, Prepared: m.Prepared, Released: workspaceprep.ReleaseHistory, Admit: func() error { return nil }, Allocate: func(*model.Bench) error { return nil }, Stopped: func(*model.Bench) error { return nil }, Fresh: fresh}
+	return workspace.Lifecycle{State: f.state, Data: f.data, Git: daemonGit, Within: f.within, Prepared: m.Prepared, Released: workspaceprep.ReleaseHistory, Admit: func() error { return nil }, Allocate: func(*model.Bench) error { return errLegacyQuota }, FreshQuota: f.freshQuota, Stopped: func(*model.Bench) error { return nil }, Fresh: fresh}
 }
 
 // newFixture stages a workspace whose Fresh effect builds the payload layout
@@ -342,6 +356,9 @@ func TestFreshCreateInitializesThroughPayloadRoute(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if f.verified != 1 {
+		t.Fatalf("fresh acquisition verified its allocation %d times, want 1 read-only check", f.verified)
+	}
 	if _, err = f.manager(f.selector).PrepareAcquired(context.Background(), held, "", false); err != nil {
 		t.Fatal(err)
 	}
@@ -429,11 +446,39 @@ func TestFreshSetupRoutesThroughPayloadTransportOnly(t *testing.T) {
 	if !errors.Is(err, transport) || tree.environment != nil {
 		t.Fatalf("setup did not use only the payload transport: %v (daemon environment entries: %d)", err, len(tree.environment))
 	}
+	if f.verified != 1 {
+		t.Fatalf("fresh setup verified its allocation %d times, want 1 read-only check", f.verified)
+	}
 
 	f = newFixture(t)
 	f.configure(0, "[caches]\nnpm = false\n[setup]\nonce = 'true'\n")
 	if _, err = f.manager(f.selector).PrepareAcquired(context.Background(), f.staged, "", false); !errors.Is(err, freshtree.ErrCache) {
 		t.Fatalf("explicit cache settings were not refused: %v", err)
+	}
+}
+
+// A Fresh run checks its pinned allocation read-only before the payload
+// launch; the legacy apply the helper refuses is never reached.
+func TestFreshRunVerifiesQuotaReadOnlyBeforeLaunch(t *testing.T) {
+	f := newFixture(t)
+	if _, err := f.initialize(f.selector); err != nil {
+		t.Fatal(err)
+	}
+	held, err := f.lifecycle(f.selector).Acquire(context.Background(), "card", "writer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport := errors.New("payload transport selected")
+	sel := func(*model.Bench) (freshtree.Tree, error) {
+		return &routed{payload: f.payload, transport: transport}, nil
+	}
+	f.verified = 0
+	_, err = f.manager(sel).Run(context.Background(), "card", held.Lease.Token, "", []string{"true"}, false, nil)
+	if !errors.Is(err, transport) {
+		t.Fatalf("fresh run did not reach its payload launch: %v", err)
+	}
+	if f.verified != 1 {
+		t.Fatalf("fresh run verified its allocation %d times, want 1 read-only check", f.verified)
 	}
 }
 

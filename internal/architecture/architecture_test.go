@@ -58,6 +58,7 @@ func TestArchitecture(t *testing.T) {
 				"internal/workspacematerialize":        {"internal/workspaceplan", "internal/creation", "internal/model", "internal/repository"},
 				"internal/handoffjournal":              {"internal/crosshost", "internal/quotapolicy"},
 				"internal/crosshost":                   {"internal/model"},
+				"internal/lowerfixture":                {"internal/storagecustody"}, // Fixture-only helpers, tag freshstoragefixture.
 				"internal/workspaceinit":               {"internal/model", "internal/workspace"},
 				"internal/controlcontext":              {"internal/benchstate", "internal/statestore", "internal/execution", "internal/gitcontrol", "internal/operationcontrol"},
 				"internal/bench":                       {"internal/workspacebootstrap", "internal/localprep", "internal/handoffjournal", "internal/controlcontext", "internal/operationcancel", "internal/operationcontrol", "internal/workspaceinit", "internal/runprotection", "internal/workspacerepair", "internal/workspacearchive", "internal/stageexec", "internal/workspaceprep", "internal/workspace", "internal/benchstate", "internal/statestore", "internal/statepath", "internal/gitcontrol", "internal/quotapolicy", "internal/cachepolicy", "internal/archivepolicy", "internal/model", "internal/creation", "internal/repository", "internal/output", "internal/execution", "internal/setup", "internal/hoststorage", "internal/reap", "internal/history", "internal/retention"},

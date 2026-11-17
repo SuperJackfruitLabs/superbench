@@ -6,6 +6,13 @@ stamps the section `## vX.Y.Z — YYYY-MM-DD`, and the release notes quote it.
 
 ## Unreleased
 
+- A Fresh workspace now runs its whole lifecycle on an installed service. `bench workspace
+  create` stopped at `initializing` with `registered payload allocation requires its retained
+  bootstrap authority`, because setup, runs and lease reapplied the bench quota through the
+  ordinary allocation that the helper refuses for a Fresh bench. They now check its pinned
+  allocation read-only with `bench-quota verify bench KEY`.
+- A Fresh create past the volume's reservations now answers `422 capacity_exhausted` with the
+  logical quantities, as a non-Fresh create does, instead of `operation_failed`.
 - `install.py --upgrade --previous SHA256SUMS --sums SHA256SUMS --backup DIR` replaces the
   four installed executables with a newer revision's, while the unit is stopped.
   - Each executable must be the previous reviewed build, as a plain root-owned file. It is
