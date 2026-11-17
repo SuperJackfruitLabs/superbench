@@ -162,7 +162,7 @@ func (r *recorded) Close() error { r.closed = true; return nil }
 func TestExchangeSendsTheRequestOnlyAfterTheReadyLine(t *testing.T) {
 	frame := []byte(`{"request":true}`)
 	in := &recorded{}
-	out, err := exchange(strings.NewReader(cleanworker.Ready+`{"reply":true}`), in, frame, nil)
+	out, err := exchange(strings.NewReader(cleanworker.Ready+`{"reply":true}`), in, frame, nil, nil)
 	if err != nil || string(out) != `{"reply":true}` || in.String() != string(frame) || !in.closed {
 		t.Fatalf("ready worker: %q %q %v", out, in.String(), err)
 	}
@@ -174,12 +174,12 @@ func TestExchangeSendsTheRequestOnlyAfterTheReadyLine(t *testing.T) {
 		"ready, oddly": strings.ToUpper(cleanworker.Ready),
 	} {
 		in := &recorded{}
-		if _, err := exchange(strings.NewReader(stdout), in, frame, nil); !errors.Is(err, ErrRecovery) || in.Len() != 0 || !in.closed {
+		if _, err := exchange(strings.NewReader(stdout), in, frame, nil, nil); !errors.Is(err, ErrRecovery) || in.Len() != 0 || !in.closed {
 			t.Errorf("%s: request sent or stdin left open: %q %v", name, in.String(), err)
 		}
 	}
 	big := cleanworker.Ready + strings.Repeat(" ", cleanworker.MaxFrame+1)
-	if _, err := exchange(strings.NewReader(big), &recorded{}, frame, nil); !errors.Is(err, ErrRecovery) {
+	if _, err := exchange(strings.NewReader(big), &recorded{}, frame, nil, nil); !errors.Is(err, ErrRecovery) {
 		t.Error("oversize reply accepted", err)
 	}
 }

@@ -181,3 +181,26 @@ func WatchedRead(r io.Reader, idle time.Duration, kill func() error, limit int) 
 		}
 	}
 }
+
+// WatchedReadFull fills buf from a purge worker's stdout, the ready line it
+// writes after its self-checks, and kills the worker and refuses when that
+// takes longer than idle: a payload that stops the worker before it is ready
+// cannot hold root's locks either.
+func WatchedReadFull(r io.Reader, buf []byte, idle time.Duration, kill func() error) error {
+	done := make(chan error, 1)
+	go func() { _, err := io.ReadFull(r, buf); done <- err }()
+	timer := time.NewTimer(idle)
+	defer timer.Stop()
+	select {
+	case err := <-done:
+		return err
+	case <-timer.C:
+		killErr := kill()
+		// The kill closes the pipe; never leave a reader racing a later one.
+		select {
+		case <-done:
+		case <-time.After(10 * time.Second):
+		}
+		return errors.Join(ErrPayloadActive, killErr)
+	}
+}

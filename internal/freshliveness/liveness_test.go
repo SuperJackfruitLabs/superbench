@@ -101,3 +101,19 @@ func TestWatchedReadKillsAStalledWorker(t *testing.T) {
 		t.Fatalf("oversized reply: %v", err)
 	}
 }
+
+// A worker that never writes its ready line is killed after idle.
+func TestWatchedReadFullKillsAWorkerThatNeverGetsReady(t *testing.T) {
+	r, w := io.Pipe()
+	defer w.Close()
+	kill := func() error { return r.CloseWithError(io.ErrClosedPipe) }
+	buf := make([]byte, 4)
+	if err := WatchedReadFull(r, buf, 50*time.Millisecond, kill); !errors.Is(err, ErrPayloadActive) {
+		t.Fatalf("stalled ready: %v", err)
+	}
+	r, w = io.Pipe()
+	go func() { w.Write([]byte("rea")); w.Write([]byte("dy")); w.Close() }()
+	if err := WatchedReadFull(r, buf, time.Second, func() error { t.Error("a ready worker killed"); return nil }); err != nil || string(buf) != "read" {
+		t.Fatalf("ready: %q %v", buf, err)
+	}
+}

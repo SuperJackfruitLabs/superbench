@@ -36,6 +36,10 @@ func workerAccount(p payloadpolicy.Policy, mode string) (uint32, uint32, error) 
 	return 0, 0, ErrRecovery
 }
 
+// watched reports the worker modes root watches for progress: a purge runs as
+// the payload account, which can stop it.
+func watched(mode string) bool { return mode == cleanworker.Purge }
+
 // reclaimSteps are one reclaim's effects. Each is idempotent for the retained
 // intent, so a retry after a crash or a lost reply runs the same sequence.
 type reclaimSteps struct {

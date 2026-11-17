@@ -219,3 +219,9 @@ func TestReclaimRefusesWhileTheBenchIsInUse(t *testing.T) {
 		t.Fatalf("retry once idle: %v %v", retained, err)
 	}
 }
+
+func TestOnlyAPurgeWorkerIsWatched(t *testing.T) {
+	if !watched(cleanworker.Purge) || watched(cleanworker.Observe) || watched(cleanworker.Delete) {
+		t.Fatal("watched worker modes")
+	}
+}
