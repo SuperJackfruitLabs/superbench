@@ -72,7 +72,7 @@ func (m Manager) execute(ctx context.Context, key, token string, plan memberPlan
 			if err = m.Admit(); err != nil {
 				return err
 			}
-			if err = m.Quota(b); err != nil {
+			if err = m.quota(b); err != nil {
 				return err
 			}
 			limit, err := m.ReserveLog(rows)

@@ -34,10 +34,13 @@ type Lifecycle struct {
 	Git                    func(context.Context, string, ...string) (string, error)
 	Admit                  func() error
 	Allocate               func(*model.Bench) error
-	Stopped                func(*model.Bench) error
-	Prepared               func(*model.Bench) error
-	Released               func(*sql.Tx, *model.Bench) error
-	NoteCheckpoint         func(context.Context, *model.Bench)
+	// FreshQuota verifies a Fresh workspace's pinned allocation read-only; its
+	// retained bootstrap authority owns it, so Allocate never applies it again.
+	FreshQuota     func(*model.Bench) error
+	Stopped        func(*model.Bench) error
+	Prepared       func(*model.Bench) error
+	Released       func(*sql.Tx, *model.Bench) error
+	NoteCheckpoint func(context.Context, *model.Bench)
 	// Fresh selects the payload route for a Fresh tree; nil uses freshtree.Select.
 	Fresh freshtree.Selector
 }

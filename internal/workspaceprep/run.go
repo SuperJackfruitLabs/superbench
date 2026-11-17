@@ -177,7 +177,7 @@ func (m Manager) Run(ctx context.Context, key, token, selector string, args []st
 			if err := m.Admit(); err != nil {
 				return err
 			}
-			if err := m.Quota(b); err != nil {
+			if err := m.quota(b); err != nil {
 				return err
 			}
 			limit, err := m.ReserveLog(rows)

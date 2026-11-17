@@ -8,6 +8,7 @@ import (
 	"regexp"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/benchstate"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/freshtree"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/operationcontrol"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/repository"
@@ -67,7 +68,7 @@ func (l Lifecycle) Acquire(ctx context.Context, key, holder string) (*model.Benc
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := l.Allocate(allocated); err != nil {
+		if err := l.allocate(allocated); err != nil {
 			return err
 		}
 		if committed.ProjectID != 0 && (allocated.ProjectID != committed.ProjectID || allocated.QuotaBytes != committed.QuotaBytes || allocated.QuotaInodes != committed.QuotaInodes) {
@@ -206,4 +207,20 @@ func (l Lifecycle) Release(ctx context.Context, key, token string) (*model.Bench
 		return nil
 	})
 	return privateRecord(committed), err
+}
+
+// allocate reapplies a legacy workspace's pinned allocation. A Fresh one is
+// verified read-only instead: the helper refuses a legacy apply for it.
+func (l Lifecycle) allocate(b *model.Bench) error {
+	fresh, err := freshtree.Selected(l.Fresh, l.State, b)
+	if err != nil {
+		return err
+	}
+	if !fresh {
+		return l.Allocate(b)
+	}
+	if l.FreshQuota == nil {
+		return errors.New("fresh workspace acquisition requires read-only quota verification")
+	}
+	return l.FreshQuota(b)
 }

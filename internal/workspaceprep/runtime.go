@@ -37,8 +37,10 @@ type Manager struct {
 	Backend                 Backend
 	Admit                   func() error
 	Quota                   func(*model.Bench) error
-	ReserveLog              func(benchstate.Database) (uint64, error)
-	Seal                    func(string, *output.Capture, *int, bool) error
+	// FreshQuota verifies a Fresh workspace's pinned allocation read-only.
+	FreshQuota func(*model.Bench) error
+	ReserveLog func(benchstate.Database) (uint64, error)
+	Seal       func(string, *output.Capture, *int, bool) error
 	// Fresh selects the payload route for a Fresh tree; nil uses freshtree.Select.
 	Fresh freshtree.Selector
 }
@@ -51,6 +53,23 @@ func (m Manager) validate() error {
 		return errors.New("workspace preparation storage paths must be absolute and normalized")
 	}
 	return statepath.Validate(m.State, m.Data)
+}
+
+// quota checks b's allocation before a launch. A Fresh allocation belongs to its
+// retained bootstrap authority, and the helper refuses a legacy apply for it, so
+// it is only verified read-only; a missing verifier fails closed.
+func (m Manager) quota(b *model.Bench) error {
+	fresh, err := freshtree.Selected(m.Fresh, m.State, b)
+	if err != nil {
+		return err
+	}
+	if !fresh {
+		return m.Quota(b)
+	}
+	if m.FreshQuota == nil {
+		return errors.New("fresh workspace launch requires read-only quota verification")
+	}
+	return m.FreshQuota(b)
 }
 
 func owned(rows benchstate.Database, key, token string) (*model.Bench, error) {

@@ -1,6 +1,7 @@
 package hoststorage
 
 import (
+	"context"
 	"errors"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
 )
@@ -48,4 +49,15 @@ func (w Worker) EnsureBenchQuota(b *model.Bench) error {
 		return errors.New("bench quota differs from its pinned byte/inode allocation; explicit migration required")
 	}
 	return nil
+}
+
+// VerifyFreshQuota checks a Fresh workspace's pinned allocation read-only. The
+// helper refuses a legacy apply for it, so the daemon never reapplies it.
+func (w Worker) VerifyFreshQuota(b *model.Bench) error { return w.verifyFreshQuota(b, storageCommand) }
+func (w Worker) verifyFreshQuota(b *model.Bench, command func(context.Context, string, ...string) ([]byte, error)) error {
+	if w.Context == nil || b.ProjectID < 10000 || b.QuotaBytes == 0 || b.QuotaInodes == 0 {
+		return errors.New("fresh quota verification requires a context and a pinned allocation")
+	}
+	_, err := w.inspectStorage(w.Context, b.Key, Assignment{Path: b.Path, ProjectID: b.ProjectID, Bytes: b.QuotaBytes, Inodes: b.QuotaInodes}, command)
+	return err
 }

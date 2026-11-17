@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -186,8 +187,9 @@ func TestManagedStorageWorkerUsesReadOnlyFixedHelperAndExactAssignment(t *testin
 				return raw, nil
 			}
 			got, err := w.inspectStorage(context.Background(), "source", a, run)
-			if calls != 1 {
-				t.Fatal("unexpected helper calls", calls)
+			fresh := Worker{Context: context.Background(), State: w.State, Data: w.Data, Apply: w.Apply}
+			if e := fresh.verifyFreshQuota(&model.Bench{Key: "source", Path: a.Path, ProjectID: 10000, QuotaBytes: 8 << 20, QuotaInodes: 128}, run); calls != 2 || (e == nil) != (kind == "valid") || fresh.verifyFreshQuota(&model.Bench{Key: "source", Path: a.Path}, nil) == nil {
+				t.Fatal("unexpected helper calls or fresh verification", calls, e)
 			}
 			if kind == "valid" {
 				if err != nil || got.ConfigSHA256 != storageDigest(config) {
