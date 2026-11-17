@@ -124,7 +124,6 @@ ln -s . api/out/loop
 mkfifo api/out/fifo
 mkfifo root-fifo
 ln api/out/file api/out/hard
-ln "$2" api/out/hard-outside 2>/dev/null || :
 d=api/out/deep; i=0
 while [ "$i" -lt 200 ]; do d="$d/d"; i=$((i+1)); done
 mkdir -p "$d"; printf x > "$d/f"
@@ -144,6 +143,15 @@ func (e *env) assertOutsideIntact() {
 	// projects, went with the tree; the file itself keeps its one name.
 	if st := mustInfo(e.t, victim).Sys().(*syscall.Stat_t); st.Nlink != 1 {
 		e.t.Fatalf("outside file has %d links", st.Nlink)
+	}
+}
+
+func (e *env) xfsIO(path, command string) {
+	e.t.Helper()
+	cmd := exec.Command("/usr/sbin/xfs_io", "-x", "-c", command, path)
+	cmd.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL=C"}
+	if out, err := cmd.CombinedOutput(); err != nil {
+		e.t.Fatalf("xfs_io %q %s: %s %v", command, path, out, err)
 	}
 }
 
@@ -251,6 +259,37 @@ func (e *env) reclaims() {
 
 	// The daemon's route is sudo: the reclaim admits it, as no recovery step does.
 	e.hostileWrite(a, 50)
+	// A hard link to a file outside the leaf: XFS refuses one across projects
+	// (EXDEV), so root gives the outside file the bench's project first, which
+	// a payload cannot do. Only that link goes with the tree; the file's usage,
+	// still charged to the project, then blocks the tombstone.
+	outside := filepath.Join(e.p.Root, "reclaim-same-project-outside")
+	if err = os.WriteFile(outside, []byte("outside"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Chown(outside, payloadUID, payloadGID); err != nil {
+		t.Fatal(err)
+	}
+	e.xfsIO(outside, fmt.Sprintf("chproj %d", a.allocation.ProjectID))
+	e.payloadShell(a.allocation.Path, `chmod 700 . && ln "$1" api/out/hard-same-project && chmod 500 .`, outside)
+	if st := mustInfo(t, outside).Sys().(*syscall.Stat_t); st.Nlink != 2 {
+		t.Fatalf("same-project hard link not made: %d links", st.Nlink)
+	}
+	t.Setenv("SUDO_UID", "123")
+	_, err = e.reclaim(t.Context(), a)
+	t.Setenv("SUDO_UID", "")
+	if err == nil || !strings.Contains(err.Error(), "effects may have occurred; retry the same reclaim") {
+		t.Fatalf("project usage outside the leaf did not block the tombstone: %v", err)
+	}
+	if _, statErr := os.Lstat(a.allocation.Path); !errors.Is(statErr, os.ErrNotExist) || e.intentPhase(a.spec.Key) != "reclaiming" || e.row(a.spec.Key) != a.allocation {
+		t.Fatalf("blocked tombstone left leaf %v, phase %s, row %+v", statErr, e.intentPhase(a.spec.Key), e.row(a.spec.Key))
+	}
+	assertBytes(t, outside, []byte("outside"))
+	if st := mustInfo(t, outside).Sys().(*syscall.Stat_t); st.Nlink != 1 {
+		t.Fatalf("outside file has %d links after the purge", st.Nlink)
+	}
+	t.Log("FRESH_RECLAIM_SAME_PROJECT_OUTSIDE_LINK_BLOCKS_RETIRE_PASS")
+	e.xfsIO(outside, "chproj 0")
 	t.Setenv("SUDO_UID", "123")
 	got, err := e.reclaim(t.Context(), a)
 	t.Setenv("SUDO_UID", "")
@@ -259,6 +298,10 @@ func (e *env) reclaims() {
 	}
 	e.assertReclaimed(a, got)
 	e.assertOutsideIntact()
+	assertBytes(t, outside, []byte("outside"))
+	if err = os.Remove(outside); err != nil {
+		t.Fatal(err)
+	}
 	t.Log("FRESH_RECLAIM_HOSTILE_TREE_RETIRED_PASS")
 
 	ledger, err := os.ReadFile(filepath.Join(e.p.Ledger, "assignments.json"))
