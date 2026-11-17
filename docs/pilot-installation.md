@@ -72,8 +72,15 @@ Staging writes only below the supplied physical absolute root.
 ### Mount the data volume persistently
 
 Mount the dedicated XFS filesystem at `/srv/superbench-data` with project quotas
-before installing, and make the mount survive a reboot. With a block device, add
-an `/etc/fstab` line using the filesystem's UUID (`blkid -s UUID -o value DEVICE`):
+before installing, and make the mount survive a reboot. The installer creates
+the directory only later, so create the mountpoint first, as root:
+
+```sh
+mkdir -p /srv/superbench-data
+```
+
+With a block device, add an `/etc/fstab` line using the filesystem's UUID
+(`blkid -s UUID -o value DEVICE`):
 
 ```text
 UUID=FILESYSTEM-UUID  /srv/superbench-data  xfs  defaults,prjquota  0  2
@@ -92,15 +99,22 @@ Instead of fstab, a systemd mount unit named `srv-superbench\x2ddata.mount`
 the same. After `systemctl daemon-reload`, mount it (`mount /srv/superbench-data`
 or `systemctl start 'srv-superbench\x2ddata.mount'`) and check it with
 `findmnt /srv/superbench-data` and `xfs_quota -x -c 'state -p' /srv/superbench-data`
-(project accounting and enforcement both `ON`). Do not add `nofail` or `noauto`.
+(project accounting and enforcement both `ON`). Do not add `nofail` or `noauto`,
+and do not mount it with `nouuid`: the installer and the quota helper refuse it.
+
+After `daemon-reload`, `systemd-fstab-generator` may log `Quota was requested for
+..., but not supported, ignoring: xfs`. That is harmless: systemd only declines to
+start its own quota check and quota-on services, which XFS does not use. XFS
+applies `prjquota` itself at mount time, which the `findmnt` and `xfs_quota`
+checks above confirm.
 
 The service unit has `RequiresMountsFor=/srv/superbench-data`, so systemd mounts
 the volume before benchd and does not start benchd without it. The quota ledger is
-bound to the filesystem UUID: mount the same filesystem every time (a different
-loop device number is fine). The installer's `--storage` refuses to write the
-storage policy unless `/srv/superbench-data` is a separate mounted XFS filesystem
-root with enforced project quotas (`prjquota`, not `pqnoenforce`) and, on a first
-install, empty.
+bound to the filesystem UUID: mount the same filesystem every time. A different
+loop or block device number after a reboot is fine. The installer's `--storage`
+refuses to write the storage policy unless `/srv/superbench-data` is a separate
+mounted XFS filesystem root with enforced project quotas (`prjquota`, not
+`pqnoenforce`), without `nouuid` and, on a first install, empty.
 
 ### Install on the host
 
@@ -179,6 +193,19 @@ other policy every Fresh `create` stops at `materializing` with `operation_faile
    read-only), which it can only once `initialize-indexed` has written its ready
    record, then installs the unit file in place of the mask and reloads systemd.
 
+The ready record pins the helper's storage authority: the storage policy, the
+ledger header and its directory, the quota owner anchor, the data root's inode,
+owner and mode, and the mount's filesystem UUID, type, root (`/`), target and
+`prjquota`. It does not pin the mount ID, propagation peer group or the data
+volume's device number, which differ between mount namespaces or can change at
+boot. So the record written by the installer in the host's mount namespace also
+verifies in the private namespace systemd gives the unit (`PrivateTmp`,
+`ProtectHome`, `ProtectSystem`), and it survives a reboot that mounts the same
+filesystem again. A different filesystem, a bind of a subdirectory, a stacked
+mount, a mount without enforced project quotas or with `nouuid` refuses. Keep the
+ledger on the host's persistent state filesystem, as the installer does: the record
+also pins that directory's device and inode.
+
 Run it as part of the first install, before `configure-host` and before the
 service ever starts. Rerunning the same command is safe: a host whose ledger is
 already initialized (its ready record is present) skips step 3, and a run that
@@ -222,6 +249,35 @@ service still masked (do not unmask or start it):
 
 benchd also checks the journal at start: with `fresh_payload` on, it refuses to
 start unless the helper's `operation-info` opens the indexed journal.
+
+#### Reinitialize the indexed ledger
+
+A ready record written by an earlier SuperBench revision pinned the data mount's
+mount ID, which is different inside the service unit's private namespace and
+after a reboot. With it, benchd refuses to start with `fresh_payload` on, and
+`bench-quota operation-info` fails with `quota operation journal authority
+changed: the ready record pins a storage authority that ... no longer match`. The
+record is never adopted or rewritten. Such hosts were first installs with no work
+on the volume; reinitialize the storage as a first install:
+
+1. keep `fresh_payload` off, then stop and disable the service and confirm no
+   `superbench` or `superbench-payload` process remains;
+2. back up `/etc/superbench`, `/var/lib/superbench` and `/var/lib/superbench-quota`;
+3. remove `/var/lib/superbench-quota/ledger` and
+   `/var/lib/superbench-quota/ledger.format-v2`, leaving the directory itself;
+4. remove the installed unit file `/etc/systemd/system/superbench.service` and
+   run `systemctl daemon-reload`, so the installer masks the service and
+   initializes again instead of refusing an installed unit;
+5. recreate the data filesystem as in step 3 of
+   [Recover a partial initialization](#recover-a-partial-initialization): its
+   quota owner anchor belongs to the removed ledger;
+6. rerun the same installer command, `--storage` included, from the new revision.
+   Leave out `--activation` if you have edited `/etc/superbench/activation.json`.
+
+The same refusal on a host initialized by the current revision means the storage
+really changed: another filesystem is mounted, or the policy, ledger or anchor
+differs. Do not reinitialize a host whose data you still need; restore the
+original volume and files instead.
 
 **An existing host with a legacy ledger** cannot turn on `fresh_payload`; benchd
 refuses to start with it (see [Activation](#activation)). Either keep the switch

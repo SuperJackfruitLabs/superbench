@@ -10,29 +10,6 @@ import (
 	"testing"
 )
 
-func TestManagedStorageMountRejectsAncestorBindAndDeviceMismatch(t *testing.T) {
-	valid := []byte("91 11111111-1111-1111-1111-111111111111 / /bench 8:1\n")
-	if _, _, err := parseManagedStorageMount(valid, "/bench", 0x801); err != nil {
-		t.Fatal(err)
-	}
-	for _, bad := range []string{
-		"91 11111111-1111-1111-1111-111111111111 / / 8:1",
-		"91 11111111-1111-1111-1111-111111111111 /subdir /bench 8:1",
-		"91 11111111-1111-1111-1111-111111111111 / /bench 8:2",
-		"0 11111111-1111-1111-1111-111111111111 / /bench 8:1",
-		string(valid) + string(valid),
-	} {
-		if _, _, err := parseManagedStorageMount([]byte(bad), "/bench", 0x801); err == nil {
-			t.Fatal("wrong mount accepted", bad)
-		}
-	}
-	for _, bad := range []string{"", "#10000 0 0 42", "#10000 0 0 8\n#10000 0 0 8"} {
-		if verifyStorageQuota([]byte(bad), 10000, 8) == nil {
-			t.Fatal("unverified kernel cap accepted", bad)
-		}
-	}
-}
-
 func TestReadOnlyPolicyRefusalCreatesNoLedgerAnchorOrBench(t *testing.T) {
 	root, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {

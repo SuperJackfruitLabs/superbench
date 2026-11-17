@@ -13,7 +13,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"syscall"
 	"time"
 )
@@ -141,7 +140,7 @@ func (p Policy) inspectStorage(ctx context.Context, key string, locked bool, ori
 		if unit == "-b" {
 			want = a.Bytes / 1024
 		}
-		if e = verifyStorageQuota(report, a.ProjectID, want); e != nil {
+		if e = storageproof.VerifyQuota(report, a.ProjectID, want); e != nil {
 			return zero, e
 		}
 	}
@@ -169,19 +168,11 @@ func readStorageFile(path string, max int64) ([]byte, error) {
 }
 
 func managedStorageMount(ctx context.Context, root string, device uint64) (string, string, error) {
-	raw, err := storageCommand(ctx, "/usr/bin/findmnt", "--noheadings", "--raw", "--output", "ID,UUID,FSROOT,TARGET,MAJ:MIN", "--mountpoint", root)
+	raw, err := storageCommand(ctx, "/usr/bin/findmnt", "--noheadings", "--raw", "--output", storageproof.ManagedMountColumns, "--mountpoint", root)
 	if err != nil {
 		return "", "", err
 	}
-	return parseManagedStorageMount(raw, root, device)
-}
-
-func parseManagedStorageMount(raw []byte, root string, device uint64) (string, string, error) {
 	return storageproof.ParseManagedMount(raw, root, device)
-}
-
-func verifyStorageQuota(raw []byte, id uint32, want uint64) error {
-	return storageproof.VerifyQuota(raw, id, want)
 }
 
 func unmanagedStorageMount(root string) (string, error) {
@@ -189,9 +180,6 @@ func unmanagedStorageMount(root string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	device := uint64(info.Sys().(*syscall.Stat_t).Dev)
-	major := (device>>8)&0xfff | (device>>32)&0xfffff000
-	minor := device&0xff | (device>>12)&0xffffff00
 	f, err := os.Open("/proc/self/mountinfo")
 	if err != nil {
 		return "", err
@@ -204,23 +192,5 @@ func unmanagedStorageMount(root string) (string, error) {
 	if len(raw) > 1<<20 {
 		return "", errors.New("mount table exceeds verification limit")
 	}
-	best, depth := "", -1
-	decode := strings.NewReplacer(`\040`, " ", `\011`, "\t", `\012`, "\n", `\134`, `\`)
-	for _, line := range strings.Split(string(raw), "\n") {
-		fields := strings.Fields(line)
-		if len(fields) < 10 || fields[2] != fmt.Sprintf("%d:%d", major, minor) {
-			continue
-		}
-		mountpoint := decode.Replace(fields[4])
-		if root != mountpoint && !strings.HasPrefix(root, strings.TrimSuffix(mountpoint, "/")+"/") {
-			continue
-		}
-		if len(mountpoint) > depth {
-			best, depth = line, len(mountpoint)
-		}
-	}
-	if best == "" {
-		return "", errors.New("actual storage mount could not be identified")
-	}
-	return "linux:" + best, nil
+	return storageproof.ParseUnmanagedMount(raw, root, uint64(info.Sys().(*syscall.Stat_t).Dev))
 }

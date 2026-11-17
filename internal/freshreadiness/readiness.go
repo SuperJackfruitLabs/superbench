@@ -52,7 +52,7 @@ func ready(p hoststorage.Policy, err error, open func() error) error {
 			"a fresh host gets it from the installer's --storage (docs/pilot-installation.md)", StoragePolicy, IndexedJournal)
 	}
 	if err = open(); err != nil {
-		return fmt.Errorf("the indexed quota journal is not ready (initialize-indexed did not finish; see docs/pilot-installation.md): %w", err)
+		return fmt.Errorf("the indexed quota journal is not ready (initialize-indexed did not finish, or its ready record does not match the mounted storage; see docs/pilot-installation.md): %w", err)
 	}
 	return nil
 }

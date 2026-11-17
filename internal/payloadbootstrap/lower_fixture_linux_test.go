@@ -29,6 +29,7 @@ import (
 	"testing"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/mountnsfixture"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/payloadbootstrap"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/payloadexec"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotaoperation"
@@ -43,27 +44,9 @@ func TestFreshIndexedMaterializerLowerFixture(t *testing.T) {
 	if os.Getuid() != 0 || os.Geteuid() != 0 || os.Getenv("SUPERBENCH_FRESH_LOWER_FIXTURE") != "1" || os.Getenv("SUDO_UID") != "" {
 		t.Fatal("explicit direct-root lower fixture required")
 	}
-	for _, kind := range []string{"mnt", "net"} {
-		original, err := os.Readlink("/proc/1/ns/" + kind)
-		if err != nil || os.Getenv("SUPERBENCH_LOWER_ORIGINAL_"+strings.ToUpper(kind)) != original {
-			t.Fatal("original namespace proof missing", kind, err)
-		}
-		a, err := os.Stat("/proc/1/ns/" + kind)
-		if err != nil {
-			t.Fatal(err)
-		}
-		b, err := os.Stat("/proc/self/ns/" + kind)
-		if err != nil || os.SameFile(a, b) {
-			t.Fatal("private namespace required", kind, err)
-		}
-	}
-	a, err := os.Stat("/proc/1/ns/pid")
+	err := mountnsfixture.RequireSupervised("SUPERBENCH_LOWER_ORIGINAL_")
 	if err != nil {
 		t.Fatal(err)
-	}
-	b, err := os.Stat("/proc/self/ns/pid")
-	if err != nil || !os.SameFile(a, b) {
-		t.Fatal("original PID namespace required", err)
 	}
 	if err = requireUnusedLowerIdentities(); err != nil {
 		t.Fatal(err)
@@ -180,6 +163,24 @@ func TestFreshIndexedMaterializerLowerFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The installer writes the ready record in its mount namespace and the
+	// service's helper opens it in the unit's private one, with another mount ID.
+	outerID, outerErr := mountnsfixture.MountID(p.Root)
+	var innerID string
+	err = mountnsfixture.Private(func() (e error) {
+		if innerID, e = mountnsfixture.MountID(p.Root); e != nil {
+			return e
+		}
+		inner, _, e := quotaoperationcontrol.Open(t.Context())
+		if e != nil {
+			return e
+		}
+		return inner.Run(t.Context(), func() error { return nil })
+	})
+	if err != nil || outerErr != nil || innerID == outerID {
+		t.Fatalf("ready record in a private mount namespace: %v %v mount ID %s, private %s", err, outerErr, outerID, innerID)
+	}
+	t.Logf("LOWER_READY_RECORD_VERIFIES_IN_PRIVATE_MOUNT_NAMESPACE_PASS mount ID %s, private %s", outerID, innerID)
 	identityFor := func(label string) quotaoperation.Identity {
 		return quotaoperation.Identity{OperationID: lowerHash("operation:" + label + string(marker)), Epoch: lowerHash("epoch:" + label + string(marker))[:32], StateIdentity: lowerHash("synthetic-lower-state:" + label + string(marker)), Authority: authority, BinarySHA256: expectedSHA}
 	}
