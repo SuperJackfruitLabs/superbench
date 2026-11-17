@@ -31,8 +31,10 @@ type Result struct {
 	Execution    *execution.Execution
 	ExitCode     int
 	LogTruncated bool
-	// Output is private opaque stdout, populated only on stopped, sealed success.
-	// It is not checkpoint, release or settlement evidence.
+	// Output is private opaque stdout, populated only after a stopped, drained
+	// and sealed execution whose leader exited with a known status (zero or
+	// not). It is nonnil when complete, even if empty. It is not checkpoint,
+	// release, settlement or task-success evidence.
 	Output []byte
 }
 
@@ -202,6 +204,10 @@ func (r Runner) Run(ctx context.Context, plan Plan) (*Result, error) {
 	if captured != nil && captured.overflow {
 		waitErr = errors.Join(waitErr, ErrResultOverflow)
 	}
+	_, exited := waitErr.(*exec.ExitError) // exactly the leader's own status
+	if captured != nil && !captured.overflow && ctx.Err() == nil && result.ExitCode >= 0 && (waitErr == nil || exited) {
+		result.Output = captured.copy()
+	}
 	if waitErr != nil {
 		return result, fmt.Errorf("command failed; stopped lease retained: %w", waitErr)
 	}
@@ -209,7 +215,6 @@ func (r Runner) Run(ctx context.Context, plan Plan) (*Result, error) {
 		if err := ctx.Err(); err != nil {
 			return result, err
 		}
-		result.Output = captured.copy()
 	}
 	return result, nil
 }

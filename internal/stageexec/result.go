@@ -26,4 +26,4 @@ func (b *resultBuffer) Write(p []byte) (int, error) {
 	}
 	return b.data.Write(p)
 }
-func (b *resultBuffer) copy() []byte { return bytes.Clone(b.data.Bytes()) }
+func (b *resultBuffer) copy() []byte { return append([]byte{}, b.data.Bytes()...) }
