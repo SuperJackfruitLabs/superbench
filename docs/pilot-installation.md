@@ -76,9 +76,11 @@ python3 deploy/linux/install.py --bin-dir /absolute/build/bin --root / \
 ```
 
 This prepares the stable `superbench` account, the separate `superbench-payload`
-system account (nologin, its own group, no members) and the directories, and
-reloads systemd; it does not start or enable the service. Existing conflicting
-files, unsafe paths and an active installation refuse. This is not an upgrade or
+system account (nologin, its own group, no members, and no other account's
+primary group) and the directories, and reloads systemd; it does not start or
+enable the service. Existing conflicting files, unsafe paths, an existing account
+of either name that does not match that description, and an active installation
+refuse before anything is written. This is not an upgrade or
 legacy-adoption procedure. See [installer details](install.md) for preflight and
 recovery.
 

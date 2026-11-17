@@ -120,18 +120,27 @@ def activation_document():
     return {ACTIVATION_FILE: (("{\n" + ",\n".join(lines) + "\n}\n").encode(), 0o644)}
 
 
-def account_ids(name, getpwnam=pwd.getpwnam, getgrnam=grp.getgrnam):
+class MissingAccount(ValueError):
+    """The account or its group does not exist yet; --prepare creates it."""
+
+
+def account_ids(name, getpwnam=pwd.getpwnam, getgrnam=grp.getgrnam, getpwall=pwd.getpwall):
     """Numeric IDs of a product system account that sysusers created."""
     try:
         user, group = getpwnam(name), getgrnam(name)
     except KeyError:
-        raise ValueError("account or group is missing: " + name) from None
+        raise MissingAccount("account or group is missing: " + name) from None
     if user.pw_gid != group.gr_gid or user.pw_uid == 0 or user.pw_shell not in NOLOGIN:
         raise ValueError("refusing a foreign account (expected a nologin system account "
                          "with its own group): " + name)
-    # Socket clients join the daemon's group; nobody may share the payload's.
-    if name == PAYLOAD_ACCOUNT and group.gr_mem:
-        raise ValueError("the payload group must have no members: " + name)
+    # Socket clients join the daemon's group; nobody may share the payload's,
+    # as a supplementary member or through another account's primary group.
+    if name == PAYLOAD_ACCOUNT:
+        if group.gr_mem:
+            raise ValueError("the payload group must have no members: " + name)
+        others = sorted(u.pw_name for u in getpwall() if u.pw_gid == group.gr_gid and u.pw_name != name)
+        if others:
+            raise ValueError("the payload group must be no other account's primary group: " + ", ".join(others))
     return user.pw_uid, user.pw_gid
 
 
@@ -142,16 +151,20 @@ def installed_identity(cgroup_root, lookup=account_ids):
 def preflight_identity(root, prepare, lookup=account_ids):
     """Return True when the identity must wait for --prepare to create accounts.
 
-    Identity documents without both accounts belong to someone else; refuse
-    them before anything is written rather than overwrite or adopt them.
+    A foreign existing account refuses here, before any effect, even with
+    --prepare: sysusers would keep it. Identity documents without both accounts
+    belong to someone else; refuse them rather than overwrite or adopt them.
     """
-    try:
-        lookup(DAEMON_ACCOUNT)
-        lookup(PAYLOAD_ACCOUNT)
+    missing = []
+    for name in (DAEMON_ACCOUNT, PAYLOAD_ACCOUNT):
+        try:
+            lookup(name)
+        except MissingAccount as error:
+            missing.append(error)
+    if not missing:
         return False
-    except ValueError:
-        if not prepare:
-            raise
+    if not prepare:
+        raise missing[0]
     for relative in (POLICY_FILE, REGISTRY_FILE):
         if os.path.lexists(checked_path(root, relative)):
             raise ValueError("identity document exists without its accounts: " + relative)
@@ -255,7 +268,7 @@ def install(root, entries):
             os.unlink(stage)
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--bin-dir", type=Path, required=True)
     parser.add_argument("--root", type=Path, required=True)
@@ -267,7 +280,7 @@ def main():
                         help="the unit's delegated cgroup, as superbench-start passes it to benchd")
     parser.add_argument("--activation", action="store_true",
                         help="write /etc/superbench/activation.json with every switch false")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if not args.root.is_absolute() or str(args.root) != os.path.normpath(str(args.root)) or args.root != args.root.resolve():
         parser.error("installation root must be absolute, normalized and use physical paths")
     if args.prepare and args.root != Path("/"):
@@ -283,30 +296,35 @@ def main():
             parser.error("stop the existing service before changing installed files")
         if active.returncode not in (3, 4):
             parser.error("cannot establish the existing systemd service state")
+    apply(args)
+    print("Installed payload; service has not been started or enabled.")
+
+
+def apply(args, run=subprocess.run, lookup=account_ids):
+    """Install what the checked arguments ask for, preparing the host if asked."""
     entries = payload(args.bin_dir, args.managed)
     if args.activation:
         entries.update(activation_document())
     deferred = False
     if args.identity:
         identity_documents((1, 2), (3, 4), args.cgroup_root)  # refuse a bad cgroup root first
-        deferred = preflight_identity(args.root, args.prepare)
+        deferred = preflight_identity(args.root, args.prepare, lookup)
         if not deferred:
-            entries.update(installed_identity(args.cgroup_root))
+            entries.update(installed_identity(args.cgroup_root, lookup))
     # Validate the exact sudo policy before installing any live/staged files.
     if args.managed and platform.system() == "Linux":
         source = Path(__file__).resolve().parent / "superbench.sudoers"
-        subprocess.run(["visudo", "-cf", str(source)], check=True)
+        run(["visudo", "-cf", str(source)], check=True)
     install(args.root, entries)
     if args.prepare:
         sysusers = ["/usr/lib/sysusers.d/superbench.conf"]
         if args.managed:
             sysusers.append("/usr/lib/sysusers.d/superbench-payload.conf")
-        subprocess.run(["systemd-sysusers", *sysusers], check=True)
-        subprocess.run(["systemd-tmpfiles", "--create", "/usr/lib/tmpfiles.d/superbench.conf"], check=True)
-        subprocess.run(["systemctl", "daemon-reload"], check=True)
+        run(["systemd-sysusers", *sysusers], check=True)
+        run(["systemd-tmpfiles", "--create", "/usr/lib/tmpfiles.d/superbench.conf"], check=True)
+        run(["systemctl", "daemon-reload"], check=True)
     if deferred:
-        install(args.root, installed_identity(args.cgroup_root))
-    print("Installed payload; service has not been started or enabled.")
+        install(args.root, installed_identity(args.cgroup_root, lookup))
 
 
 if __name__ == "__main__":

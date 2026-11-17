@@ -1,4 +1,6 @@
+import contextlib
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -7,9 +9,10 @@ import struct
 from types import SimpleNamespace
 import unittest
 
-from install import (ACTIVATION_FILE, ACTIVATION_SWITCHES, POLICY_FILE, REGISTRY_FILE, account_ids,
-                     activation_document, checked_path, identity_documents, install, installed_identity,
-                     payload, preflight_identity, static_helper)
+from install import (ACTIVATION_FILE, ACTIVATION_SWITCHES, CGROUP_ROOT, POLICY_FILE, REGISTRY_FILE,
+                     MissingAccount, account_ids, activation_document, apply, checked_path,
+                     identity_documents, install, installed_identity, main, payload, preflight_identity,
+                     static_helper)
 
 # The exact canonical bytes internal/payloadpolicy and internal/serviceidentity
 # accept for these IDs (cross-checked in Go by TestInstallerDocumentsAreCanonical).
@@ -32,9 +35,21 @@ def accounts(**overrides):
         else:
             table[account] = value
 
+    def every_user():
+        return [SimpleNamespace(pw_name=n, **vars(u)) for n, u in users.items()]
+
     def lookup(name):
-        return account_ids(name, getpwnam=lambda n: users[n], getgrnam=lambda n: groups[n])
+        return account_ids(name, getpwnam=lambda n: users[n], getgrnam=lambda n: groups[n],
+                           getpwall=every_user)
     return lookup
+
+
+def binaries(directory):
+    directory.mkdir()
+    for name in ["bench", "benchd", "bench-quota"]:
+        (directory / name).write_bytes(b"\x7fELF\x02\x01" + bytes(12) + bytes([62, 0]))
+    (directory / "bench-payload").write_bytes(helper_elf())
+    return directory
 
 
 def helper_elf(machine=62, kind=1, dynamic_tag=None):
@@ -188,6 +203,8 @@ class PayloadIdentity(unittest.TestCase):
                           {"user_superbench_payload": SimpleNamespace(pw_uid=976, pw_gid=100, pw_shell="/usr/sbin/nologin")},
                           {"user_superbench_payload": SimpleNamespace(pw_uid=0, pw_gid=976, pw_shell="/usr/sbin/nologin")},
                           {"group_superbench_payload": SimpleNamespace(gr_gid=976, gr_mem=["node"])},
+                          # Another account whose primary group is the payload group.
+                          {"user_node": SimpleNamespace(pw_uid=1001, pw_gid=976, pw_shell="/bin/bash")},
                           {"user_superbench": SimpleNamespace(pw_uid=977, pw_gid=977, pw_shell="/bin/sh")}]:
             with self.assertRaises(ValueError, msg=str(overrides)):
                 installed_identity("/sys/fs/cgroup/x", lookup=accounts(**overrides))
@@ -210,6 +227,24 @@ class PayloadIdentity(unittest.TestCase):
         policy.chmod(0o644)
         with self.assertRaisesRegex(ValueError, "unexpected permissions"):
             install(self.root, documents)
+
+    def test_payload_group_may_be_another_accounts_primary_group_only_if_it_is_its_own(self):
+        self.assertEqual(accounts(user_node=SimpleNamespace(pw_uid=1001, pw_gid=977, pw_shell="/bin/bash"))(
+            "superbench-payload"), (976, 976))
+        with self.assertRaisesRegex(ValueError, "no other account's primary group: node"):
+            accounts(user_node=SimpleNamespace(pw_uid=1001, pw_gid=976, pw_shell="/bin/bash"))("superbench-payload")
+
+    def test_preflight_refuses_a_foreign_account_before_any_effect_even_with_prepare(self):
+        shell = SimpleNamespace(pw_uid=976, pw_gid=976, pw_shell="/bin/bash")
+        for overrides in [{"user_superbench_payload": shell},
+                          {"user_superbench": None, "user_superbench_payload": shell},
+                          {"user_superbench_payload": None, "user_superbench": SimpleNamespace(
+                              pw_uid=977, pw_gid=977, pw_shell="/bin/sh")}]:
+            for prepare in (False, True):
+                with self.assertRaisesRegex(ValueError, "foreign account", msg=str(overrides)):
+                    preflight_identity(self.root, prepare=prepare, lookup=accounts(**overrides))
+        with self.assertRaises(MissingAccount):
+            preflight_identity(self.root, prepare=False, lookup=accounts(user_superbench=None))
 
     def test_preflight_refuses_identity_documents_without_their_accounts(self):
         self.assertFalse(preflight_identity(self.root, prepare=False, lookup=accounts()))
@@ -247,6 +282,53 @@ class PayloadIdentity(unittest.TestCase):
         rule, mode = payload(binaries, True)["usr/lib/sysusers.d/superbench-payload.conf"]
         self.assertEqual(mode, 0o644)
         self.assertEqual(rule, b'u superbench-payload - "SuperBench payload" - /usr/sbin/nologin\n')
+
+
+class Main(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(prefix="sb-main-", dir="/tmp")
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name).resolve()
+
+    def test_identity_is_for_the_live_managed_root_only(self):
+        bins = binaries(self.root / "bin")
+        target = self.root / "staging"
+        target.mkdir()
+        for flags in (["--identity", "--managed"], ["--identity"]):
+            stderr = io.StringIO()
+            with contextlib.redirect_stderr(stderr), self.assertRaises(SystemExit) as stop:
+                main(["--bin-dir", str(bins), "--root", str(target), *flags])
+            self.assertEqual(stop.exception.code, 2)
+            self.assertIn("--identity applies only to a live / root with --managed", stderr.getvalue())
+        self.assertEqual(list(target.iterdir()), [])
+
+    def test_prepare_creates_both_accounts_then_writes_the_deferred_identity(self):
+        bins = binaries(self.root / "bin")
+        target = self.root / "host"
+        target.mkdir()
+        created, commands = [], []
+        ready = accounts()
+
+        def lookup(name):
+            if not created:
+                raise MissingAccount("account or group is missing: " + name)
+            return ready(name)
+
+        def run(command, check):
+            self.assertTrue(check)
+            commands.append(command)
+            if command[0] == "systemd-sysusers":
+                self.assertFalse((target / POLICY_FILE).exists(), "identity written before the accounts")
+                created.append(True)
+
+        apply(SimpleNamespace(bin_dir=bins, root=target, managed=True, prepare=True, identity=True,
+                              activation=True, cgroup_root=CGROUP_ROOT), run=run, lookup=lookup)
+        self.assertIn(["systemd-sysusers", "/usr/lib/sysusers.d/superbench.conf",
+                       "/usr/lib/sysusers.d/superbench-payload.conf"], commands)
+        self.assertEqual((target / POLICY_FILE).read_bytes(), POLICY)
+        self.assertEqual((target / REGISTRY_FILE).read_bytes(),
+                         installed_identity(CGROUP_ROOT, lookup=ready)[REGISTRY_FILE][0])
+        self.assertTrue((target / "usr/lib/sysusers.d/superbench-payload.conf").exists())
 
 
 if __name__ == "__main__":
