@@ -313,9 +313,16 @@ other policy every Fresh `create` stops at `materializing` with `operation_faile
    initializes: it refuses unless the service is masked and stopped, nothing
    runs as either SuperBench account, the data filesystem is empty with no quota
    projects, and the ledger does not exist yet;
-4. checks that the helper can open the journal (`bench-quota operation-info`,
-   read-only), which it can only once `initialize-indexed` has written its ready
-   record, then installs the unit file in place of the mask and reloads systemd.
+4. checks that the helper can open the journal (`bench-quota operation-info`),
+   which it can only once `initialize-indexed` has written its ready record,
+   then installs the unit file in place of the mask and reloads systemd.
+
+`operation-info` records no operation and changes no allocation, but it is not
+read-only. Like every journal access, it opens `ledger.format-v2`, the
+operation lock and the journal database for writing, and takes the exclusive
+lock. A caller sandboxed with `ProtectSystem=strict` therefore needs
+`ReadWritePaths=/var/lib/superbench-quota`, which the shipped unit grants.
+Without it, the call fails with `read-only file system`.
 
 The ready record pins the helper's storage authority: the storage policy, the
 ledger header and its directory, the quota owner anchor, the data root's inode,
@@ -545,7 +552,7 @@ the socket, and refuses a file that breaks one:
 | --- | --- | --- |
 | `fresh_payload` | `cancellation` | Fresh materialization runs inside the operation scope that only the cancellation path claims. Without it every v2 `create` or `recover` would record a durable `materializing` workspace and then fail. |
 | `fresh_payload` | the installed payload policy and service identity | benchd resolves `/etc/superbench/service-identity.json` (with `--identity`, above) for its own uid at start, for the same reason. |
-| `fresh_payload` | a ready indexed quota operation journal | benchd reads `/etc/superbench/storage.json` at start and refuses unless it sets `"OperationJournal": "indexed-v2"` and the helper's read-only `operation-info` opens that journal, which needs the ready record of a finished `initialize-indexed` ([Indexed storage](#indexed-storage)). The payload helper refuses anything else, so every Fresh create would stop at `materializing`. |
+| `fresh_payload` | a ready indexed quota operation journal | benchd reads `/etc/superbench/storage.json` at start and refuses unless it sets `"OperationJournal": "indexed-v2"` and the helper's `operation-info` opens that journal, which needs the ready record of a finished `initialize-indexed` ([Indexed storage](#indexed-storage)). The payload helper refuses anything else, so every Fresh create would stop at `materializing`. |
 | `finite_io` | `fresh_payload` | A finite run executes only on a Fresh payload tree. |
 | `registration_observation` | `fresh_payload` | Observation reads only a Fresh payload tree. |
 | `receipt_lookup`, `cancellation` | nothing | |

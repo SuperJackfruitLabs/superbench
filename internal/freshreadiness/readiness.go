@@ -30,7 +30,7 @@ func Identity() error {
 
 // Storage refuses unless the installed storage policy selects the indexed
 // journal and the helper can open that journal. benchd cannot read the private
-// ledger, so it asks the helper's read-only operation-info, which on an indexed
+// ledger, so it asks the helper's non-mutating operation-info, which on an indexed
 // policy answers only when initialize-indexed wrote its ready record. A
 // half-finished initialization therefore fails here, at start.
 func Storage() error {
