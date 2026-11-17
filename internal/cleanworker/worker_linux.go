@@ -17,9 +17,8 @@ const (
 	prSetDumpable   = 4
 	prSetNoNewPrivs = 38
 
-	keyctlGetKeyringID       = 0
-	keyctlJoinSessionKeyring = 1
-	keySpecSessionKeyring    = -3
+	keyctlGetKeyringID    = 0
+	keySpecSessionKeyring = -3
 )
 
 // Main runs the worker: args are the two IDs after the command. It returns the
@@ -36,8 +35,8 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	// Before anything else: not dumpable (so no daemon-uid process can ptrace
 	// it) and no_new_privs. Then the descriptor table (read with raw syscalls,
 	// before any os.File can open the runtime's poller), its own session with
-	// no controlling tty, the credentials, refuse root, and leave root's session
-	// keyring for a new anonymous one. Only then is the request read.
+	// no controlling tty, the credentials, refuse root, and require a session
+	// keyring that is not root's. Only then is the request read.
 	if err := isolate(); err != nil {
 		return err
 	}
@@ -57,7 +56,7 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	if err = reap.RequireNonRoot(); err != nil || os.Getuid() == 0 {
 		return errors.Join(ErrWorker, err)
 	}
-	if err = newSessionKeyring(); err != nil {
+	if err = checkKeyring(want.Keyring); err != nil {
 		return err
 	}
 	raw, err := io.ReadAll(io.LimitReader(stdin, MaxFrame+1))
@@ -100,25 +99,17 @@ func isolate() error {
 	return noNewPrivs()
 }
 
-// newSessionKeyring replaces the inherited (root's) session keyring with a new
-// anonymous one on every thread, and requires the session keyring ID to change.
-func newSessionKeyring() error {
-	before, _, errno := syscall.RawSyscall(syscall.SYS_KEYCTL, keyctlGetKeyringID, uintptr(keySpecSessionKeyring&0xffffffff), 0)
+// checkKeyring requires the session keyring the worker inherited from root's
+// forking thread to be live and not root's own session keyring. The worker
+// does not join a keyring itself: root's thread joined a fresh anonymous one
+// just before the fork, so it is shared by every worker thread and held for
+// the worker's whole life.
+func checkKeyring(root int32) error {
+	id, _, errno := syscall.RawSyscall(syscall.SYS_KEYCTL, keyctlGetKeyringID, uintptr(keySpecSessionKeyring&0xffffffff), 0)
 	if errno != 0 {
 		return fmt.Errorf("%w: session keyring: %v", ErrWorker, errno)
 	}
-	_, _, errno = syscall.AllThreadsSyscall(syscall.SYS_KEYCTL, keyctlJoinSessionKeyring, 0, 0)
-	if errno == syscall.ENOTSUP {
-		_, _, errno = syscall.RawSyscall(syscall.SYS_KEYCTL, keyctlJoinSessionKeyring, 0, 0)
-	}
-	if errno != 0 {
-		return fmt.Errorf("%w: join session keyring: %v", ErrWorker, errno)
-	}
-	after, _, errno := syscall.RawSyscall(syscall.SYS_KEYCTL, keyctlGetKeyringID, uintptr(keySpecSessionKeyring&0xffffffff), 0)
-	if errno != 0 || int32(after) == int32(before) || int32(after) <= 0 {
-		return fmt.Errorf("%w: session keyring unchanged", ErrWorker)
-	}
-	return nil
+	return verifyKeyring(int32(id), root)
 }
 
 // checkSession requires the worker to lead its own session with no controlling

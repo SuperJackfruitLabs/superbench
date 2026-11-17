@@ -74,16 +74,17 @@ func runWorker(ctx context.Context, p payloadpolicy.Policy, request cleanworker.
 
 // spawn runs on a locked thread that it restricts first.
 func spawn(ctx context.Context, p payloadpolicy.Policy, frame []byte, s *scope) ([]byte, error) {
-	if err := restrictThread(); err != nil {
+	rootKeyring, err := restrictThread()
+	if err != nil {
 		return nil, err
 	}
 	// Only stdio reaches the child: anything bench-quota inherited without
 	// close-on-exec is marked so here. Go opens its own descriptors that way.
-	if err := unix.CloseRange(3, ^uint(0), unix.CLOSE_RANGE_CLOEXEC); err != nil {
+	if err = unix.CloseRange(3, ^uint(0), unix.CLOSE_RANGE_CLOEXEC); err != nil {
 		return nil, fmt.Errorf("close_range: %w", err)
 	}
 	cmd := exec.CommandContext(ctx, "/proc/self/exe")
-	cmd.Args = append([]string{"bench-quota", cleanworker.Command}, cleanworker.Arguments(cleanworker.Identity{UID: p.DaemonUID, GID: p.DaemonGID})...)
+	cmd.Args = append([]string{"bench-quota", cleanworker.Command}, cleanworker.Arguments(cleanworker.Identity{UID: p.DaemonUID, GID: p.DaemonGID, Keyring: rootKeyring})...)
 	cmd.Env = []string{}
 	cmd.Dir = "/"
 	cmd.Stdin = bytes.NewReader(frame)
@@ -92,7 +93,7 @@ func spawn(ctx context.Context, p payloadpolicy.Policy, frame []byte, s *scope) 
 	cmd.SysProcAttr = workerAttributes(p, s.fd)
 	cmd.Cancel = s.kill
 	cmd.WaitDelay = 2 * time.Second
-	if err := cmd.Run(); err != nil {
+	if err = cmd.Run(); err != nil {
 		return nil, workerError(err, diagnostic.raw)
 	}
 	if out.over || diagnostic.over {
@@ -121,27 +122,63 @@ func workerError(err error, diagnostic []byte) error {
 	return fmt.Errorf("clean worker: %w: %s", err, strconv.Quote(strings.TrimSpace(string(diagnostic))))
 }
 
-// restrictThread sets no_new_privs and empties the capability bounding set on
-// the calling (locked) thread only, so the forked worker inherits both. The
-// thread keeps its effective capabilities for clone3 and the credential drop.
-func restrictThread() error {
+// restrictThread sets no_new_privs, empties the capability bounding set and
+// joins a fresh anonymous session keyring, all on the calling (locked) thread
+// only, so the forked worker inherits all three. The thread keeps its
+// effective capabilities for clone3 and the credential drop. It returns the
+// serial of the session keyring the thread had before, or 0 when that keyring
+// was already gone, for the worker to prove it does not hold it.
+func restrictThread() (int32, error) {
 	if _, _, e := unix.RawSyscall(unix.SYS_PRCTL, unix.PR_SET_NO_NEW_PRIVS, 1, 0); e != 0 {
-		return fmt.Errorf("no_new_privs: %w", e)
+		return 0, fmt.Errorf("no_new_privs: %w", e)
 	}
 	raw, err := os.ReadFile("/proc/sys/kernel/cap_last_cap")
 	if err != nil || len(raw) > 32 {
-		return errors.Join(ErrRecovery, err)
+		return 0, errors.Join(ErrRecovery, err)
 	}
 	last, err := strconv.Atoi(strings.TrimSpace(string(raw)))
 	if err != nil || last < 0 || last > 63 {
-		return errors.Join(ErrRecovery, err)
+		return 0, errors.Join(ErrRecovery, err)
 	}
 	for c := 0; c <= last; c++ {
 		if _, _, e := unix.RawSyscall(unix.SYS_PRCTL, unix.PR_CAPBSET_DROP, uintptr(c), 0); e != 0 {
-			return fmt.Errorf("drop bounding capability %d: %w", c, e)
+			return 0, fmt.Errorf("drop bounding capability %d: %w", c, e)
 		}
 	}
-	return nil
+	return freshKeyring(keyctl)
+}
+
+// keyctl is the raw system call on the calling thread.
+func keyctl(op, arg uintptr) (int32, error) {
+	id, _, e := unix.RawSyscall(unix.SYS_KEYCTL, op, arg, 0)
+	if e != 0 {
+		return 0, e
+	}
+	return int32(id), nil
+}
+
+// freshKeyring leaves the thread's session keyring for a new anonymous one:
+// KEYCTL_JOIN_SESSION_KEYRING with a NULL name always creates a new keyring
+// (an empty name would join a shared one). Session keyrings are per thread
+// credentials, so only this locked thread, and the worker it forks, change.
+// A session keyring that was revoked or expired (an operator's ended login)
+// counts as none. The new keyring must be live and differ from the old one.
+func freshKeyring(call func(op, arg uintptr) (int32, error)) (int32, error) {
+	old, err := call(unix.KEYCTL_GET_KEYRING_ID, uintptr(unix.KEY_SPEC_SESSION_KEYRING&0xffffffff))
+	if errors.Is(err, unix.EKEYREVOKED) || errors.Is(err, unix.EKEYEXPIRED) || errors.Is(err, unix.ENOKEY) {
+		old, err = 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("session keyring: %w", err)
+	}
+	fresh, err := call(unix.KEYCTL_JOIN_SESSION_KEYRING, 0)
+	if err != nil {
+		return 0, fmt.Errorf("join session keyring: %w", err)
+	}
+	if fresh <= 0 || fresh == old || old < 0 {
+		return 0, ErrRecovery
+	}
+	return old, nil
 }
 
 // capped keeps at most max bytes and records an overflow.

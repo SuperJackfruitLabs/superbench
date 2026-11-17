@@ -8,7 +8,7 @@ import (
 
 const goodStatus = "Name:\tbench-quota\nUmask:\t0022\nState:\tR (running)\nUid:\t61001\t61001\t61001\t61001\nGid:\t61003\t61003\t61003\t61003\nFDSize:\t64\nGroups:\t\nCapInh:\t0000000000000000\nCapPrm:\t0000000000000000\nCapEff:\t0000000000000000\nCapBnd:\t0000000000000000\nCapAmb:\t0000000000000000\nNoNewPrivs:\t1\nSeccomp:\t0\n"
 
-var daemon = Identity{61001, 61003}
+var daemon = Identity{61001, 61003, 0}
 
 func TestStatusRefusesAnyCredentialTheDropDidNotProduce(t *testing.T) {
 	if err := verifyStatus([]byte(goodStatus), daemon); err != nil {
@@ -39,7 +39,7 @@ func TestStatusRefusesAnyCredentialTheDropDidNotProduce(t *testing.T) {
 			t.Errorf("%s status admitted or misreported: %v", name, err)
 		}
 	}
-	if err := verifyStatus([]byte(goodStatus), Identity{61002, 61003}); !errors.Is(err, ErrWorker) {
+	if err := verifyStatus([]byte(goodStatus), Identity{61002, 61003, 0}); !errors.Is(err, ErrWorker) {
 		t.Error("another uid admitted", err)
 	}
 	if err := verifyStatus([]byte(goodStatus+strings.Repeat("x", 64<<10)), daemon); !errors.Is(err, ErrWorker) {
@@ -70,7 +70,11 @@ func TestArgumentsAreTwoCanonicalNonzeroIDs(t *testing.T) {
 	if got, err := parseArgs(Arguments(daemon)); err != nil || got != daemon {
 		t.Fatal("canonical arguments refused", got, err)
 	}
-	for _, bad := range [][]string{nil, {"61001"}, {"61001", "61003", "x"}, {"0", "61003"}, {"61001", "0"}, {"061001", "61003"}, {"+61001", "61003"}, {"4294967296", "1"}, {"-1", "1"}} {
+	withKeyring := Identity{61001, 61003, 812345}
+	if got, err := parseArgs(Arguments(withKeyring)); err != nil || got != withKeyring {
+		t.Fatal("keyring serial refused", got, err)
+	}
+	for _, bad := range [][]string{nil, {"61001", "61003"}, {"61001", "61003", "0", "x"}, {"61001", "61003", "x"}, {"0", "61003", "0"}, {"61001", "0", "0"}, {"061001", "61003", "0"}, {"+61001", "61003", "0"}, {"4294967296", "1", "0"}, {"-1", "1", "0"}, {"61001", "61003", "-3"}, {"61001", "61003", "07"}, {"61001", "61003", "2147483648"}} {
 		if _, err := parseArgs(bad); !errors.Is(err, ErrWorker) {
 			t.Errorf("arguments %q admitted: %v", bad, err)
 		}
@@ -109,6 +113,21 @@ func TestSessionRequiresALeaderWithoutAControllingTTY(t *testing.T) {
 		}
 		if !errors.Is(err, ErrWorker) || !strings.Contains(err.Error(), c.reason) {
 			t.Errorf("%s admitted or misreported: %v", name, err)
+		}
+	}
+}
+
+// The worker must hold a live session keyring that is not root's own.
+func TestKeyringMustBeLiveAndNotRoots(t *testing.T) {
+	if err := verifyKeyring(812346, 812345); err != nil {
+		t.Fatal("fresh keyring refused", err)
+	}
+	if err := verifyKeyring(812346, 0); err != nil {
+		t.Fatal("fresh keyring refused when root had none", err)
+	}
+	for name, c := range map[string][2]int32{"root's": {812345, 812345}, "none": {0, 812345}, "negative": {-3, 0}} {
+		if err := verifyKeyring(c[0], c[1]); !errors.Is(err, ErrWorker) {
+			t.Errorf("%s keyring admitted: %v", name, err)
 		}
 	}
 }

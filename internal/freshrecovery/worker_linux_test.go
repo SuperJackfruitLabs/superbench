@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/payloadpolicy"
+	"golang.org/x/sys/unix"
 )
 
 func TestWorkerRunsAsTheDaemonInItsOwnSessionAndCgroup(t *testing.T) {
@@ -108,5 +109,41 @@ func TestSweepRemovesOnlyEmptyWorkerScopes(t *testing.T) {
 	}
 	if !staleScope(scopePrefix+id) || staleScope(scopePrefix+strings.ToUpper(id)) || staleScope("x"+scopePrefix+id) {
 		t.Error("scope names misclassified")
+	}
+}
+
+// Root's forking thread joins a new anonymous keyring (NULL name) and reports
+// its old one; a revoked, expired or missing old keyring counts as none.
+func TestFreshKeyringJoinsAnAnonymousKeyringAndReportsTheOld(t *testing.T) {
+	fake := func(old int32, oldErr error, fresh int32, joinErr error, calls *[]uintptr) func(op, arg uintptr) (int32, error) {
+		return func(op, arg uintptr) (int32, error) {
+			*calls = append(*calls, op, arg)
+			if op == unix.KEYCTL_GET_KEYRING_ID {
+				return old, oldErr
+			}
+			return fresh, joinErr
+		}
+	}
+	var calls []uintptr
+	if old, err := freshKeyring(fake(41, nil, 42, nil, &calls)); err != nil || old != 41 {
+		t.Fatal(old, err)
+	}
+	if len(calls) != 4 || calls[0] != unix.KEYCTL_GET_KEYRING_ID || calls[1] != uintptr(unix.KEY_SPEC_SESSION_KEYRING&0xffffffff) || calls[2] != unix.KEYCTL_JOIN_SESSION_KEYRING || calls[3] != 0 {
+		t.Fatalf("keyctl calls: %v", calls)
+	}
+	for _, gone := range []error{unix.EKEYREVOKED, unix.EKEYEXPIRED, unix.ENOKEY} {
+		if old, err := freshKeyring(fake(0, gone, 42, nil, &calls)); err != nil || old != 0 {
+			t.Errorf("%v: %d %v", gone, old, err)
+		}
+	}
+	for name, f := range map[string]func(op, arg uintptr) (int32, error){
+		"lookup fails": fake(0, unix.EACCES, 42, nil, &calls),
+		"join fails":   fake(41, nil, 0, unix.EDQUOT, &calls),
+		"same keyring": fake(41, nil, 41, nil, &calls),
+		"no keyring":   fake(41, nil, 0, nil, &calls),
+	} {
+		if _, err := freshKeyring(f); err == nil {
+			t.Errorf("%s accepted", name)
+		}
 	}
 }

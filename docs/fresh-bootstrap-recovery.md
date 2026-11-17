@@ -245,14 +245,20 @@ touches a populated one. The cgroup goes beneath the payload policy's
 cgroup root, the delegated root the bootstrap's Git runner uses; while the
 service is stopped systemd may have removed that cgroup, and then it goes
 beneath bench-quota's own cgroup. Root forks the worker from a locked thread
-that first sets `no_new_privs` and empties its capability bounding set. Before
+that first sets `no_new_privs`, empties its capability bounding set and joins a
+new anonymous session keyring (`KEYCTL_JOIN_SESSION_KEYRING` with a NULL name).
+Session keyrings belong to thread credentials, so only that thread and the
+worker it forks leave root's keyring, and every worker thread shares the new one
+for the worker's whole life. If root's own session keyring has already been
+revoked or expired, for example by an ended login, it counts as none. Root then
+passes the old keyring's serial, or 0, to the worker. Before
 reading its request the worker makes itself non-dumpable (so no daemon-uid
 process can ptrace it) and sets `no_new_privs`. It then lists `/proc/self/fd`
 and requires only 0-2, and requires `/proc/self/stat` to show it leading its own
 session with no controlling tty. It proves through the system calls and `/proc/self/status` that
 it holds exactly the daemon's uid and gid in every slot, no groups and empty
-capability sets, and refuses root. Last, it leaves root's session keyring for a
-new anonymous one and requires the keyring to have changed. It reads one bounded
+capability sets, and refuses root. Last, it requires its session keyring to be
+live and not the serial root passed, so it never holds root's keyring. It reads one bounded
 request frame and writes one bounded reply, which root decodes as data and
 quotes when it reports the worker's diagnostics.
 

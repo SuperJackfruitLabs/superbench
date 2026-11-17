@@ -44,7 +44,7 @@ func child(t *testing.T, args []string, extra []*os.File, setsid bool, request [
 }
 
 func self() []string {
-	return Arguments(Identity{uint32(os.Getuid()), uint32(os.Getgid())})
+	return Arguments(Identity{uint32(os.Getuid()), uint32(os.Getgid()), 0})
 }
 
 // Run as the ordinary test user, the real worker refuses an extra descriptor,
@@ -65,8 +65,8 @@ func TestTheRealWorkerRefusesBeforeReadingItsRequest(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer extra.Close()
-	other := Identity{uint32(os.Getuid()) + 1, uint32(os.Getgid())}
-	otherGroup := Identity{uint32(os.Getuid()), uint32(os.Getgid()) + 1}
+	other := Identity{uint32(os.Getuid()) + 1, uint32(os.Getgid()), 0}
+	otherGroup := Identity{uint32(os.Getuid()), uint32(os.Getgid()) + 1, 0}
 	for name, c := range map[string]struct {
 		args   []string
 		extra  []*os.File
