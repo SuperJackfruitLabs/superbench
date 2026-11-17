@@ -17,6 +17,7 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/allocationledger"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/storagecustody"
+	"golang.org/x/sys/unix"
 )
 
 // ObserveAbsent reads a Fresh reservation only after its fixed leaf is absent
@@ -43,66 +44,164 @@ func run(ctx context.Context, p hoststorage.Policy, key string, approved *Approv
 	var noAssignment hoststorage.Assignment
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	if err := ctx.Err(); err != nil {
-		return zero, noAssignment, err
-	}
-	if os.Getuid() != 0 || os.Geteuid() != 0 || os.Getenv("SUDO_UID") != "" || p.Validate() != nil || p.OperationJournal != "indexed-v2" || !allocationledger.Key.MatchString(key) {
-		return zero, noAssignment, ErrRetirement
-	}
-	if err := storagecustody.RootOwnedDirectory(p.Ledger, true); err != nil {
-		return zero, noAssignment, err
-	}
-	lockPath := filepath.Join(p.Ledger, "lock")
-	lock, err := storagecustody.OpenProtected(lockPath)
-	if err != nil {
-		return zero, noAssignment, err
-	}
-	defer lock.Close()
-	info, err := lock.Stat()
-	if err != nil {
-		return zero, noAssignment, err
-	}
-	if err = syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		return zero, noAssignment, ErrRetirement
-	}
-	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
-	authority, err := p.OperationAuthority(ctx)
-	if err != nil {
-		return zero, noAssignment, err
-	}
-	raw, err := storagecustody.ReadProtected(filepath.Join(p.Ledger, "assignments.json"), 16<<20)
-	if err != nil {
-		return zero, noAssignment, err
-	}
 	var original *hoststorage.Assignment
 	if approved != nil {
 		original = &approved.Assignment
 	}
-	l, a, retired, err := selected(p, key, raw, original)
+	var observed Approval
+	var result hoststorage.Assignment
+	err := hold(ctx, p, key, original, func(h held) error {
+		if approved != nil && h.observed != *approved {
+			return ErrRetirement
+		}
+		a := h.assignment
+		check := func() error {
+			if err := h.check(); err != nil {
+				return err
+			}
+			if _, err := h.parent.Lstat(key); !errors.Is(err, syscall.ENOENT) {
+				if err != nil {
+					return err
+				}
+				return ErrRetirement
+			}
+			return nil
+		}
+		if err := check(); err != nil {
+			return err
+		}
+		for _, unit := range []string{"-b", "-i"} {
+			report, e := quotaReport(ctx, p.Root, a.ProjectID, unit)
+			want := a.Inodes
+			if unit == "-b" {
+				want = a.Bytes / 1024
+			}
+			if e != nil {
+				return e
+			}
+			if e = unused(report, a.ProjectID, want); e != nil {
+				return e
+			}
+		}
+		// Leaf and content removal must be durable on the data filesystem before
+		// its ENOENT is trusted for a tombstone saved on the ledger filesystem.
+		if err := h.syncData(); err != nil {
+			return err
+		}
+		if err := check(); err != nil {
+			return err
+		}
+		if approved == nil {
+			observed, result = h.observed, a
+			return nil
+		}
+		tombstone := a
+		tombstone.Bytes, tombstone.Inodes = 0, 0
+		if !h.retired {
+			l := h.ledger
+			l.Assignments["bench:"+key] = tombstone
+			if err := l.Validate(p.Root, p.AllocationBinding(), false); err != nil {
+				return err
+			}
+			if err := allocationledger.Save(p.Ledger, filepath.Join(p.Ledger, "assignments.json"), l); err != nil {
+				return err
+			}
+		}
+		if err := check(); err != nil {
+			return err
+		}
+		observed, result = h.observed, tombstone
+		return nil
+	})
 	if err != nil {
 		return zero, noAssignment, err
+	}
+	return observed, result, nil
+}
+
+// held is one selected Fresh row under the allocation lock. check repeats the
+// authority, lock, parent and dedicated-mount checks; it does not test the leaf.
+type held struct {
+	ledger     allocationledger.Ledger
+	assignment hoststorage.Assignment
+	retired    bool
+	observed   Approval
+	parent     *os.Root
+	check      func() error
+	syncData   func() error
+}
+
+// hold takes the allocation lock, selects the row through the Fresh rules, pins
+// the benches parent on the dedicated data mount and holds the data root open.
+func hold(ctx context.Context, p hoststorage.Policy, key string, original *hoststorage.Assignment, action func(held) error) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if os.Getuid() != 0 || os.Geteuid() != 0 || os.Getenv("SUDO_UID") != "" || p.Validate() != nil || p.OperationJournal != "indexed-v2" || !allocationledger.Key.MatchString(key) {
+		return ErrRetirement
+	}
+	if err := storagecustody.RootOwnedDirectory(p.Ledger, true); err != nil {
+		return err
+	}
+	lockPath := filepath.Join(p.Ledger, "lock")
+	lock, err := storagecustody.OpenProtected(lockPath)
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
+	info, err := lock.Stat()
+	if err != nil {
+		return err
+	}
+	if err = syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		return ErrRetirement
+	}
+	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+	authority, err := p.OperationAuthority(ctx)
+	if err != nil {
+		return err
+	}
+	raw, err := storagecustody.ReadProtected(filepath.Join(p.Ledger, "assignments.json"), 16<<20)
+	if err != nil {
+		return err
+	}
+	l, a, retired, err := selected(p, key, raw, original)
+	if err != nil {
+		return err
 	}
 	parentPath := filepath.Join(p.Root, "benches")
 	if err = storagecustody.RootOwnedDirectory(parentPath, false); err != nil {
-		return zero, noAssignment, err
+		return err
 	}
 	parent, err := os.OpenRoot(parentPath)
 	if err != nil {
-		return zero, noAssignment, err
+		return err
 	}
 	defer parent.Close()
 	parentInfo, err := parent.Lstat(".")
 	if err != nil {
-		return zero, noAssignment, err
+		return err
 	}
 	st := parentInfo.Sys().(*syscall.Stat_t)
 	observed := Approval{Version: Version, Key: key, Authority: authority, Assignment: a, Parent: Parent{uint64(st.Dev), st.Ino, uint32(parentInfo.Mode()), st.Uid, st.Gid}}
-	dataDevice, _, err := storagecustody.PhysicalRoot(p.Root)
+	dataDevice, dataInode, err := storagecustody.PhysicalRoot(p.Root)
 	if err != nil {
-		return zero, noAssignment, err
+		return err
 	}
-	if observed.Parent.Device != dataDevice || observed.validate(p) != nil || approved != nil && observed != *approved {
-		return zero, noAssignment, ErrRetirement
+	if observed.Parent.Device != dataDevice || observed.validate(p) != nil {
+		return ErrRetirement
+	}
+	data, err := os.OpenFile(p.Root, os.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
+	if err != nil {
+		return err
+	}
+	defer data.Close()
+	var dataStat unix.Stat_t
+	if err = unix.Fstat(int(data.Fd()), &dataStat); err != nil {
+		return err
+	}
+	if uint64(dataStat.Dev) != dataDevice || dataStat.Ino != dataInode {
+		return ErrRetirement
 	}
 	check := func() error {
 		if err := ctx.Err(); err != nil {
@@ -141,51 +240,38 @@ func run(ctx context.Context, p hoststorage.Policy, key string, approved *Approv
 		if strings.TrimSpace(string(mount)) != p.Root {
 			return ErrRetirement
 		}
-		if _, err := parent.Lstat(key); !errors.Is(err, syscall.ENOENT) {
-			if err != nil {
-				return err
-			}
-			return ErrRetirement
+		return nil
+	}
+	syncData := func() error {
+		if err := unix.Syncfs(int(data.Fd())); err != nil {
+			return &os.PathError{Op: "syncfs", Path: p.Root, Err: err}
 		}
 		return nil
 	}
-	if err = check(); err != nil {
-		return zero, noAssignment, err
+	return action(held{l, a, retired, observed, parent, check, syncData})
+}
+
+// Selection is the selected, unretired Fresh allocation with its pinned benches
+// parent and the ledger's filesystem UUID, observed under the allocation lock.
+// It is evidence for a recovery step, not authority for any effect.
+type Selection struct {
+	Approval       Approval
+	FilesystemUUID string
+}
+
+// Select holds the allocation lock while action runs. It applies the same rules
+// as retirement and refuses a retired row. recheck repeats the authority, lock,
+// parent and dedicated-mount checks but does not test the leaf; sync runs
+// syncfs on the held data root. Direct root only; there is no service route.
+func Select(ctx context.Context, p hoststorage.Policy, key string, action func(s Selection, recheck, sync func() error) error) error {
+	if action == nil {
+		return ErrRetirement
 	}
-	for _, unit := range []string{"-b", "-i"} {
-		report, e := quotaReport(ctx, p.Root, a.ProjectID, unit)
-		want := a.Inodes
-		if unit == "-b" {
-			want = a.Bytes / 1024
-		}
-		if e != nil {
-			return zero, noAssignment, e
-		}
-		if e = unused(report, a.ProjectID, want); e != nil {
-			return zero, noAssignment, e
-		}
-	}
-	if err = check(); err != nil {
-		return zero, noAssignment, err
-	}
-	if approved == nil {
-		return observed, a, nil
-	}
-	tombstone := a
-	tombstone.Bytes, tombstone.Inodes = 0, 0
-	if !retired {
-		l.Assignments["bench:"+key] = tombstone
-		if err = l.Validate(p.Root, p.AllocationBinding(), false); err != nil {
-			return zero, noAssignment, err
-		}
-		if err = allocationledger.Save(p.Ledger, filepath.Join(p.Ledger, "assignments.json"), l); err != nil {
-			return zero, noAssignment, err
-		}
-	}
-	if err = check(); err != nil {
-		return zero, noAssignment, err
-	}
-	return observed, tombstone, nil
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	return hold(ctx, p, key, nil, func(h held) error {
+		return action(Selection{Approval: h.observed, FilesystemUUID: h.ledger.FilesystemUUID}, h.check, h.syncData)
+	})
 }
 
 func parentNode(info os.FileInfo) Parent {
