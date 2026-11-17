@@ -203,6 +203,20 @@ systemctl status superbench.service
 journalctl -u superbench.service --no-pager
 ```
 
+Clients receive only the static error their protocol defines, such as
+`operation_failed`. benchd writes the cause of every failed operation, and of
+every outcome it could not record, to its journal as one line:
+
+```text
+operation failed: api=v2 operation="create" request_id="fresh1-create" key="fresh-1" phase="materializing" code=operation_failed cause="fixed-helper operation failed: exit status 1: \"bench-quota: …\""
+```
+
+`phase` is the workspace phase the response reports (`-` when there is none). The
+cause is the error chain, at most 1 KiB, with the quota helper's own refusal line
+and with repository URL credentials and queries removed. A line never holds the
+request body, lease tokens, command arguments or run output. Find one with
+`journalctl -u superbench.service --grep 'operation failed'`.
+
 The installed wrapper discovers the delegated cgroup from the running service.
 Keep `Delegate=yes` and the reviewed managed helper boundary. Do not change the
 unit's privilege restrictions independently of the helper installation. Require

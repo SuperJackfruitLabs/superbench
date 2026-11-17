@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"log"
 	"net/http"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/bench"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/failurelog"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/operationbody"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/operationcontrol"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/protocolv2"
@@ -173,9 +173,7 @@ func (s *Server) serveV2(w http.ResponseWriter, r *http.Request) {
 	status, code, message := 200, "", ""
 	if operationErr != nil {
 		status, code, message = operationErrorV2(operationErr)
-		if code == "capacity_exhausted" {
-			log.Printf("%s: %s", code, message)
-		}
+		failurelog.V2(request, result, code, operationErr)
 	}
 	response := responseV2(request, result, code, message)
 	encoded, encodeErr := json.Marshal(response)
@@ -196,6 +194,7 @@ func (s *Server) serveV2(w http.ResponseWriter, r *http.Request) {
 	}
 	if protocolv2.Growth(request.Operation) {
 		if err := s.receipts.Finish(uid, request.RequestID, encoded, status); err != nil {
+			failurelog.Receipt("v2", request.Operation, request.RequestID, request.Key, err)
 			if encodeErr != nil || errors.Is(err, errCancelRequested) {
 				result = nil
 			}

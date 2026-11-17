@@ -1,4 +1,4 @@
-package service
+package scalarapi
 
 import (
 	"errors"
@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/bench"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspaceapi"
 )
 
 func TestCapacityErrorProjectionKeepsOnlyLogicalQuantities(t *testing.T) {
@@ -16,8 +17,8 @@ func TestCapacityErrorProjectionKeepsOnlyLogicalQuantities(t *testing.T) {
 		name, code, message string
 		project             func(error) (int, string, string)
 	}{
-		{"scalar_v1", "operation_failed", "operation failed; inspect retained bench state and local logs", operationError},
-		{"workspace_v2", "capacity_exhausted", capacity.Message(), operationErrorV2},
+		{"scalar_v1", "operation_failed", "operation failed; inspect retained bench state and local logs", ErrorStatus},
+		{"workspace_v2", "capacity_exhausted", capacity.Message(), workspaceapi.ErrorStatus},
 	} {
 		name, project := tc.name, tc.project
 		t.Run(name, func(t *testing.T) {

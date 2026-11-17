@@ -16,9 +16,11 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/activation"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/autoarchive"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/bench"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/failurelog"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/freshreadiness"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/maintenance"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/protocol"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/scalarapi"
 )
 
 type Config struct {
@@ -289,6 +291,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	status, code, message := 200, "", ""
 	if operationErr != nil {
 		status, code, message = operationError(operationErr)
+		failurelog.V1(request, code, operationErr)
 	}
 	response := makeResponse(request, result, code, message)
 	encoded, e := json.Marshal(response)
@@ -298,6 +301,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if protocol.Growth(request.Operation) {
 		if e = s.receipts.Finish(uid, request.RequestID, encoded, status); e != nil {
+			failurelog.Receipt("v1", request.Operation, request.RequestID, request.Key, e)
 			s.reply(w, request, result, 503, "operation_in_doubt", "receipt save failed; inspect retained bench state")
 			return
 		}
@@ -362,19 +366,7 @@ func (s *Server) dispatch(r protocol.Request) (any, error) {
 	}
 	return nil, errors.New("unknown operation")
 }
-func operationError(e error) (int, string, string) {
-	switch {
-	case errors.Is(e, bench.ErrNotFound):
-		return 404, "not_found", "unknown bench"
-	case errors.Is(e, bench.ErrLease):
-		return 403, "forbidden", "valid holder capability required"
-	case errors.Is(e, bench.ErrWorkspace):
-		return 409, "conflict", "aggregate workspace requires the workspace API"
-	case errors.Is(e, bench.ErrArchived) || errors.Is(e, bench.ErrBusy) || errors.Is(e, bench.ErrExists) || errors.Is(e, bench.ErrNotFenced) || errors.Is(e, bench.ErrCheckpoint) || errors.Is(e, bench.ErrDirty):
-		return 409, "conflict", "bench state conflicts with this operation"
-	}
-	return 422, "operation_failed", "operation failed; inspect retained bench state and local logs"
-}
+func operationError(e error) (int, string, string) { return scalarapi.ErrorStatus(e) }
 
 func makeResponse(r protocol.Request, result any, code, message string) protocol.Response {
 	op := r.Operation
