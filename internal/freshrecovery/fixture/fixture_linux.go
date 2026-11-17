@@ -48,6 +48,14 @@ var Markers = []string{
 	"FRESH_RECOVERY_NONEMPTY_LEAF_REFUSED_PASS",
 	"FRESH_RECOVERY_WRONG_PHASE_REFUSED_PASS",
 	"FRESH_RECOVERY_REPAIR_FOREIGN_CAPS_REFUSED_PASS",
+	"FRESH_CLEANUP_STAGED_GIT_TREES_PASS",
+	"FRESH_CLEANUP_ALLOCATING_C_PASS",
+	"FRESH_CLEANUP_CHANGED_ENTRY_REFUSED_PASS",
+	"FRESH_CLEANUP_SYMLINK_SWAP_REFUSED_PASS",
+	"FRESH_CLEANUP_UNREADABLE_REFUSED_PASS",
+	"FRESH_CLEANUP_WORKER_KILLED_RETRY_PASS",
+	"FRESH_CLEANUP_CRASH_AFTER_RETENTION_RETRY_PASS",
+	"FRESH_CLEANUP_TRANSFERRING_PARKED_PASS",
 	"FRESH_RECOVERY_ALL_LEAKS_RETIRED_PASS",
 }
 
@@ -107,7 +115,8 @@ type leak struct {
 
 func hash(s string) string { v := sha256.Sum256([]byte(s)); return hex.EncodeToString(v[:]) }
 
-// Run proves every PR 2 recovery path on real leaks, each to a retired tombstone.
+// Run proves every recovery path on real leaks, each to a retired tombstone:
+// root-owned leaves (PR 2) and daemon-owned trees through the clean worker.
 func Run(t *testing.T, gate Gate) {
 	if os.Getenv("SUPERBENCH_FRESH_LOWER_FIXTURE") != "1" || os.Getuid() != 0 || os.Geteuid() != 0 || os.Getenv("SUDO_UID") != "" || gate == nil {
 		t.Fatal("dedicated direct-root lower fixture required")
@@ -133,10 +142,11 @@ func Run(t *testing.T, gate Gate) {
 	e.nonEmptyRefused()
 	e.wrongPhaseRefused()
 	e.repairForeignCaps()
+	e.cleanups()
 	// syncfs before retirement is order-tested by freshretirement's unit test;
 	// this fixture only shows every leak reached a committed tombstone with it.
-	if e.retired != 9 {
-		t.Fatalf("%d of 9 leaks retired", e.retired)
+	if e.retired != 9+cleanupLeaks {
+		t.Fatalf("%d of %d leaks retired", e.retired, 9+cleanupLeaks)
 	}
 	t.Log("FRESH_RECOVERY_ALL_LEAKS_RETIRED_PASS")
 }
@@ -145,11 +155,14 @@ func Run(t *testing.T, gate Gate) {
 // before ownership initialization, and leaves the operation permanently denied.
 // The intent stays reserved; the leaf is root 0700 with the assigned project
 // and the exact limits, as applyLedger leaves it when initialize fails.
-func (e *env) newLeak(key string) *leak {
+func (e *env) newLeak(key string) *leak { e.t.Helper(); return e.newLeakSized(key, 4<<20) }
+
+// newLeakSized is newLeak with the given quota bytes.
+func (e *env) newLeakSized(key string, quota uint64) *leak {
 	t := e.t
 	t.Helper()
 	s := e.template.Spec
-	s.Key, s.ID, s.QuotaBytes = key, hash("recovery-bid:" + key)[:32], 4<<20
+	s.Key, s.ID, s.QuotaBytes = key, hash("recovery-bid:" + key)[:32], quota
 	identity := e.template.Operation
 	identity.OperationID = hash("recovery-operation:" + key)
 	identity.StateIdentity = hash("recovery-state:" + key)
