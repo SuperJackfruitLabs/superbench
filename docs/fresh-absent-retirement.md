@@ -2,7 +2,8 @@
 
 `internal/freshretirement` is the storage primitive for retiring a failed Fresh
 allocation after its fixed leaf is absent. It has no command, service or sudo
-route. Fresh materialization remains disabled until the operator recovery owner
+route. Fresh materialization is off by default (see
+[pilot installation](pilot-installation.md#activation)); the operator recovery owner
 also binds original bootstrap provenance, permanent operation denial, actual
 stopped-controller authority and a durable reviewed approval under the existing
 operation lock.

@@ -31,7 +31,7 @@ func (s Store) StageWorkspaceContext(ctx context.Context, creationID string, spe
 	}
 	m := workspace.Manager{State: s.State, Data: s.Data, Timeout: s.MirrorTimeout, Admit: s.admit, Allocate: s.allocateWorkspace}
 	m.Within, m.Git = s.workspaceWithin, s.workspaceGit
-	if s.proposedFreshPayload {
+	if s.ProposedFreshPayload {
 		m.Fresh = workspacebootstrap.New(s.State, s.Data)
 	}
 	return m.Stage(ctx, creationID, spec)
@@ -128,7 +128,7 @@ func (s Store) StageWorkspaceRecoveryContext(ctx context.Context, creationID str
 	}
 	m := workspace.Manager{State: s.State, Data: s.Data, Timeout: s.MirrorTimeout,
 		Within: s.workspaceWithin, Git: s.workspaceGit, Admit: s.admit, Allocate: s.allocateWorkspace}
-	if s.proposedFreshPayload {
+	if s.ProposedFreshPayload {
 		m.Fresh = workspacebootstrap.New(s.State, s.Data)
 	}
 	return m.StageRecovery(ctx, creationID, spec)

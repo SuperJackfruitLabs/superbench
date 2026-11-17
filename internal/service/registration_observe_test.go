@@ -7,9 +7,11 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/activation"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/bench"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/protocolv2"
 )
@@ -81,5 +83,21 @@ func TestRegistrationObservationStrictBodyAndClosedUnavailable(t *testing.T) {
 	}
 	if _, err = os.Lstat(root); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("route created state: %v", err)
+	}
+}
+
+// Each switch reaches exactly its own path; receipt lookup alone still promotes
+// normal requests out of the private listener's accept class.
+func TestActivationSwitchesReachTheServer(t *testing.T) {
+	for i := range 5 {
+		var a activation.Switches
+		*[]*bool{&a.FreshPayload, &a.FiniteIO, &a.ReceiptLookup, &a.Cancellation, &a.RegistrationObservation}[i] = true
+		s := newServer(context.Background(), Config{}, a, nil)
+		got, want := []bool{s.config.Store.ProposedFreshPayload, s.proposedFiniteIO, s.proposedReceiptLookup, s.proposedCancellation, s.proposedRegistrationObservation}, make([]bool, 5)
+		c, r := &peerConn{slot: make(chan struct{}, 1), normal: make(chan struct{}, 1)}, httptest.NewRequest("GET", "/healthz", nil)
+		c.slot <- struct{}{}
+		if want[i] = true; !slices.Equal(got, want) || s.promoteNormal(r.WithContext(context.WithValue(r.Context(), connectionKey{}, c))) != nil || (len(c.normal) == 1) != (a.ReceiptLookup || a.Cancellation) {
+			t.Errorf("%v reached %v, promoted %d", a, got, len(c.normal))
+		}
 	}
 }

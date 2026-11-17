@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"mime"
@@ -12,10 +13,12 @@ import (
 	"sync"
 	"time"
 
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/activation"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/autoarchive"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/bench"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/maintenance"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/protocol"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/serviceidentity"
 )
 
 type Config struct {
@@ -25,12 +28,13 @@ type Config struct {
 	MaxActive          int
 	RetentionInterval  time.Duration
 	ArchiveInterval    time.Duration
+	Activation         activation.Switches // only from the root-owned activation file
 }
 type Server struct {
 	proposedCancellation            bool
 	proposedReceiptLookup           bool
 	proposedRegistrationObservation bool
-	proposedFiniteIO                bool // never set by Serve; see docs/finite-io.md
+	proposedFiniteIO                bool // only Config.Activation sets it; see docs/finite-io.md
 	receiptSlots                    chan struct{}
 	cancelWake                      chan struct{}
 	config                          Config
@@ -63,18 +67,28 @@ func serve(ctx context.Context, c Config, proposed bool) error {
 	if c.ArchiveInterval < time.Second || c.ArchiveInterval > 24*time.Hour {
 		return errors.New("invalid archive interval")
 	}
+	a := c.Activation
 	if proposed {
+		a.Cancellation, a.ReceiptLookup = true, true
+	}
+	// Refuse a combination that would strand workspaces before any state or socket.
+	if err := a.Check(func() error { _, err := serviceidentity.ResolveService(); return err }); err != nil {
+		return err
+	}
+	private := a.Cancellation || a.ReceiptLookup
+	// An activated daemon never migrates: refuse state an earlier benchd has not brought current.
+	if a.Any() {
 		if err := c.Store.RequireOperationState(); err != nil {
-			return err
+			return fmt.Errorf("activated paths need state migrated by a start without them: %w", err)
 		}
 	}
-	listener, lock, e := listenMode(c.Socket, c.Store.State, proposed)
+	listener, lock, e := listenMode(c.Socket, c.Store.State, private)
 	if e != nil {
 		return e
 	}
 	defer listener.Close()
 	defer lock.Close()
-	if !proposed {
+	if !a.Any() {
 		if e = c.Store.Migrate(); e != nil {
 			return e
 		}
@@ -86,9 +100,9 @@ func serve(ctx context.Context, c Config, proposed bool) error {
 	defer r.Close()
 	lifetime, cancel := context.WithCancel(ctx)
 	defer cancel()
-	s := &Server{config: c, ctx: lifetime, receipts: r, slots: make(chan struct{}, c.MaxActive), proposedCancellation: proposed, proposedReceiptLookup: proposed, receiptSlots: make(chan struct{}, 2), cancelWake: make(chan struct{}, 1)}
+	s := newServer(lifetime, c, a, r)
 	operationDone := make(chan struct{})
-	if proposed {
+	if private {
 		go func() {
 			defer close(operationDone)
 			s.runOperationReconciler(lifetime, s.cancelWake, func(err error) { log.Printf("operation reconciliation blocked: %v", err) })
@@ -99,12 +113,12 @@ func serve(ctx context.Context, c Config, proposed bool) error {
 	maintenanceDone := make(chan struct{})
 	go func() {
 		defer close(maintenanceDone)
-		maintenance.Manager{Root: c.Store.State, Store: c.Store}.Run(lifetime, c.RetentionInterval, func(e error) { log.Printf("retention blocked: %v", e) })
+		maintenance.Manager{Root: c.Store.State, Store: s.config.Store}.Run(lifetime, c.RetentionInterval, func(e error) { log.Printf("retention blocked: %v", e) })
 	}()
 	archiveDone := make(chan struct{})
 	go func() {
 		defer close(archiveDone)
-		manager := autoarchive.Manager{Store: c.Store}
+		manager := autoarchive.Manager{Store: s.config.Store}
 		manager.Run(lifetime, c.ArchiveInterval, func(r autoarchive.Report, err error) {
 			if err != nil {
 				log.Printf("automatic archive blocked: %v", err)
@@ -143,6 +157,12 @@ func serve(ctx context.Context, c Config, proposed bool) error {
 		return shutdownErr
 	}
 	return e
+}
+
+// newServer is the only place the activation switches reach the server.
+func newServer(ctx context.Context, c Config, a activation.Switches, r *receipts) *Server {
+	c.Store.ProposedFreshPayload = a.FreshPayload
+	return &Server{config: c, ctx: ctx, receipts: r, slots: make(chan struct{}, c.MaxActive), proposedCancellation: a.Cancellation, proposedReceiptLookup: a.ReceiptLookup, proposedRegistrationObservation: a.RegistrationObservation, proposedFiniteIO: a.FiniteIO, receiptSlots: make(chan struct{}, 2), cancelWake: make(chan struct{}, 1)}
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {

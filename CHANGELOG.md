@@ -14,6 +14,16 @@ stamps the section `## vX.Y.Z — YYYY-MM-DD`, and the release notes quote it.
   `SHA256SUMS` and a build-provenance attestation come with them. `bench version` and
   `benchd version` print the release version; a build from a branch prints `dev`. Read
   `docs/pilot-installation.md` before installing anything.
+- benchd reads the default-off v2 switches (Fresh payload layout, finite I/O, receipt lookup,
+  cancellation, registration observation) only from the root-owned
+  `/etc/superbench/activation.json`, and logs them at start. With the file absent nothing
+  changes. An activated daemon refuses state that a start without the switches has not migrated,
+  and refuses a combination that would strand workspaces: `fresh_payload` needs `cancellation`
+  and the installed service identity, and `finite_io` and `registration_observation` need
+  `fresh_payload`.
+  The managed installer creates the separate `superbench-payload` account and, with
+  `--identity`, writes the payload policy and service identity the helper verifies; with
+  `--activation` it writes the activation file with every switch off.
 - Return a specific v2 logical-capacity refusal with needed and total byte/inode budgets when a fixed quota reservation cannot fit. Preserve quota limits, retained creation intents and nonzero failures; log only the same bounded diagnostics. Keep the v1 closed error code and message unchanged.
 
 - Add a proposed explicit finite-I/O request codec with bounded opaque bytes and

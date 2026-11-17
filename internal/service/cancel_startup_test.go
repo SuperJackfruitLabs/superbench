@@ -34,7 +34,7 @@ func TestPrivateStartupRefusesHistoricalStateBeforeSocketOrUpgrade(t *testing.T)
 	db.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
-	if err = serve(ctx, c, true); err == nil || err.Error() != fmt.Sprintf("unsupported state schema 25 (expected %d)", benchstate.SchemaVersion) {
+	if err = serve(ctx, c, true); err == nil || !strings.HasSuffix(err.Error(), fmt.Sprintf("unsupported state schema 25 (expected %d)", benchstate.SchemaVersion)) {
 		t.Fatal("private startup did not refuse the historical schema", err)
 	}
 	db, err = statestore.Open(filepath.Join(c.Store.State, "bench.db"), true)

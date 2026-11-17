@@ -19,8 +19,11 @@ SuperBench treats the input and stdout as opaque bytes. It parses neither.
 ## Gate
 
 The service has a `proposedFiniteIO` field, like `proposedCancellation` and
-`proposedRegistrationObservation`. Public `Serve` never sets it, and no request
-field, header or environment variable can. With the gate off:
+`proposedRegistrationObservation`. Only `finite_io` in the root-owned activation
+file `/etc/superbench/activation.json` sets it, together with `fresh_payload` and
+`cancellation` (see [pilot installation](pilot-installation.md#activation)). No request field, header,
+environment variable or command-line flag can. With the file absent, or the gate
+off:
 
 - the operation route reads at most 64 KiB, accepts any `application/json`
   media type and gives a `profile` parameter no meaning;
