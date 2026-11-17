@@ -150,8 +150,10 @@ type fixture struct {
 	payload *payload
 	staged  *model.Bench
 	gate    sync.Mutex
-	// verified counts read-only checks of the pinned Fresh allocation.
+	// verified counts read-only checks of the pinned Fresh allocation;
+	// quotaErr, when set, is root's refusal of it.
 	verified int
+	quotaErr error
 }
 
 // errLegacyQuota is the helper's refusal of a legacy apply for an allocation
@@ -163,7 +165,7 @@ func (f *fixture) freshQuota(b *model.Bench) error {
 		return errors.New("fresh quota verification saw another allocation")
 	}
 	f.verified++
-	return nil
+	return f.quotaErr
 }
 
 func (f *fixture) within(fn func(workspace.Update) error) error {
@@ -350,6 +352,10 @@ func TestFreshCreateInitializesThroughPayloadRoute(t *testing.T) {
 		t.Fatalf("payload root privacy changed: %v %v", info, err)
 	}
 
+	if f.verified != 1 {
+		t.Fatalf("genesis checkpoint verified its allocation %d times, want 1 before export", f.verified)
+	}
+	f.verified = 0
 	// A later checkpoint of payload-made commits imports only what the mirror lacks.
 	l := f.lifecycle(f.selector)
 	held, err := l.Acquire(context.Background(), "card", "writer")
@@ -375,6 +381,13 @@ func TestFreshCreateInitializesThroughPayloadRoute(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	// Root's verify refuses a leaf outside its project: nothing is exported.
+	f.quotaErr = errors.New("bench leaf is outside its quota project")
+	verified := f.verified
+	if _, err = l.Checkpoint(context.Background(), "card", held.Lease.Token); !errors.Is(err, f.quotaErr) || f.verified != verified+1 || f.payload.exported != 0 {
+		t.Fatalf("checkpoint exported without root's storage verify: %v (verified %d, exported %d)", err, f.verified-verified, f.payload.exported)
+	}
+	f.quotaErr = nil
 	checkpointed, err := l.Checkpoint(context.Background(), "card", held.Lease.Token)
 	if err != nil {
 		t.Fatalf("fresh checkpoint: %v", err)
