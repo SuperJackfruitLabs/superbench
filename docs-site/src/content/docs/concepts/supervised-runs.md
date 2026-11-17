@@ -59,7 +59,8 @@ once = "pnpm install --frozen-lockfile"
 each = "pnpm install --offline --frozen-lockfile"
 ```
 
-The hooks are trusted repository shell code, run as the service user with `/bin/sh -e`, each in
+The hooks are trusted repository shell code, run as the account running `bench` or `benchd`, with
+`/bin/sh -e`, each in
 its own subshell rooted at the checkout. `once` runs on the first successful preparation; later
 acquisitions skip it only when the exact configuration bytes match a successful receipt for that
 bench. `each` runs before every handoff. Changing any byte of the configuration, comments included,
@@ -77,7 +78,20 @@ and reacquire gap. Setup failure, cancellation or a changed configuration leaves
 
 ## Preparing without Linux
 
-Supervised preparation needs Linux. On macOS and Linux, `bench prepare-local` runs the same
+Supervised preparation needs Linux. Whenever the repository has setup hooks or a supported pnpm or
+npm lockfile, warm `create`, `recover`, `lease` and `setup` prepare the checkout in a fenced
+execution and so need Linux cgroup delegation; on macOS they refuse rather than fall back. The
+laptop sequence is:
+
+```sh
+bench create-cold --repo /absolute/path/to/remote.git --branch card/example example
+bench lease-repair --holder first-writer example
+bench prepare-local example
+bench acknowledge-local-preparation --digest REVIEWED_DIGEST --acknowledge-stopped-writers example
+bench checkpoint example
+bench release example
+```
+ On macOS and Linux, `bench prepare-local` runs the same
 preparation under an explicit cooperative lease, for trusted operators. It does not fence
 processes or prove that descendants stopped. Review the result, stop every writer yourself, then
 acknowledge the exact attempt digest with

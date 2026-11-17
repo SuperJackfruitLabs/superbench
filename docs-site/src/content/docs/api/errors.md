@@ -12,12 +12,12 @@ checked against `internal/protocolv2` when the docs build.
 | Code | HTTP status | Meaning | What to do |
 | --- | --- | --- | --- |
 | `invalid_request` | 400, 405, 413, 415 | The request was malformed: not POST, not JSON, too large, an unknown or missing field, a bad value. | Fix the request. Nothing ran. |
-| `forbidden` | 403 | The caller's uid is not an operator (or a reader, for read-only operations). | Use an authorized account. |
+| `forbidden` | 403 | The caller's uid is not an operator (or a reader, for read-only operations), or the lease token is missing, wrong or no longer current ("valid holder capability required"). | Use an authorized account; for a token, check `status` and use the current holder's token. |
 | `not_found` | 404 | Unknown endpoint, or no such bench or workspace. | Check the path and key. |
 | `conflict` | 409 | The current state refuses the operation, or a request ID was reused with a different body. | Read `status`; reuse an ID only with its original body. |
 | `in_progress` | 409 | The same request is still running. | Wait, then retry with the same ID and body. |
 | `operation_in_doubt` | 409, 503 | The daemon cannot tell whether an earlier attempt took effect, for example after a restart. It is never run again automatically. | Reconcile by hand: inspect status, stop the recorded execution, checkpoint and release. A new ID is not reconciliation. |
-| `unavailable` | 503 | The service is shutting down, at its connection or active-operation limit, its receipt budget is exhausted, or a complete result would not fit. | Retry later with the same request ID, or query one key. |
+| `unavailable` | 503 | The service is shutting down, at its connection or active-operation limit, its receipt budget is exhausted, a complete result would not fit, or the operation was cancelled or hit a deadline such as the mirror timeout. | Inspect `status` and the retained state first; then retry with the same request ID, or query one key. |
 | `operation_failed` | 422 | The operation ran and failed, for example a nonzero command exit or a refused checkpoint. A retained grant may come with it. | Inspect the retained workspace state. |
 | `capacity_exhausted` | 422 | A fixed quota reservation cannot fit. The v2 refusal reports the needed and total byte and inode budgets. Only `/v2/operations` returns it. | Free capacity or request less. Limits are never raised to fit. |
 

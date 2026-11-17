@@ -12,7 +12,8 @@ bench lease --holder first-agent fix-login
 ```
 
 The response includes `Lease.Token`, the holder's capability, and `Path`, the checkout. The token
-is printed only on acquisition; status and checkpoint output redact it. Keep it in
+is returned only on acquisition, on an administrative stop (`stop --admin`) or on exact replay of a
+completed request's receipt; status and checkpoint output redact it. Keep it in
 `BENCH_LEASE_TOKEN` rather than passing `--token`, which shows it in process arguments.
 
 ## Leases are cooperative

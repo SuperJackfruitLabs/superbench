@@ -6,8 +6,9 @@ status: wet paint
 
 `benchd` owns one host-local Unix socket and one private state store, and serves the same
 operations as the `bench` CLI over HTTP on that socket. The `bench` CLI is its only implemented
-client: pass `--socket` to any operation. There is no TCP listener. Never expose the socket
-through a TCP proxy.
+client: pass `--socket` to any operation. There is no TCP listener (read from the source; no test
+asserts it, see the [Security model](/start/security-model/)). Never expose the socket through a
+TCP proxy.
 
 The request and response shapes are **proposed** contract data, pinned from the suite's contract
 repository. They are implemented and tested here; no suite product consumes them yet, and a shared
@@ -17,10 +18,11 @@ response schema and published SDK for v1 are still pending.
 
 | Method | Path | What it is |
 | --- | --- | --- |
+| `GET` | `/healthz` | A health check, open to any authorized peer (operator or reader). Returns the service name and API version. |
 | `POST` | `/v1/operations` | Scalar (single-repository) operations, version `superbench.v1`. |
 | `POST` | `/v2/operations` | Grouped workspace operations, version `superbench.v2`. See [v2 operations](/api/operations/). |
 
-Requests are `Content-Type: application/json`. Three further v2 extensions exist in source but are
+Operation requests are `POST` with `Content-Type: application/json`; the health check is a `GET`. Three further v2 extensions exist in source but are
 proposed and **disabled** in the public `Serve` entry point: cancellation (an `operation` of
 `cancel` on `/v2/operations`), `POST /v2/receipts/lookup` for historical receipt evidence, and
 `POST /v2/registrations/observe`. No request can turn them on.
@@ -67,7 +69,7 @@ operation. No timeout proves that a writer stopped.
 
 ## Bounds
 
-Requests are at most 64 KiB, and responses at most 1 MiB (64 KiB for durable v2 growth
-responses). Unknown fields, duplicate keys, null optional values, trailing documents and invalid
+Requests are at most 64 KiB. Every v1 response is at most 1 MiB; on v2, read-only responses are at
+most 1 MiB and durable growth responses at most 64 KiB. Unknown fields, duplicate keys, null optional values, trailing documents and invalid
 UTF-8 are refused. At most 64 concurrent connections, and 8 active operations by default
 (`--max-active`, 1 to 64). An overlarge status fails; query one key. There is no pagination.

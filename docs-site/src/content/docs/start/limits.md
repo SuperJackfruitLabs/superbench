@@ -30,7 +30,7 @@ unfinished work. [Status](/start/status/) says which is which.
 | What | Bound | Source |
 | --- | --- | --- |
 | API request body | 64 KiB | `docs/service.md` |
-| API response | 1 MiB (read-only responses); durable growth responses 64 KiB on v2 | `docs/service.md`, `docs/workspace-api.md` |
+| API response | 1 MiB for every v1 response; on v2, 1 MiB for read-only responses and 64 KiB for durable growth responses | `docs/service.md`, `docs/workspace-api.md` |
 | Concurrent connections | 64 | `docs/service.md` |
 | Active operations | 8 by default, 1 to 64 | `benchd --max-active` |
 | Request receipts | 64 KiB reserved per pending result, at most 10,000 rows and 64 MiB of replies | `docs/service.md` |

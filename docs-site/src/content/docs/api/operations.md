@@ -46,7 +46,7 @@ operator. See [The local API](/api/overview/).
 | Field | Shape |
 | --- | --- |
 | `key` | Letters, digits, `_` and `-`, starting with a letter or digit, at most 80 characters. |
-| `repositories` | 1 to 32 objects: `name` (lowercase letters, digits, `_`, `-`, at most 64), `repository`, and optional `branch` and `base`. |
+| `repositories` | 1 to 32 objects: `name` (lowercase letters, digits, `_` and `-`, starting with a letter or digit, at most 64 characters), `repository`, and optional `branch` and `base`. |
 | `checkpoint_repository` | The `name` of one member. |
 | `source` | For `recover`: `repository`, `bench_id`, `commit` and `manifest_sha256` of the seal to rebuild from. |
 | `initialize` | Must be `true`; warm initialization is mandatory. |
@@ -56,7 +56,7 @@ operator. See [The local API](/api/overview/).
 | `checkpoint` | For `run`: omitted or `true` checkpoints and releases after success; `false` keeps the lease. |
 | `repository_name` | The member to run or set up. Omitted, `run` uses the workspace root and `setup` prepares every member. |
 | `offline` | For `setup`: offline frozen setup. |
-| `quota_bytes` | One total workspace budget, within host policy. |
+| `quota_bytes` | One total workspace budget, within host policy: 1024 to 2^50 bytes, a multiple of 1024. |
 
 ## The response envelope
 

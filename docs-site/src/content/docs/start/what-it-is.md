@@ -1,6 +1,6 @@
 ---
 title: What SuperBench is
-description: One task, one isolated checkout on a host, kept warm between holders, with checkpoints the remote confirms. An experimental single-host prototype, not released yet.
+description: One task, one git worktree on a host, kept warm between holders, with checkpoints the remote confirms. An experimental single-host prototype, not released yet.
 status: wet paint
 ---
 
@@ -10,8 +10,8 @@ the bench can pass to the next holder, the work has to be committed, pushed to t
 confirmed on the remote.
 
 It is a Go command-line tool, `bench`, and an optional local daemon, `benchd`, that serves the same
-operations over a Unix socket. It has no TCP listener and depends on no other suite product. Output
-is JSON.
+operations over a Unix socket. It has no TCP listener (read from the source; no test asserts it, see
+the [Security model](/start/security-model/)) and depends on no other suite product. Output is JSON.
 
 ## Why a bench
 
@@ -29,8 +29,10 @@ and sharing one checkout without rules loses work. A bench is the middle ground:
 - **Checkpoints the remote confirms.** `bench checkpoint` pushes the existing HEAD without force
   and fails unless the remote branch is exactly that commit. `bench release` refuses until that is
   true. See [Checkpoints](/concepts/checkpoints/).
-- **Recoverable.** Because the committed work is on the remote, `bench recover` can rebuild a bench
-  from its task branch on a replacement host with empty state.
+- **Recoverable, in part.** Because the committed work is on the remote, `bench recover` can rebuild
+  a bench from its remote-confirmed task branch into a separate, empty state and data pair.
+  Recovery into existing state is not supported, and no second-host recovery drill exists yet; see
+  [Status](/start/status/).
 
 The basic loop, from the repository README (flags precede the task key):
 
@@ -48,12 +50,18 @@ bench status fix-login
 There is no supported installation yet: the loop above shows what the commands do, not a way to
 start using SuperBench.
 
+The loop as written needs Linux. Whenever the repository has setup hooks or a supported lockfile,
+warm `create`, `recover`, `lease` and `setup` prepare the checkout in a fenced execution, which
+needs Linux cgroup delegation. On a laptop the cooperative sequence is `create-cold`, then
+`lease-repair`, then `prepare-local`, then `acknowledge-local-preparation`; see
+[Supervised runs and setup](/concepts/supervised-runs/#preparing-without-linux).
+
 ## What it is not
 
 - **Not released.** There are no tags, no published binaries and no supported installation. Nothing
   here is in production use.
 - **Not a sandbox.** Leases are cooperative, and supervised runs on Linux are fenced in a cgroup,
-  which is process-tree fencing rather than user or mount isolation. SuperBench is for trusted
+  which is process-tree fencing; there is no user or mount isolation. SuperBench is for trusted
   repositories. See the [Security model](/start/security-model/).
 - **Not multi-host.** It runs on one host. Moving a bench to another host is a reviewed
   administrative procedure, not network coordination.

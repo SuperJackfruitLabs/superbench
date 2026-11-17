@@ -15,7 +15,9 @@ The caveat that travels with this: **managed hosts only.** Enforcement needs Lin
 mount provisioned by the operator, root-owned policy and the privileged quota helper. On macOS and
 unmanaged hosts a quota request is **recorded and not enforced**. The test that exercises real XFS
 enforcement is skipped unless a disposable managed XFS fixture is present, so the evidence for
-enforcement is the repository's recorded drills on loop-backed XFS images, not a host in use.
+enforcement is the repository's recorded drills on loop-backed XFS images, not a host in use. Those
+recorded runs are historical: at least one names an uncommitted working snapshot of a feature
+branch, so they are not runs of the current commit.
 
 What managed storage does:
 

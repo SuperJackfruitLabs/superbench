@@ -10,8 +10,8 @@ A **checkpoint** makes a bench's committed work durable on the remote.
 bench checkpoint fix-login
 ```
 
-It pushes the existing HEAD to the task branch (`HEAD:refs/heads/bench/<key>`) with no force
-option, then reads the remote branch back with `ls-remote` and fails unless it is exactly the
+It pushes the existing HEAD to the task branch (`HEAD:refs/heads/<branch>`, where `<branch>` is
+`bench/<key>` unless `--branch` named another at creation) with no force option, then reads the remote branch back with `ls-remote` and fails unless it is exactly the
 checkpointed commit.
 
 ## What it guarantees

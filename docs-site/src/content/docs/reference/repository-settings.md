@@ -39,8 +39,8 @@ digest and invalidates `once` reuse.
 | `once` | Runs on the first successful preparation of a bench, then only when the configuration changes. |
 | `each` | Runs before every handoff. |
 
-Each command is trusted shell code, at most 16 KiB with no NUL, run as the service user with
-`/bin/sh -e` in its own subshell at the checkout. With no hooks, setup does a frozen install from
+Each command is trusted shell code, at most 16 KiB with no NUL, run as the account running `bench`
+or `benchd`, with `/bin/sh -e` in its own subshell at the checkout. With no hooks, setup does a frozen install from
 exactly one pnpm or npm lockfile. See [Supervised runs and setup](/concepts/supervised-runs/).
 
 ## `[caches]`

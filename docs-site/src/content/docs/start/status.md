@@ -18,14 +18,14 @@ host anyone relies on. Passing single-host drills are not evidence that a whole 
 | Phase | Outcome it requires | Where it stands |
 | --- | --- | --- |
 | 0 | Host disk alert, a reviewed cleanup dry-run, branch and checkpoint rules for code stages | Partial. A host collector and capacity warning were checked; notification delivery and recovery, real handoff enforcement and an operator-reviewed cleanup remain unverified. |
-| 1 | Standalone CLI and host service; durable state and leases; checkpoints and recovery; quotas, shared mirrors and stores; verified archive and reap | In progress. Most of the single-host core is built and tested (below). Laptop preparation, cross-host transfer, broader collection and suite integration are pending. |
+| 1 | Standalone CLI and host service; durable state and leases; checkpoints and recovery; quotas, shared mirrors and stores; verified archive and reap | In progress. Most of the single-host core is built and tested (below). The acceptance still to prove is listed under [Phase 1 acceptance still to prove](#phase-1-acceptance-still-to-prove). |
 | 2 | Suite adapters, a card panel, locality scoring, witness events; a read-only web view, terminal attach and MCP | Not built. Contracts come before consumers, and visual mockups before UI. Static mockups exist; no viewer ships. |
-| 3 | Remote editor launch or browser IDE; a second-host recovery drill; per-bench isolation; Salaam layout and execution-host integration | Not built. |
+| 3 | Remote editor launch or browser IDE; a second-host recovery drill; per-bench isolation (none yet); Salaam layout and execution-host integration | Not built. |
 
 ## Works on `main`, with tests or recorded drills
 
-- **Create, lease, checkpoint, release and recover a bench**, with cooperative leases and
-  remote-confirmed checkpoints. See [Leases](/concepts/leases/) and
+- **Create, lease, checkpoint and release a bench**, with cooperative leases and remote-confirmed
+  checkpoints. See [Leases](/concepts/leases/) and
   [Checkpoints](/concepts/checkpoints/).
 - **Durable state**: versioned SQLite outside bench data, with creation intents journaled before a
   worktree is made, so an interrupted create can be retried with the same arguments.
@@ -48,6 +48,9 @@ host anyone relies on. Passing single-host drills are not evidence that a whole 
 
 ## Partial
 
+- **Recovery.** Recovering a bench from its remote-confirmed task branch into a separate, empty
+  state and data pair works. Recovery into existing state, missing-checkout and cross-host
+  original-ref recovery are not complete, and a second-host recovery drill is Phase 3 work.
 - **Payload identity.** The separate payload user and its fixed helper exist in source, but `main`
   does not install and activate the complete separate payload-user path. See
   [Payload identity and the fixed helpers](/concepts/payload-identity/).
@@ -61,12 +64,24 @@ host anyone relies on. Passing single-host drills are not evidence that a whole 
 - **Contracts.** The v2 grouped request and response shapes are proposed contract data, not
   accepted contracts with consumers.
 
+## Phase 1 acceptance still to prove
+
+The repository's implementation plan lists these before Phase 1 can be called complete. Passing
+single-host drills alone is not evidence that they are done.
+
+- The standalone laptop preparation path (supervised hooks currently require Linux).
+- The remaining complete multi-repository CLI and service lifecycle.
+- Missing-checkout and cross-host original task-ref recovery.
+- The automatic completion and archive lifecycle, and broader collection.
+- The acquisition, prompt and checkpoint pilot on an opt-in board, after the contract boundaries
+  are reviewed.
+
 ## Not built
 
 - A release: tags, binaries, an installer anyone can rely on.
 - Automatic lease expiry. By design, time alone never ends a lease.
 - Remote authentication, a web interface and suite integrations.
-- Payload isolation under a separate user, enforced end to end.
+- No payload isolation under a separate user yet, enforced end to end.
 - More than one host working together.
 - Collection of shared caches, mirrors and request receipts.
 - The suite pilot on an opt-in board.
