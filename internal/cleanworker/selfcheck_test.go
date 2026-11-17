@@ -76,3 +76,39 @@ func TestArgumentsAreTwoCanonicalNonzeroIDs(t *testing.T) {
 		}
 	}
 }
+
+func TestSessionRequiresALeaderWithoutAControllingTTY(t *testing.T) {
+	good := "4242 (bench-quota) S 4100 4242 4242 0 -1 4194560 120 0 0 0\n"
+	if err := verifySession([]byte(good), 4242); err != nil {
+		t.Fatal("own session without a tty refused", err)
+	}
+	odd := "4242 (a) b (c)) R 4100 4242 4242 0 -1 0\n"
+	if err := verifySession([]byte(odd), 4242); err != nil {
+		t.Fatal("command name with parentheses misparsed", err)
+	}
+	for name, c := range map[string]struct {
+		stat   string
+		pid    int
+		reason string
+	}{
+		"operator-session": {"4242 (bench-quota) S 4100 4100 4000 34816 4100 0\n", 4242, ": session"},
+		"root-tty":         {"4242 (bench-quota) S 4100 4242 4242 34816 -1 0\n", 4242, "controlling tty"},
+		"other-process":    {good, 4243, ": session"},
+		"name-hides-tty":   {"4242 (x) S 1 4242 4242 34816 0 0) S 1 4242 4242 0 -1 0\n", 4242, ""},
+		"truncated":        {"4242 (bench-quota) S 4100 4242\n", 4242, ": session"},
+		"no-name":          {"4242 bench-quota S 4100 4242 4242 0\n", 4242, ": session"},
+		"bad-tty":          {"4242 (bench-quota) S 4100 4242 4242 x -1 0\n", 4242, "controlling tty"},
+	} {
+		err := verifySession([]byte(c.stat), c.pid)
+		if name == "name-hides-tty" {
+			// The last parenthesis ends the name: the trailing fields decide.
+			if err != nil {
+				t.Errorf("%s: %v", name, err)
+			}
+			continue
+		}
+		if !errors.Is(err, ErrWorker) || !strings.Contains(err.Error(), c.reason) {
+			t.Errorf("%s admitted or misreported: %v", name, err)
+		}
+	}
+}

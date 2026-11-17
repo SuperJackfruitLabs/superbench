@@ -89,3 +89,30 @@ func verifyDescriptors(names []string, own int) error {
 	}
 	return nil
 }
+
+// verifySession parses /proc/self/stat and requires the process to be pid, to
+// lead its own session (session ID equals pid) and to have no controlling tty
+// (tty_nr 0). The command name may hold spaces and parentheses, so fields are
+// read after its last closing parenthesis.
+func verifySession(raw []byte, pid int) error {
+	text := string(raw)
+	open, end := strings.IndexByte(text, '('), strings.LastIndexByte(text, ')')
+	if len(raw) > 4096 || open < 1 || end < open {
+		return fmt.Errorf("%w: session", ErrWorker)
+	}
+	self, err := strconv.Atoi(strings.TrimSpace(text[:open]))
+	f := strings.Fields(text[end+1:])
+	// state ppid pgrp session tty_nr ...
+	if err != nil || self != pid || len(f) < 5 {
+		return fmt.Errorf("%w: session", ErrWorker)
+	}
+	session, serr := strconv.Atoi(f[3])
+	tty, terr := strconv.Atoi(f[4])
+	if serr != nil || session != pid {
+		return fmt.Errorf("%w: session", ErrWorker)
+	}
+	if terr != nil || tty != 0 {
+		return fmt.Errorf("%w: controlling tty", ErrWorker)
+	}
+	return nil
+}

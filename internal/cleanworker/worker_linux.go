@@ -12,7 +12,15 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/reap"
 )
 
-const prSetNoNewPrivs = 38
+const (
+	prGetDumpable   = 3
+	prSetDumpable   = 4
+	prSetNoNewPrivs = 38
+
+	keyctlGetKeyringID       = 0
+	keyctlJoinSessionKeyring = 1
+	keySpecSessionKeyring    = -3
+)
 
 // Main runs the worker: args are the two IDs after the command. It returns the
 // process exit code; a refusal is written to stderr and nothing to stdout.
@@ -25,10 +33,12 @@ func Main(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 }
 
 func run(args []string, stdin io.Reader, stdout io.Writer) error {
-	// Before anything else: no_new_privs, then the descriptor table (read with
-	// raw syscalls, before any os.File can open the runtime's poller), then the
-	// credentials, then refuse root.
-	if err := noNewPrivs(); err != nil {
+	// Before anything else: not dumpable (so no daemon-uid process can ptrace
+	// it) and no_new_privs. Then the descriptor table (read with raw syscalls,
+	// before any os.File can open the runtime's poller), its own session with
+	// no controlling tty, the credentials, refuse root, and leave root's session
+	// keyring for a new anonymous one. Only then is the request read.
+	if err := isolate(); err != nil {
 		return err
 	}
 	want, err := parseArgs(args)
@@ -38,11 +48,17 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	if err = checkDescriptors(); err != nil {
 		return err
 	}
+	if err = checkSession(); err != nil {
+		return err
+	}
 	if err = checkCredentials(want); err != nil {
 		return err
 	}
 	if err = reap.RequireNonRoot(); err != nil || os.Getuid() == 0 {
 		return errors.Join(ErrWorker, err)
+	}
+	if err = newSessionKeyring(); err != nil {
+		return err
 	}
 	raw, err := io.ReadAll(io.LimitReader(stdin, MaxFrame+1))
 	if err != nil {
@@ -72,6 +88,54 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	}
 	_, err = stdout.Write(out)
 	return err
+}
+
+// isolate makes the process non-dumpable and sets no_new_privs.
+func isolate() error {
+	// Dumpability belongs to the process's memory, so one call covers every
+	// thread. It is checked again after the credential checks below.
+	if _, _, errno := syscall.RawSyscall(syscall.SYS_PRCTL, prSetDumpable, 0, 0); errno != 0 {
+		return fmt.Errorf("%w: dumpable: %v", ErrWorker, errno)
+	}
+	return noNewPrivs()
+}
+
+// newSessionKeyring replaces the inherited (root's) session keyring with a new
+// anonymous one on every thread, and requires the session keyring ID to change.
+func newSessionKeyring() error {
+	before, _, errno := syscall.RawSyscall(syscall.SYS_KEYCTL, keyctlGetKeyringID, uintptr(keySpecSessionKeyring&0xffffffff), 0)
+	if errno != 0 {
+		return fmt.Errorf("%w: session keyring: %v", ErrWorker, errno)
+	}
+	_, _, errno = syscall.AllThreadsSyscall(syscall.SYS_KEYCTL, keyctlJoinSessionKeyring, 0, 0)
+	if errno == syscall.ENOTSUP {
+		_, _, errno = syscall.RawSyscall(syscall.SYS_KEYCTL, keyctlJoinSessionKeyring, 0, 0)
+	}
+	if errno != 0 {
+		return fmt.Errorf("%w: join session keyring: %v", ErrWorker, errno)
+	}
+	after, _, errno := syscall.RawSyscall(syscall.SYS_KEYCTL, keyctlGetKeyringID, uintptr(keySpecSessionKeyring&0xffffffff), 0)
+	if errno != 0 || int32(after) == int32(before) || int32(after) <= 0 {
+		return fmt.Errorf("%w: session keyring unchanged", ErrWorker)
+	}
+	return nil
+}
+
+// checkSession requires the worker to lead its own session with no controlling
+// tty, per /proc/self/stat, and to be non-dumpable.
+func checkSession() error {
+	raw, err := os.ReadFile("/proc/self/stat")
+	if err != nil {
+		return errors.Join(ErrWorker, err)
+	}
+	if err = verifySession(raw, os.Getpid()); err != nil {
+		return err
+	}
+	dumpable, _, errno := syscall.RawSyscall(syscall.SYS_PRCTL, prGetDumpable, 0, 0)
+	if errno != 0 || dumpable != 0 {
+		return fmt.Errorf("%w: dumpable", ErrWorker)
+	}
+	return nil
 }
 
 // noNewPrivs sets no_new_privs on every thread. A cgo build cannot use

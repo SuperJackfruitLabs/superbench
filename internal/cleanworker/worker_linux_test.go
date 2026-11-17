@@ -29,13 +29,14 @@ func TestMain(m *testing.M) {
 }
 
 // child runs the worker as the test user with a clean environment and Dir=/.
-func child(t *testing.T, args []string, extra []*os.File, request []byte) (string, string, error) {
+func child(t *testing.T, args []string, extra []*os.File, setsid bool, request []byte) (string, string, error) {
 	t.Helper()
 	exe, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
 	}
-	cmd := &exec.Cmd{Path: exe, Args: append([]string{"bench-quota"}, args...), Env: []string{"SUPERBENCH_CLEAN_WORKER_TEST_CHILD=1"}, Dir: "/", ExtraFiles: extra, Stdin: bytes.NewReader(request)}
+	cmd := &exec.Cmd{Path: exe, Args: append([]string{"bench-quota"}, args...), Env: []string{"SUPERBENCH_CLEAN_WORKER_TEST_CHILD=1"}, Dir: "/", ExtraFiles: extra, Stdin: bytes.NewReader(request),
+		SysProcAttr: &syscall.SysProcAttr{Setsid: setsid}}
 	var out, diagnostic bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &diagnostic
 	err = cmd.Run()
@@ -47,7 +48,7 @@ func self() []string {
 }
 
 // Run as the ordinary test user, the real worker refuses an extra descriptor,
-// a uid or gid it does not hold, and, because the test user keeps its bounding
+// its parent's session, a uid or gid it does not hold, and, because the test user keeps its bounding
 // set (and possibly supplementary groups), even its own identity. It reads no
 // request and writes no reply when it refuses.
 func TestTheRealWorkerRefusesBeforeReadingItsRequest(t *testing.T) {
@@ -69,15 +70,17 @@ func TestTheRealWorkerRefusesBeforeReadingItsRequest(t *testing.T) {
 	for name, c := range map[string]struct {
 		args   []string
 		extra  []*os.File
+		setsid bool
 		reason string
 	}{
-		"extra-descriptor": {self(), []*os.File{extra}, "descriptors"},
-		"wrong-uid":        {Arguments(other), nil, ": Uid"},
-		"wrong-gid":        {Arguments(otherGroup), nil, ": Uid"},
-		"own-identity":     {self(), nil, ""},
-		"no-arguments":     {nil, nil, "arguments"},
+		"extra-descriptor": {self(), []*os.File{extra}, true, "descriptors"},
+		"parent-session":   {self(), nil, false, ": session"},
+		"wrong-uid":        {Arguments(other), nil, true, ": Uid"},
+		"wrong-gid":        {Arguments(otherGroup), nil, true, ": Uid"},
+		"own-identity":     {self(), nil, true, ""},
+		"no-arguments":     {nil, nil, true, "arguments"},
 	} {
-		out, diagnostic, err := child(t, c.args, c.extra, request)
+		out, diagnostic, err := child(t, c.args, c.extra, c.setsid, request)
 		var exit *exec.ExitError
 		if !errors.As(err, &exit) || exit.ExitCode() != 1 || out != "" || !strings.Contains(diagnostic, "clean worker refused") {
 			t.Fatalf("%s: worker admitted: %v %q %q", name, err, out, diagnostic)
