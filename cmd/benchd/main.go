@@ -20,12 +20,15 @@ import (
 )
 
 func main() {
-	if e := run(); e != nil {
+	if e := run(os.Args[1:], activation.Load, service.Serve); e != nil {
 		fmt.Fprintln(os.Stderr, "benchd:", e)
 		os.Exit(1)
 	}
 }
-func run() error {
+
+// run takes the activation loader and the server as parameters only so tests can
+// prove that the loaded switches reach the server; main passes the real ones.
+func run(args []string, load func() (activation.Switches, error), serve func(context.Context, service.Config) error) error {
 	config, e := os.UserConfigDir()
 	if e != nil {
 		return e
@@ -34,22 +37,25 @@ func run() error {
 	if e != nil {
 		return e
 	}
-	if len(os.Args) == 2 && os.Args[1] == "version" {
+	if len(args) == 1 && args[0] == "version" {
 		fmt.Println("benchd", buildinfo.Version)
 		return nil
 	}
-	state := flag.String("state", filepath.Join(config, "superbench", "state"), "private authoritative state directory")
-	data := flag.String("data", filepath.Join(cache, "superbench", "data"), "bench data directory")
-	socket := flag.String("socket", "", "absolute Unix socket path (default state/benchd.sock)")
-	cgroup := flag.String("cgroup-root", "/sys/fs/cgroup/superbench", "delegated cgroup-v2 root")
-	operators := flag.String("operator-uids", strconv.Itoa(os.Geteuid())+",0", "comma-separated local operator uids")
-	readers := flag.String("reader-uids", "", "comma-separated local read-only uids")
-	retentionInterval := flag.Duration("retention-interval", time.Minute, "automatic retention check interval; inactive until policy is approved")
-	archiveInterval := flag.Duration("archive-interval", time.Minute, "archive inspection interval; only committed branch-merged repository policy opts in")
-	mirrorTimeout := flag.Duration("mirror-timeout", 2*time.Minute, "deadline for mirror clone/validation/fetch")
-	active := flag.Int("max-active", 8, "maximum active operations")
-	flag.Parse()
-	if flag.NArg() != 0 {
+	flags := flag.NewFlagSet("benchd", flag.ExitOnError)
+	state := flags.String("state", filepath.Join(config, "superbench", "state"), "private authoritative state directory")
+	data := flags.String("data", filepath.Join(cache, "superbench", "data"), "bench data directory")
+	socket := flags.String("socket", "", "absolute Unix socket path (default state/benchd.sock)")
+	cgroup := flags.String("cgroup-root", "/sys/fs/cgroup/superbench", "delegated cgroup-v2 root")
+	operators := flags.String("operator-uids", strconv.Itoa(os.Geteuid())+",0", "comma-separated local operator uids")
+	readers := flags.String("reader-uids", "", "comma-separated local read-only uids")
+	retentionInterval := flags.Duration("retention-interval", time.Minute, "automatic retention check interval; inactive until policy is approved")
+	archiveInterval := flags.Duration("archive-interval", time.Minute, "archive inspection interval; only committed branch-merged repository policy opts in")
+	mirrorTimeout := flags.Duration("mirror-timeout", 2*time.Minute, "deadline for mirror clone/validation/fetch")
+	active := flags.Int("max-active", 8, "maximum active operations")
+	if e = flags.Parse(args); e != nil {
+		return e
+	}
+	if flags.NArg() != 0 {
 		return fmt.Errorf("unexpected positional arguments")
 	}
 	if *socket == "" {
@@ -78,12 +84,12 @@ func run() error {
 		return e
 	}
 	// Activation comes only from the fixed root-owned file, never from flags or the environment.
-	switches, e := activation.Load()
+	switches, e := load()
 	if e != nil {
 		return fmt.Errorf("%s: %w", activation.FixedPath, e)
 	}
 	log.Printf("activation: %s", switches)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	return service.Serve(ctx, service.Config{Socket: *socket, Store: bench.Store{State: *state, Data: *data, CgroupRoot: *cgroup, MirrorTimeout: *mirrorTimeout}, Operators: ops, Readers: read, MaxActive: *active, RetentionInterval: *retentionInterval, ArchiveInterval: *archiveInterval, Activation: switches})
+	return serve(ctx, service.Config{Socket: *socket, Store: bench.Store{State: *state, Data: *data, CgroupRoot: *cgroup, MirrorTimeout: *mirrorTimeout}, Operators: ops, Readers: read, MaxActive: *active, RetentionInterval: *retentionInterval, ArchiveInterval: *archiveInterval, Activation: switches})
 }

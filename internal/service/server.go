@@ -75,7 +75,6 @@ func serve(ctx context.Context, c Config, proposed bool) error {
 	if err := a.Check(func() error { _, err := serviceidentity.ResolveService(); return err }); err != nil {
 		return err
 	}
-	c.Store.ProposedFreshPayload = a.FreshPayload
 	private := a.Cancellation || a.ReceiptLookup
 	// An activated daemon never migrates: refuse state an earlier benchd has not brought current.
 	if a.Any() {
@@ -101,7 +100,7 @@ func serve(ctx context.Context, c Config, proposed bool) error {
 	defer r.Close()
 	lifetime, cancel := context.WithCancel(ctx)
 	defer cancel()
-	s := &Server{config: c, ctx: lifetime, receipts: r, slots: make(chan struct{}, c.MaxActive), proposedCancellation: a.Cancellation, proposedReceiptLookup: a.ReceiptLookup, proposedRegistrationObservation: a.RegistrationObservation, proposedFiniteIO: a.FiniteIO, receiptSlots: make(chan struct{}, 2), cancelWake: make(chan struct{}, 1)}
+	s := newServer(lifetime, c, a, r)
 	operationDone := make(chan struct{})
 	if private {
 		go func() {
@@ -114,12 +113,12 @@ func serve(ctx context.Context, c Config, proposed bool) error {
 	maintenanceDone := make(chan struct{})
 	go func() {
 		defer close(maintenanceDone)
-		maintenance.Manager{Root: c.Store.State, Store: c.Store}.Run(lifetime, c.RetentionInterval, func(e error) { log.Printf("retention blocked: %v", e) })
+		maintenance.Manager{Root: c.Store.State, Store: s.config.Store}.Run(lifetime, c.RetentionInterval, func(e error) { log.Printf("retention blocked: %v", e) })
 	}()
 	archiveDone := make(chan struct{})
 	go func() {
 		defer close(archiveDone)
-		manager := autoarchive.Manager{Store: c.Store}
+		manager := autoarchive.Manager{Store: s.config.Store}
 		manager.Run(lifetime, c.ArchiveInterval, func(r autoarchive.Report, err error) {
 			if err != nil {
 				log.Printf("automatic archive blocked: %v", err)
@@ -158,6 +157,12 @@ func serve(ctx context.Context, c Config, proposed bool) error {
 		return shutdownErr
 	}
 	return e
+}
+
+// newServer is the only place the activation switches reach the server.
+func newServer(ctx context.Context, c Config, a activation.Switches, r *receipts) *Server {
+	c.Store.ProposedFreshPayload = a.FreshPayload
+	return &Server{config: c, ctx: ctx, receipts: r, slots: make(chan struct{}, c.MaxActive), proposedCancellation: a.Cancellation, proposedReceiptLookup: a.ReceiptLookup, proposedRegistrationObservation: a.RegistrationObservation, proposedFiniteIO: a.FiniteIO, receiptSlots: make(chan struct{}, 2), cancelWake: make(chan struct{}, 1)}
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {

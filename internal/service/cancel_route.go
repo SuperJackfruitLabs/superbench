@@ -11,7 +11,7 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/protocolv2"
 )
 
-// This boundary is private: neither production Config nor Serve enables it.
+// Only the root-owned activation file (cancellation) enables this boundary.
 // Admission persists intent only; independent reconciliation proves completion.
 func (s *Server) cancelV2(w http.ResponseWriter, uid uint32, request protocolv2.CancelRequest) {
 	response := protocolv2.CancelResponse{Version: protocolv2.Version, Operation: "cancel"}
