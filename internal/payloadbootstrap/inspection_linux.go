@@ -44,27 +44,40 @@ func (m *Manager) Inspect(ctx context.Context, s Spec) (Inspection, error) {
 		if !o.Found || o.Identity != m.operation {
 			return ErrBootstrap
 		}
-		i, err := m.read(s)
+		var err error
+		result, err = m.inspectionHeld(s, o.Denied)
 		if err != nil {
 			return err
 		}
-		raw, err := json.Marshal(i)
-		if err != nil {
-			return err
-		}
-		spec, err := s.Bytes()
-		if err != nil {
-			return err
-		}
-		intentSum, specSum := sha256.Sum256(raw), sha256.Sum256(spec)
-		result = Inspection{Version: InspectionVersion, Key: s.Key, ID: s.ID,
-			SpecSHA256: hex.EncodeToString(specSum[:]), IntentSHA256: hex.EncodeToString(intentSum[:]),
-			PolicyDigest: i.PolicyDigest, Phase: i.Phase, Operation: o.Identity, OperationDenied: o.Denied,
-			RecordedAllocation: i.Allocation, RecordedRoot: i.Root, RecordedControls: i.Controls,
-			CommandSHA256: i.CommandSHA256, CommandCompleted: i.CommandCompleted}
 		return m.check()
 	})
 	if err != nil {
+		return Inspection{}, err
+	}
+	return result, nil
+}
+
+// inspectionHeld requires the caller to hold the original operation lock.
+func (m *Manager) inspectionHeld(s Spec, denied bool) (Inspection, error) {
+	i, err := m.read(s)
+	if err != nil {
+		return Inspection{}, err
+	}
+	raw, err := json.Marshal(i)
+	if err != nil {
+		return Inspection{}, err
+	}
+	spec, err := s.Bytes()
+	if err != nil {
+		return Inspection{}, err
+	}
+	intentSum, specSum := sha256.Sum256(raw), sha256.Sum256(spec)
+	result := Inspection{Version: InspectionVersion, Key: s.Key, ID: s.ID,
+		SpecSHA256: hex.EncodeToString(specSum[:]), IntentSHA256: hex.EncodeToString(intentSum[:]),
+		PolicyDigest: i.PolicyDigest, Phase: i.Phase, Operation: m.operation, OperationDenied: denied,
+		RecordedAllocation: i.Allocation, RecordedRoot: i.Root, RecordedControls: i.Controls,
+		CommandSHA256: i.CommandSHA256, CommandCompleted: i.CommandCompleted}
+	if err := m.check(); err != nil {
 		return Inspection{}, err
 	}
 	return result, nil

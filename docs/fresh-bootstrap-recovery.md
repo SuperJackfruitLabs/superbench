@@ -41,3 +41,48 @@ Its inspection assertion is
 `LOWER_RETAINED_BOOTSTRAP_INSPECTION_WITHOUT_REVIVAL_PASS`. It exercises the
 Manager API against actual fixed policies, indexed history and an XFS allocation;
 it does not prove the production command, booted systemd gate or pilot lifecycle.
+
+## Absent-allocation maintenance
+
+Direct-root `bench-quota plan-retire-bootstrap KEY OPERATION_ID EPOCH STATE_ID AUTHORITY BINARY_SHA256`
+reads the original canonical Spec on stdin and returns a `RetirementPlan`. The
+original operation must already be permanently denied. The fixed installed
+service must actually be stopped and persistently masked, with no daemon,
+payload or helper controllers in the original-host process inventory. These
+commands check those conditions; they do not stop, mask or configure anything.
+They accept neither sudo delegation nor a policy override.
+
+Review the entire returned plan, retaining its original bootstrap/spec hashes,
+operation identity and separate current allocation/parent evidence. Submit JSON
+with the fields `Spec` and `Plan`, in that order, to
+`bench-quota retire-bootstrap KEY OPERATION_ID EPOCH STATE_ID AUTHORITY BINARY_SHA256`.
+Both commands take the same original identity, not a newly chosen repair identity.
+They require the same originally pinned helper binary and matching installed
+policy. A changed binary or policy requires separate reviewed recovery; do not
+reinstall an old binary to bypass a changed-policy refusal.
+Input is bounded and read to EOF before acquiring the operation lock. The retire
+request limit is 128 KiB; the plan command's Spec limit remains 64 KiB.
+
+Retirement holds the existing operation lock, re-establishes the original denial's
+durability, rechecks retained provenance and actual controller authority, and
+persists the exact reviewed plan as a root-owned 0600 file at
+`LEDGER/payload-retirements/KEY.json` before changing any reservation. An existing
+approval must match exactly, including after a lost reply. Partial or foreign
+approval files refuse; retain them for explicit operator investigation. A partial
+`LEDGER/payload-retirements/KEY.json` requires explicit manual removal only after
+inspection verifies that no retirement effects occurred. The commands never
+automatically delete or replace it. If effects cannot be ruled out, preserve the
+file and stop for separate recovery. The historical bootstrap intent is never
+rewritten. A `reserved` intent continues to record zero allocation even when the
+separate storage observation identifies a reservation. An unspecified requested byte quota must match the fixed policy's
+original default.
+
+Only an absent fixed leaf with independently proved zero blocks and inodes can
+be retired. The selected key, project ID and Fresh marker remain permanent; only
+its reservation caps become zero. A refusal can occur after that save. Keep the
+exact durable plan and retry it; an error does not mean no effects occurred.
+Nonempty allocations, missing original evidence
+and never-initialized projects with absent quota reports remain unfinished.
+These paths do not enable Fresh materialization. The lower fixture tests actual
+approval-file custody and refusal without a booted maintenance gate; a successful
+installed maintenance-command lifecycle still requires booted-host verification.

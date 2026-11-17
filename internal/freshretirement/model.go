@@ -37,6 +37,10 @@ type Approval struct {
 	Parent                  Parent
 }
 
+// Validate checks the complete immutable approval before it is durably retained.
+// It does not establish current storage, usage or controller authority.
+func (a Approval) Validate(p hoststorage.Policy) error { return a.validate(p) }
+
 func (a Approval) validate(p hoststorage.Policy) error {
 	if p.Validate() != nil || p.OperationJournal != "indexed-v2" || a.Version != Version || !allocationledger.Key.MatchString(a.Key) || !digest.MatchString(a.Authority) {
 		return ErrRetirement

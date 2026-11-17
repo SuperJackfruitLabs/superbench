@@ -3,8 +3,10 @@
 package payloadbootstrap_test
 
 import (
+	"bytes"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -13,6 +15,7 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/payloadbootstrap"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotaoperation"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotaoperationcontrol"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotaoperationjournal"
 )
 
@@ -95,5 +98,15 @@ func assertLowerRetainedInspection(t *testing.T, control *quotaoperationjournal.
 	}
 	assertLowerBytes(t, intentPath, intent)
 	assertLowerBytes(t, filepath.Join(p.Ledger, "assignments.json"), assignments)
+	if got, err := manager.PlanRetirement(t.Context(), spec); !errors.Is(err, quotaoperationcontrol.ErrInstall) || got != (payloadbootstrap.RetirementPlan{}) {
+		t.Fatalf("unbooted lower fixture granted maintenance: %+v %v", got, err)
+	}
+	assertLowerBytes(t, intentPath, intent)
+	assertLowerBytes(t, filepath.Join(p.Ledger, "assignments.json"), assignments)
+	child := exec.CommandContext(t.Context(), helper, "-test.v", "-test.run=^TestRetirement(ApprovalCustody|Ordering)Fixture$", "-test.timeout=0")
+	log, err := child.CombinedOutput()
+	if err != nil || (!bytes.Contains(log, []byte("RETIREMENT_APPROVAL_CUSTODY_PASS")) || !bytes.Contains(log, []byte("RETIREMENT_ORDERING_AND_BINDING_PASS"))) || bytes.Contains(log, []byte("SKIP")) {
+		t.Fatalf("actual root approval custody failed: %v\n%s", err, log)
+	}
 	t.Log("LOWER_RETAINED_BOOTSTRAP_INSPECTION_WITHOUT_REVIVAL_PASS")
 }
