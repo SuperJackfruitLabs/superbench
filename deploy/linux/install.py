@@ -2,13 +2,20 @@
 """Install a reviewed Linux payload without starting the service or replacing config.
 
 Use --root /absolute/staging to inspect a package image first. For a fresh host,
---root / --prepare creates its account/directories and reloads systemd. Starting
-or enabling the service is a separate operator action after configuration.
+--root / --prepare creates its accounts/directories and reloads systemd. On the
+live root, --identity then writes the payload policy and service identity derived
+from those accounts, and --activation writes the all-false activation file.
+Starting or enabling the service is a separate operator action after configuration.
 """
 import argparse
+import grp
+import hashlib
+import json
 import os
 from pathlib import Path
 import platform
+import pwd
+import re
 import stat
 import struct
 import subprocess
@@ -60,6 +67,97 @@ def static_helper(data):
                     break
 
 
+DAEMON_ACCOUNT = "superbench"
+PAYLOAD_ACCOUNT = "superbench-payload"
+DATA_ROOT = "/srv/superbench-data"
+STATE_ROOT = "/var/lib/superbench/state"
+# superbench-start passes the unit's delegated cgroup; this is its standard path.
+CGROUP_ROOT = "/sys/fs/cgroup/system.slice/superbench.service"
+NOLOGIN = ("/usr/sbin/nologin", "/sbin/nologin", "/bin/false", "/usr/bin/false")
+POLICY_FILE = "etc/superbench/payload-policy.json"
+REGISTRY_FILE = "etc/superbench/service-identity.json"
+ACTIVATION_FILE = "etc/superbench/activation.json"
+ACTIVATION_SWITCHES = ("fresh_payload", "finite_io", "receipt_lookup", "cancellation",
+                       "registration_observation")
+# Conservative path syntax: Go and Python encode these bytes identically in JSON.
+POLICY_PATH = re.compile(r"/[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*")
+
+
+def canonical(value):
+    return json.dumps(value, separators=(",", ":"), ensure_ascii=False).encode()
+
+
+def identity_documents(daemon, payload_ids, cgroup_root=CGROUP_ROOT):
+    """Return the private payload policy and public service identity entries.
+
+    The bytes are the canonical forms internal/payloadpolicy and
+    internal/serviceidentity accept: payloadpolicy.Policy fields in declaration
+    order, and a registry whose PolicySHA256 hashes those exact policy bytes.
+    """
+    ids = [*daemon, *payload_ids]
+    if len(ids) != 4 or any(type(value) is not int or not 0 < value < 2**32 - 1 for value in ids):
+        raise ValueError("payload policy needs four nonzero numeric account IDs")
+    if daemon[0] == payload_ids[0] or daemon[1] == payload_ids[1]:
+        raise ValueError("the payload account must not share the daemon's user or group")
+    for path in (DATA_ROOT, STATE_ROOT, cgroup_root):
+        if (not isinstance(path, str) or len(path) > 4096 or not POLICY_PATH.fullmatch(path)
+                or os.path.normpath(path) != path):
+            raise ValueError("payload policy roots must be normalized absolute paths: " + repr(path))
+    policy = {"DaemonUID": daemon[0], "DaemonGID": daemon[1], "PayloadUID": payload_ids[0],
+              "PayloadGID": payload_ids[1], "DataRoot": DATA_ROOT, "StateRoot": STATE_ROOT,
+              "CgroupRoot": cgroup_root}
+    private = canonical(policy)
+    registry = {"Version": "superbench.service-identity.v1",
+                "LayoutVersion": "superbench.payload-layout.v1", "Policy": policy,
+                "PolicySHA256": hashlib.sha256(private).hexdigest()}
+    return {POLICY_FILE: (private, 0o600), REGISTRY_FILE: (canonical(registry), 0o644)}
+
+
+def activation_document():
+    """The default-off activation file benchd reads (internal/activation)."""
+    lines = ['  "version": "superbench.activation.v1"']
+    lines += ['  "%s": false' % name for name in ACTIVATION_SWITCHES]
+    return {ACTIVATION_FILE: (("{\n" + ",\n".join(lines) + "\n}\n").encode(), 0o644)}
+
+
+def account_ids(name, getpwnam=pwd.getpwnam, getgrnam=grp.getgrnam):
+    """Numeric IDs of a product system account that sysusers created."""
+    try:
+        user, group = getpwnam(name), getgrnam(name)
+    except KeyError:
+        raise ValueError("account or group is missing: " + name) from None
+    if user.pw_gid != group.gr_gid or user.pw_uid == 0 or user.pw_shell not in NOLOGIN:
+        raise ValueError("refusing a foreign account (expected a nologin system account "
+                         "with its own group): " + name)
+    # Socket clients join the daemon's group; nobody may share the payload's.
+    if name == PAYLOAD_ACCOUNT and group.gr_mem:
+        raise ValueError("the payload group must have no members: " + name)
+    return user.pw_uid, user.pw_gid
+
+
+def installed_identity(cgroup_root, lookup=account_ids):
+    return identity_documents(lookup(DAEMON_ACCOUNT), lookup(PAYLOAD_ACCOUNT), cgroup_root)
+
+
+def preflight_identity(root, prepare, lookup=account_ids):
+    """Return True when the identity must wait for --prepare to create accounts.
+
+    Identity documents without both accounts belong to someone else; refuse
+    them before anything is written rather than overwrite or adopt them.
+    """
+    try:
+        lookup(DAEMON_ACCOUNT)
+        lookup(PAYLOAD_ACCOUNT)
+        return False
+    except ValueError:
+        if not prepare:
+            raise
+    for relative in (POLICY_FILE, REGISTRY_FILE):
+        if os.path.lexists(checked_path(root, relative)):
+            raise ValueError("identity document exists without its accounts: " + relative)
+    return True
+
+
 def payload(bin_dir, managed):
     here = Path(__file__).resolve().parent
     result = {}
@@ -98,6 +196,8 @@ def payload(bin_dir, managed):
         )
         result["usr/lib/tmpfiles.d/superbench.conf"] = (text, 0o644)
         result["etc/sudoers.d/superbench"] = ((here / "superbench.sudoers").read_bytes(), 0o440)
+        result["usr/lib/sysusers.d/superbench-payload.conf"] = (
+            (here / "superbench-payload.sysusers").read_bytes(), 0o644)
     return result
 
 
@@ -142,12 +242,21 @@ def main():
     parser.add_argument("--bin-dir", type=Path, required=True)
     parser.add_argument("--root", type=Path, required=True)
     parser.add_argument("--managed", action="store_true", help="keep data root owned; install fixed helper sudo rule")
-    parser.add_argument("--prepare", action="store_true", help="live root only: prepare account/directories; never start service")
+    parser.add_argument("--prepare", action="store_true", help="live root only: prepare accounts/directories; never start service")
+    parser.add_argument("--identity", action="store_true",
+                        help="live managed root only: write payload-policy.json and service-identity.json from the accounts")
+    parser.add_argument("--cgroup-root", default=CGROUP_ROOT,
+                        help="the unit's delegated cgroup, as superbench-start passes it to benchd")
+    parser.add_argument("--activation", action="store_true",
+                        help="write /etc/superbench/activation.json with every switch false")
     args = parser.parse_args()
     if not args.root.is_absolute() or str(args.root) != os.path.normpath(str(args.root)) or args.root != args.root.resolve():
         parser.error("installation root must be absolute, normalized and use physical paths")
     if args.prepare and args.root != Path("/"):
         parser.error("--prepare applies only to a live / root")
+    if args.identity and (args.root != Path("/") or not args.managed):
+        # The documents carry numeric IDs from this host's account database.
+        parser.error("--identity applies only to a live / root with --managed")
     if args.root == Path("/"):
         if platform.system() != "Linux" or os.geteuid() != 0:
             parser.error("live installation requires Linux root")
@@ -157,15 +266,28 @@ def main():
         if active.returncode not in (3, 4):
             parser.error("cannot establish the existing systemd service state")
     entries = payload(args.bin_dir, args.managed)
+    if args.activation:
+        entries.update(activation_document())
+    deferred = False
+    if args.identity:
+        identity_documents((1, 2), (3, 4), args.cgroup_root)  # refuse a bad cgroup root first
+        deferred = preflight_identity(args.root, args.prepare)
+        if not deferred:
+            entries.update(installed_identity(args.cgroup_root))
     # Validate the exact sudo policy before installing any live/staged files.
     if args.managed and platform.system() == "Linux":
         source = Path(__file__).resolve().parent / "superbench.sudoers"
         subprocess.run(["visudo", "-cf", str(source)], check=True)
     install(args.root, entries)
     if args.prepare:
-        subprocess.run(["systemd-sysusers", "/usr/lib/sysusers.d/superbench.conf"], check=True)
+        sysusers = ["/usr/lib/sysusers.d/superbench.conf"]
+        if args.managed:
+            sysusers.append("/usr/lib/sysusers.d/superbench-payload.conf")
+        subprocess.run(["systemd-sysusers", *sysusers], check=True)
         subprocess.run(["systemd-tmpfiles", "--create", "/usr/lib/tmpfiles.d/superbench.conf"], check=True)
         subprocess.run(["systemctl", "daemon-reload"], check=True)
+    if deferred:
+        install(args.root, installed_identity(args.cgroup_root))
     print("Installed payload; service has not been started or enabled.")
 
 

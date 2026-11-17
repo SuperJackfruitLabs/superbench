@@ -46,10 +46,15 @@ After reviewing the image and the host's data mount, direct Linux root can run:
 
 ```sh
 python3 deploy/linux/install.py --bin-dir /absolute/build/bin --root / \
-  --managed --prepare
+  --managed --prepare --identity --activation
 ```
 
 This prepares the `superbench` system account, directories and systemd reload.
+Managed installation also creates the separate `superbench-payload` system
+account. `--identity` (live managed root only) writes the private payload policy
+and public service identity from the two accounts' numeric IDs, and
+`--activation` writes `/etc/superbench/activation.json` with every v2 switch off;
+see [pilot installation](pilot-installation.md) for both formats.
 It refuses an active existing product service. It **does not enable or start**
 the service. Root owns installed binaries/configuration. The account owns private
 state and runtime; managed data/ledger parents remain root owned. Unmanaged data
@@ -72,10 +77,10 @@ Only managed installation supplies `/etc/sudoers.d/superbench`. It permits the
 fixed quota helper executable; that helper validates its root-owned policy and
 accepts logical allocations only. It also permits the dedicated payload helper
 with **no command-line arguments**, using sudoers' explicit empty argument string.
-That helper requires independently installed matching private payload policy and
-public service registry; packaging does not create those documents or activate
-the production execution path. These packaging checks alone do not prove payload
-isolation. No generic shell/XFS sudo is granted. A sudo
+That helper requires the matching private payload policy and public service
+registry that `--identity` writes; the payload paths stay off until the
+root-owned activation file turns them on. These packaging checks alone do not
+prove payload isolation. No generic shell/XFS sudo is granted. A sudo
 caller cannot select another policy. The service intentionally retains the sudo
 path; do not add `NoNewPrivileges`, dynamic-user restrictions or a capability
 filter that prevents that helper from doing its work without retesting managed

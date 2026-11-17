@@ -6,46 +6,42 @@ enablement. Acceptance does not provision a service principal or prove a working
 pilot. SuperBench remains standalone; the suite calls it, and SuperBench does not
 call suite products. All suite checkpoint switches remain off by default.
 
-**Current boundary:** main installs the trusted service-account execution model.
-It does not yet install and activate the complete separate payload-UID path.
-The payload helper, fresh registered layout bootstrap, RUN/setup/Git routing and
-AgentPod's corresponding worker transport must land together before claiming that
-boundary is enforced. Do not make Node-private worker contexts readable to the
+**Current boundary:** on a managed host the installer creates the separate
+`superbench-payload` account, the private payload policy and the public service
+identity the payload helper requires, and an activation file with every v2 switch
+off. benchd turns on the Fresh payload layout, finite I/O, receipt lookup,
+cancellation and registration observation only from that root-owned file (see
+[Activation](#activation)). With the file absent or all switches off, the daemon
+behaves exactly as before. Do not make Node-private worker contexts readable to the
 payload account to work around an adapter refusal. Installation success and matching
 hashes are not evidence of a successful card or writer fencing.
 
 ## Current gaps
 
-AgentPod v0.1.129 cannot complete a card through the separate payload-identity
-path. The following work must land and be verified before the rehearsal can
-establish an end-to-end card result:
+The following must be closed or verified before the rehearsal can establish an
+end-to-end card result:
 
-- Wire the coordinator to launch the registered worker with its exact retained
-  input and consume its separate, binding-validated result after fencing and drain.
-- Complete the fresh-layout bootstrap, restricted RUN/setup/Git routing, and
-  installer/sudo integration. The payload-identity foundations are present in
-  source, but do not activate every required route or prove a fresh installation.
-- Prepare explicit provider configuration in the isolated payload home and verify
-  the Hermes adapter through the real supervised worker path. The adapter is
-  merged in AgentPod #902; its source and codec tests do not establish this
-  provider-backed lifecycle.
-- Add and verify an operator release or reconciliation path for Fresh allocations
-  before enabling `proposedFreshPayload`. A failed or cancelled one-shot bootstrap
-  can leave an allocation without a committed ProjectID; legacy apply and release
-  refuse Fresh entries. Retain that allocation and its journals for explicit
-  recovery. Retrying a committed assignment does not recover this earlier gap.
-  Enablement must also distinguish validated Fresh completions from legacy
-  allocated records; changing modes cannot adopt an incomplete legacy checkout.
-- Publish an operator-approved AgentPod release containing the coordinator wiring,
-  adapter and compatible worker. Re-pin the installed Node and worker binaries and
-  registry after that upgrade; v0.1.129 does not contain these changes.
+- **No activated run on a booted host yet.** Creating a Fresh bench and running a
+  real task through the payload helper, with all five switches on, is covered by
+  tests and fixtures but has not been run on an installed, booted host.
+- **Harness configuration in the payload home.** The payload helper sets `HOME`
+  from each bench's Fresh layout. Nothing yet places a harness's provider
+  configuration there, and the harness adapter refuses to provision credentials.
+  This needs a design decision (a shared read-only profile directory, a bench
+  setup step or a keyless provider endpoint) before a provider-backed card can run.
+- **Fresh recovery stays manual.** An interrupted or cancelled Fresh bootstrap is
+  recovered by the direct-root steps in
+  [Retained Fresh bootstrap evidence](fresh-bootstrap-recovery.md); a
+  `transferring` tree stays parked. Turn `fresh_payload` on only with those steps
+  at hand. Changing modes cannot adopt an incomplete legacy checkout.
+- **AgentPod release and pins.** The Node needs an operator-approved AgentPod
+  release that contains the coordinator wiring, the harness adapter and a
+  compatible worker. Re-pin the installed Node and worker binaries and the registry
+  after that upgrade (section 2).
 
-AgentPod source also includes the empty bridge-profile fix (#900), registered
-worker corpus coverage (#903), and explicit capacity-refusal handling (#901).
-These merged changes do not establish which binaries are installed or close the
-coordinator and fresh-installation gaps above. Keep checkpoint flags off until
-the enablement gates and actual lifecycle checks pass. Configuration, matching hashes and a successful install
-are not evidence that a card can complete.
+Keep checkpoint flags off until the enablement gates and actual lifecycle checks
+pass. Configuration, matching hashes and a successful install are not evidence
+that a card can complete.
 
 ## 1. Prepare and install the standalone service
 
@@ -76,13 +72,36 @@ direct Linux root then runs:
 
 ```sh
 python3 deploy/linux/install.py --bin-dir /absolute/build/bin --root / \
-  --managed --prepare
+  --managed --prepare --identity --activation
 ```
 
-This prepares the stable `superbench` account and directories and reloads systemd;
-it does not start or enable the service. Existing conflicting files, unsafe paths
-and an active installation refuse. This is not an upgrade or legacy-adoption
-procedure. See [installer details](install.md) for preflight and recovery.
+This prepares the stable `superbench` account, the separate `superbench-payload`
+system account (nologin, its own group, no members) and the directories, and
+reloads systemd; it does not start or enable the service. Existing conflicting
+files, unsafe paths and an active installation refuse. This is not an upgrade or
+legacy-adoption procedure. See [installer details](install.md) for preflight and
+recovery.
+
+`--identity` then writes two root-owned documents from the accounts' actual
+numeric IDs:
+
+| File | Mode | Content |
+| --- | --- | --- |
+| `/etc/superbench/payload-policy.json` | 0600 | `{"DaemonUID":…,"DaemonGID":…,"PayloadUID":…,"PayloadGID":…,"DataRoot":"/srv/superbench-data","StateRoot":"/var/lib/superbench/state","CgroupRoot":"/sys/fs/cgroup/system.slice/superbench.service"}` |
+| `/etc/superbench/service-identity.json` | 0644 | `{"Version":"superbench.service-identity.v1","LayoutVersion":"superbench.payload-layout.v1","Policy":{…the same policy…},"PolicySHA256":"…"}` |
+
+Both are the canonical compact JSON the helper and the daemon verify; the
+registry's `PolicySHA256` is the SHA-256 of the exact policy bytes. `CgroupRoot`
+must be the cgroup the unit is delegated, which `superbench-start` passes to
+benchd: `/sys/fs/cgroup` followed by `systemctl show -p ControlGroup --value
+superbench.service`. Pass `--cgroup-root` if the unit runs elsewhere. The accounts
+must exist (they do after `--prepare`); identity documents found without them,
+or documents that differ from what the accounts produce, refuse rather than being
+replaced. To change one, remove it deliberately and review the new file.
+
+`--activation` writes `/etc/superbench/activation.json` with every switch off.
+Rerunning the installer accepts identical files and refuses changed ones, so do
+not pass `--activation` again after editing the file.
 
 Write root-owned `/etc/superbench/storage.json` using the actual numeric
 `id -u superbench` and `id -g superbench`, the dedicated data mount and reviewed
@@ -130,6 +149,52 @@ Keep `Delegate=yes` and the reviewed managed helper boundary. Do not change the
 unit's privilege restrictions independently of the helper installation. Require
 an actual Linux managed host-status response; service activity alone is not
 managed readiness or proof that a previous execution has stopped.
+
+### Activation
+
+benchd reads the default-off v2 switches only from
+`/etc/superbench/activation.json`. No request, environment variable, `benchd.env`
+entry or command-line flag can set them. The file is a JSON object with the exact
+version and any of five switches, each a literal `true` or `false`:
+
+```json
+{
+  "version": "superbench.activation.v1",
+  "fresh_payload": false,
+  "finite_io": false,
+  "receipt_lookup": false,
+  "cancellation": false,
+  "registration_observation": false
+}
+```
+
+| Switch | Turns on |
+| --- | --- |
+| `fresh_payload` | Fresh payload layout for new and recovered workspaces, through the payload helper |
+| `finite_io` | The finite-I/O profile on v2 `run` and receipt lookup ([finite I/O](finite-io.md)) |
+| `receipt_lookup` | `POST /v2/receipts/lookup` ([receipt lookup](receipt-lookup.md)) |
+| `cancellation` | v2 `cancel` and the operation reconciler ([cancellation](operation-cancellation.md)) |
+| `registration_observation` | `POST /v2/registrations/observe` |
+
+An omitted switch is off. An unknown, duplicated or non-boolean key, a missing or
+different version, or trailing data refuses startup. `receipt_lookup` and
+`cancellation` also move the socket to the private connection classes: each
+connection carries one response.
+
+benchd refuses to start unless the file is a single-link regular file of at most
+4 KiB, owned by root and not group- or world-writable, and every directory from
+`/` to `/etc/superbench` is owned by root without group or world write. Symlinks
+are never followed. A missing file, or a missing `/etc/superbench`, keeps every
+switch off and the daemon behaves exactly as without this feature. At start
+benchd logs one line with the effective switches, for example
+`activation: fresh_payload=false finite_io=false receipt_lookup=false cancellation=false registration_observation=false`.
+
+An activated daemon never migrates its state. After installing or upgrading
+benchd, start it once with every switch off so it brings the state current, stop
+it, then edit the file and start it again. Otherwise benchd refuses with
+`activated paths need state migrated by a start without them` before it opens the
+socket. Restart the service to apply any change. Turning a switch off later stops
+new work on that path; it does not erase obligations already recorded.
 
 ## 2. Configure the AgentPod Node
 
