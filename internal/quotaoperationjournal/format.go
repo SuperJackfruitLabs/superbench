@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -29,6 +30,12 @@ type formatReady struct {
 	DatabaseInode  uint64 `json:"database_inode"`
 	Authority      string `json:"authority"`
 }
+
+// ErrReadyAuthority is a ready record whose pinned storage authority differs
+// from the current one. A ledger initialized before the authority stopped
+// hashing the mount ID always gets it; it is never adopted or rewritten.
+var ErrReadyAuthority = fmt.Errorf("%w: the ready record pins a storage authority that the mounted data volume, storage policy and ledger no longer match; "+
+	"a ledger initialized by an earlier SuperBench revision (which pinned the mount ID) must be reinitialized, see \"Reinitialize the indexed ledger\" in docs/pilot-installation.md", ErrAuthority)
 
 func formatPath(directory string) string { return directory + ".format-v2" }
 
@@ -122,8 +129,11 @@ func openExisting(ctx context.Context, cfg Config, owner uint32) (*Control, erro
 		if err != nil {
 			return err
 		}
-		if !validDigest(actual) || actual != ready.Authority {
+		if !validDigest(actual) {
 			return ErrAuthority
+		}
+		if actual != ready.Authority {
+			return ErrReadyAuthority
 		}
 		if err := ctx.Err(); err != nil {
 			return err

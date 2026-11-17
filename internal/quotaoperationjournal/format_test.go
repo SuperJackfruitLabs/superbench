@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 
@@ -79,6 +80,26 @@ func TestExplicitFreshFormatAndExistingFacade(t *testing.T) {
 	}
 	if _, err = s.InitializeFresh(context.Background()); !errors.Is(err, os.ErrExist) {
 		t.Fatalf("second initialization: %v", err)
+	}
+}
+
+func TestChangedReadyAuthorityRefusesWithReinitializeGuidance(t *testing.T) {
+	s := freshFixture(t)
+	if _, err := s.InitializeFresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	cfg := s.config()
+	cfg.CheckReady = func(context.Context) (string, error) { return strings.Repeat("ab", 32), nil }
+	_, err := openExisting(context.Background(), cfg, s.owner)
+	if !errors.Is(err, ErrAuthority) || !errors.Is(err, ErrReadyAuthority) || !strings.Contains(err.Error(), "Reinitialize the indexed ledger") {
+		t.Fatalf("changed ready authority: %v", err)
+	}
+	cfg.CheckReady = func(context.Context) (string, error) { return "not-a-digest", nil }
+	if _, err = openExisting(context.Background(), cfg, s.owner); err != ErrAuthority {
+		t.Fatalf("invalid current authority: %v", err)
+	}
+	if _, err = s.OpenExisting(context.Background()); err != nil {
+		t.Fatal(err)
 	}
 }
 
