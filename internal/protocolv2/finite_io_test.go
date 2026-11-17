@@ -177,17 +177,17 @@ func TestFiniteProfileRejectsEveryDuplicateParameterSpelling(t *testing.T) {
 		`application/json; profile*0=superbench.finite-io.v1`,
 		FiniteIOContentType + ";",
 	} {
-		if _, err := BodyLimit(media); !errors.Is(err, ErrInvalid) {
+		if _, finite, err := BodyLimit(media); !errors.Is(err, ErrInvalid) || finite {
 			t.Fatal("repeated or empty parameter accepted", media, err)
 		}
 	}
 	for _, media := range []string{FiniteIOContentType, `application/json ; PROFILE = "superbench.finite-io.v1"`} {
-		if limit, err := BodyLimit(media); err != nil || limit != finiteio.MaxBody {
+		if limit, finite, err := BodyLimit(media); err != nil || limit != finiteio.MaxBody || !finite {
 			t.Fatal("single equivalent profile refused", media, limit, err)
 		}
 	}
 	// Existing unprofiled parameter handling and its smaller budget are unchanged.
-	if limit, err := BodyLimit(`application/json; note="a;b"`); err != nil || limit != MaxBody {
+	if limit, finite, err := BodyLimit(`application/json; note="a;b"`); err != nil || limit != MaxBody || finite {
 		t.Fatal("legacy parameter handling changed", limit, err)
 	}
 }

@@ -310,5 +310,5 @@ func validResponseResult(response Response, request Request) bool {
 			return false
 		}
 	}
-	return true
+	return validFiniteResult(response, request)
 }
