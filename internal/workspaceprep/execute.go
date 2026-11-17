@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/benchstate"
-	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/cachepolicy"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/execution"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/freshtree"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/history"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/operationcontrol"
@@ -23,6 +23,7 @@ func (m Manager) execute(ctx context.Context, key, token string, plan memberPlan
 	var args, env []string
 	var continuation string
 	var stage *execution.Execution
+	var prepare stageexec.PrepareTransport
 	created, noCommand := false, false
 	err := m.Gate(key, func() error {
 		return m.Update(func(rows benchstate.Database, tx *sql.Tx) error {
@@ -42,7 +43,7 @@ func (m Manager) execute(ctx context.Context, key, token string, plan memberPlan
 			if err = m.inspectMember(ctx, b, plan.member.Name); err != nil {
 				return err
 			}
-			_, digest, err := inputs(plan.member.Path)
+			_, digest, err := freshtree.Inputs(ctx, m.Fresh, m.State, b, plan.member)
 			if err != nil || digest != plan.digest {
 				return errors.New("workspace preparation inputs changed before launch")
 			}
@@ -53,7 +54,7 @@ func (m Manager) execute(ctx context.Context, key, token string, plan memberPlan
 				}
 				args = plan.config.Command(done, offline)
 			} else {
-				args, err = setup.FrozenCommandFor(plan.member.Path, cachepolicy.Select(m.Data, plan.member.Path, plan.config.CacheSettings()), offline)
+				args, err = freshtree.FrozenCommand(ctx, m.Fresh, m.State, b, plan.member, plan.config, m.Data, offline)
 				if errors.Is(err, setup.ErrNoLockfile) {
 					noCommand = true
 					return saveProof(tx, b, plan, "")
@@ -78,7 +79,7 @@ func (m Manager) execute(ctx context.Context, key, token string, plan memberPlan
 			if err != nil {
 				return err
 			}
-			env, err = m.environment(ctx, plan)
+			env, err = m.environment(ctx, b, plan)
 			if err != nil {
 				return err
 			}
@@ -99,6 +100,9 @@ func (m Manager) execute(ctx context.Context, key, token string, plan memberPlan
 			stage.HostID, stage.BootID = identity.HostID, identity.BootID
 			b.Lease.Execution = stage
 			b.Workspace.Stage = &model.WorkspaceStage{Name: plan.member.Name, Digest: plan.digest}
+			if prepare, err = freshtree.StageTransport(m.Fresh, m.State, b, plan.member.Name); err != nil {
+				return err
+			}
 			continuation = b.Lease.Continuation
 			return operationcontrol.StartHistory(ctx, tx, b, history.Record{ID: id, Key: key, Holder: b.Lease.Holder, StartedAt: time.Now().UTC()})
 		})
@@ -113,6 +117,7 @@ func (m Manager) execute(ctx context.Context, key, token string, plan memberPlan
 		return nil
 	}
 	runner := stageexec.Runner{
+		Prepare: prepare,
 		Open:    func() (*output.Capture, error) { return m.openCapture(ctx, key, token, continuation, stage) },
 		Backend: m.Backend,
 		StartPrepared: func(ctx context.Context, cmd *exec.Cmd, e *execution.Execution, launch stageexec.Launch) error {
@@ -153,7 +158,7 @@ func (m Manager) execute(ctx context.Context, key, token string, plan memberPlan
 		if err = m.inspectMember(ctx, b, plan.member.Name); err != nil {
 			return err
 		}
-		_, digest, err := inputs(plan.member.Path)
+		_, digest, err := freshtree.Inputs(ctx, m.Fresh, m.State, b, plan.member)
 		if err != nil || digest != plan.digest {
 			return errors.New("workspace preparation inputs changed during execution")
 		}
@@ -180,7 +185,7 @@ func (m Manager) start(ctx context.Context, key, token, continuation string, pla
 			if err = m.inspectMember(ctx, b, plan.member.Name); err != nil {
 				return err
 			}
-			_, digest, err := inputs(plan.member.Path)
+			_, digest, err := freshtree.Inputs(ctx, m.Fresh, m.State, b, plan.member)
 			if err != nil || digest != plan.digest {
 				return errors.New("workspace preparation inputs changed before process start")
 			}

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/benchstate"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/freshtree"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotapolicy"
@@ -63,6 +64,9 @@ func (m Manager) InspectMissing(ctx context.Context, source, target, id string, 
 
 func (m Manager) inspectMissingState(ctx context.Context, a workspacerepair.Manager, rows benchstate.Database, tx *sql.Tx, p MissingPlan, locks *transferCaptures) (MissingPlan, error) {
 	b := rows[p.SourceKey]
+	if fresh, err := freshtree.Selected(nil, m.Store.State, b); err != nil || fresh {
+		return p, errors.Join(freshtree.ErrUnavailable, err) // a Fresh tree is never transferred
+	}
 	if err := workspacepolicy.Validate(b); err != nil {
 		return p, err
 	}

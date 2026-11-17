@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -13,6 +12,8 @@ import (
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/benchstate"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/checkpointset"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/freshtree"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/memberinspect"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/repository"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/statepath"
@@ -37,6 +38,8 @@ type Lifecycle struct {
 	Prepared               func(*model.Bench) error
 	Released               func(*sql.Tx, *model.Bench) error
 	NoteCheckpoint         func(context.Context, *model.Bench)
+	// Fresh selects the payload route for a Fresh tree; nil uses freshtree.Select.
+	Fresh freshtree.Selector
 }
 
 func (l Lifecycle) bounded(ctx context.Context) (context.Context, context.CancelFunc, error) {
@@ -69,10 +72,9 @@ func (l Lifecycle) git(ctx context.Context, dir string, args ...string) (string,
 	return strings.TrimSpace(out), err
 }
 
-func samePhysical(a, b string) bool {
-	x, e := filepath.EvalSymlinks(a)
-	y, f := filepath.EvalSymlinks(b)
-	return e == nil && f == nil && x == y
+func (l Lifecycle) inspector(b *model.Bench) (memberinspect.Inspector, error) {
+	tree, err := freshtree.Resolve(l.Fresh, l.State, b)
+	return memberinspect.Inspector{Data: l.Data, Git: l.Git, Tree: tree}, err
 }
 
 // Inspect validates the registered complete checkout vector without refreshing
@@ -84,12 +86,16 @@ func (l Lifecycle) Inspect(ctx context.Context, b *model.Bench, clean bool) ([]m
 		return nil, err
 	}
 	defer cancel()
-	if err := l.inspectRoot(b, clean); err != nil {
+	i, err := l.inspector(b)
+	if err != nil {
+		return nil, err
+	}
+	if err := i.Root(ctx, b, clean); err != nil {
 		return nil, err
 	}
 	var vector []model.WorkspaceCommit
 	for _, member := range b.Workspace.Members {
-		commit, err := l.inspectMember(ctx, member, clean)
+		commit, err := i.Member(ctx, b, member, clean)
 		if err != nil {
 			return nil, err
 		}
@@ -107,104 +113,19 @@ func (l Lifecycle) InspectMember(ctx context.Context, b *model.Bench, name strin
 		return model.WorkspaceCommit{}, err
 	}
 	defer cancel()
-	if err := l.inspectRoot(b, false); err != nil {
+	i, err := l.inspector(b)
+	if err != nil {
+		return model.WorkspaceCommit{}, err
+	}
+	if err := i.Root(ctx, b, false); err != nil {
 		return model.WorkspaceCommit{}, err
 	}
 	for _, member := range b.Workspace.Members {
 		if member.Name == name {
-			return l.inspectMember(ctx, member, clean)
+			return i.Member(ctx, b, member, clean)
 		}
 	}
 	return model.WorkspaceCommit{}, errors.New("workspace member selector is not registered")
-}
-
-func (l Lifecycle) inspectRoot(b *model.Bench, clean bool) error {
-	if err := workspacepolicy.Validate(b); err != nil {
-		return err
-	}
-	if b.Path != filepath.Join(l.Data, "benches", b.Key) {
-		return errors.New("workspace root differs from configured data")
-	}
-	for _, path := range []string{l.Data, filepath.Join(l.Data, "benches"), b.Path, filepath.Join(l.Data, "mirrors")} {
-		if err := physicalDirectory(path, false); err != nil {
-			return err
-		}
-	}
-	if clean {
-		names := map[string]bool{}
-		for _, member := range b.Workspace.Members {
-			names[member.Name] = true
-		}
-		entries, err := os.ReadDir(b.Path)
-		if err != nil {
-			return err
-		}
-		for _, entry := range entries {
-			if !names[entry.Name()] || !entry.IsDir() || entry.Type()&os.ModeSymlink != 0 {
-				return model.ErrDirty
-			}
-		}
-	}
-	return nil
-}
-
-func (l Lifecycle) inspectMember(ctx context.Context, member model.WorkspaceMember, clean bool) (model.WorkspaceCommit, error) {
-	for _, path := range []string{member.Path, member.Mirror} {
-		if err := physicalDirectory(path, false); err != nil {
-			return model.WorkspaceCommit{}, err
-		}
-	}
-	top, err := l.git(ctx, member.Path, "rev-parse", "--show-toplevel")
-	if err != nil {
-		return model.WorkspaceCommit{}, err
-	}
-	common, err := l.git(ctx, member.Path, "rev-parse", "--path-format=absolute", "--git-common-dir")
-	if err != nil {
-		return model.WorkspaceCommit{}, err
-	}
-	branch, err := l.git(ctx, member.Path, "symbolic-ref", "--quiet", "HEAD")
-	if err != nil {
-		return model.WorkspaceCommit{}, err
-	}
-	if !samePhysical(top, member.Path) || !samePhysical(common, member.Mirror) || branch != "refs/heads/"+member.Branch {
-		return model.WorkspaceCommit{}, errors.New("workspace checkout identity changed; preserve and reconcile")
-	}
-	bare, err := l.git(ctx, member.Mirror, "rev-parse", "--is-bare-repository")
-	if err != nil {
-		return model.WorkspaceCommit{}, err
-	}
-	origin, err := l.git(ctx, member.Mirror, "config", "--null", "--get-all", "remote.origin.url")
-	if err != nil {
-		return model.WorkspaceCommit{}, err
-	}
-	checkoutOrigin, err := l.git(ctx, member.Path, "config", "--null", "--get-all", "remote.origin.url")
-	if err != nil {
-		return model.WorkspaceCommit{}, err
-	}
-	format, err := l.git(ctx, member.Path, "rev-parse", "--show-object-format=storage")
-	if err != nil {
-		return model.WorkspaceCommit{}, err
-	}
-	if bare != "true" || origin != member.Repository+"\x00" || checkoutOrigin != origin || format != member.ObjectFormat {
-		return model.WorkspaceCommit{}, errors.New("workspace mirror identity or object format changed")
-	}
-	if clean {
-		status, err := l.git(ctx, member.Path, "status", "--porcelain", "--untracked-files=all")
-		if err != nil {
-			return model.WorkspaceCommit{}, err
-		}
-		if status != "" {
-			return model.WorkspaceCommit{}, model.ErrDirty
-		}
-	}
-	head, err := l.git(ctx, member.Path, "rev-parse", "--verify", "HEAD^{commit}")
-	if err != nil {
-		return model.WorkspaceCommit{}, err
-	}
-	if !model.ValidCommit(head) || head != strings.ToLower(head) || member.ObjectFormat == "sha1" && len(head) != 40 || member.ObjectFormat == "sha256" && len(head) != 64 {
-		return model.WorkspaceCommit{}, errors.New("workspace HEAD has an invalid object identity")
-	}
-	return model.WorkspaceCommit{Name: member.Name, Commit: head}, nil
 }
 
 func (l Lifecycle) owner(b *model.Bench, token string) error {
@@ -390,6 +311,13 @@ func (l Lifecycle) Checkpoint(ctx context.Context, key, token string) (*model.Be
 				}
 				return nil
 			})
+		}
+		i, err := l.inspector(committed)
+		if err != nil {
+			return err
+		}
+		if err = i.Import(ctx, l.State, committed, committed.Workspace.Pending.Members); err != nil {
+			return err
 		}
 		seal, err := c.Complete(ctx, manifest)
 		if err != nil {

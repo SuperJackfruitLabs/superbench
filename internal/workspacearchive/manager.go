@@ -13,6 +13,7 @@ import (
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/archivepolicy"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/benchstate"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/freshtree"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/operationcontrol"
@@ -80,6 +81,11 @@ func (m Manager) record(b *model.Bench) error {
 	return nil
 }
 func (m Manager) available(b *model.Bench) error {
+	// Archive freezes, plans and reaps the tree as the daemon; a Fresh tree has
+	// no payload-side archive route yet, so it refuses before any of that.
+	if fresh, err := freshtree.Selected(nil, m.State, b); err != nil || fresh {
+		return errors.Join(freshtree.ErrUnavailable, err)
+	}
 	if err := m.record(b); err != nil {
 		return err
 	}

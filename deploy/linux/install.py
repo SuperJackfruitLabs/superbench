@@ -7,6 +7,11 @@ live root, --identity then writes the payload policy and service identity derive
 from those accounts, --activation writes the all-false activation file, and
 --storage writes the indexed storage policy and initializes its empty ledger once.
 Starting or enabling the service is a separate operator action after configuration.
+
+An installed file that differs is refused, except in --upgrade mode: then only the
+four executables may differ, only from the previous revision's reviewed
+SHA256SUMS, and only to the bytes the new build's --sums lists. Each is backed up first and replaced atomically while the unit is
+stopped. Every other installed file must still be identical.
 """
 import argparse
 import grp
@@ -402,40 +407,135 @@ def make_parents(directory):
         os.chmod(path, 0o755)
 
 
-def install(root, entries):
+EXECUTABLES = ("usr/local/bin/bench", "usr/local/bin/benchd", "usr/local/libexec/bench-quota",
+               "usr/local/libexec/bench-payload")
+SUMS_LINE = re.compile(r"([0-9a-f]{64})  ([a-z-]+)")
+
+
+def read_previous(path):
+    """Return {executable name: SHA-256} from the previous revision's SHA256SUMS."""
+    sums = {}
+    for line in Path(path).read_text().splitlines():
+        match = SUMS_LINE.fullmatch(line)
+        if not match or match.group(2) in sums:
+            raise ValueError("previous SHA256SUMS must be sha256sum lines, each name once: " + str(path))
+        sums[match.group(2)] = match.group(1)
+    if not set(sums) & {Path(target).name for target in EXECUTABLES}:
+        raise ValueError("previous SHA256SUMS lists no SuperBench executable: " + str(path))
+    return sums
+
+
+def verify_incoming(entries, sums):
+    """Refuse an incoming executable whose bytes are not the reviewed new build."""
+    for relative in EXECUTABLES:
+        if relative not in entries:
+            continue
+        name = Path(relative).name
+        if sums.get(name) != hashlib.sha256(entries[relative][0]).hexdigest():
+            raise ValueError("incoming executable does not match the new build's SHA256SUMS: " + name)
+
+
+class Upgrade:
+    """Replace only the reviewed previous executables, backing each one up first."""
+
+    def __init__(self, previous, backup):
+        backup = Path(backup)
+        if not backup.is_absolute() or str(backup) != os.path.normpath(str(backup)):
+            raise ValueError("upgrade backup must be an absolute normalized path")
+        self.previous, self.backup, self.replaced = dict(previous), backup, []
+
+    def accept(self, relative, path, st, mode):
+        """Refuse anything but the exact previous build, as a plain root-owned file."""
+        name = Path(relative).name
+        if relative not in EXECUTABLES:
+            return False
+        if name not in self.previous:
+            raise ValueError("installed executable is not in the previous SHA256SUMS: " + str(path))
+        old = path.read_bytes()
+        if (stat.S_IMODE(st.st_mode) != mode or st.st_nlink != 1 or os.geteuid() == 0 and st.st_uid != 0
+                or hashlib.sha256(old).hexdigest() != self.previous[name]):
+            raise ValueError("installed executable is not the previous reviewed build; refusing "
+                             "replacement: " + str(path))
+        self.replaced.append((relative, path, old))
+        return True
+
+    def save(self, root):
+        """Write every replaced executable into a new private backup directory."""
+        if not self.replaced:
+            return
+        checked_path(Path("/"), str(self.backup)[1:])
+        if not self.backup.parent.is_dir() or os.path.lexists(self.backup):
+            raise ValueError("upgrade backup must be a new directory in an existing parent: " + str(self.backup))
+        os.mkdir(self.backup, 0o700)
+        os.chmod(self.backup, 0o700)
+        sums = []
+        for relative, _, old in self.replaced:
+            name = Path(relative).name
+            publish(self.backup / name, old, 0o600, replace=False)
+            sums.append(hashlib.sha256(old).hexdigest() + "  " + name + "\n")
+        publish(self.backup / "SHA256SUMS", "".join(sums).encode(), 0o600, replace=False)
+
+
+def publish(path, data, mode, replace):
+    """Publish complete bytes atomically: link a new name, or rename over an old one."""
+    fd, stage = tempfile.mkstemp(prefix=".superbench-install-", dir=path.parent)
+    try:
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(data)
+            stream.flush()
+            os.fchmod(stream.fileno(), mode)
+            os.fsync(stream.fileno())
+        if replace:
+            os.replace(stage, path)
+        else:
+            os.link(stage, path)
+        directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    finally:
+        if os.path.lexists(stage):
+            os.unlink(stage)
+
+
+def install(root, entries, upgrade=None):
     # Preflight every destination before writing any: conflicting config must
-    # not leave a half-upgraded binary set. Upgrades require a reviewed procedure.
+    # not leave a half-upgraded binary set. Only --upgrade replaces executables.
     for relative, (data, mode) in entries.items():
         path = checked_path(root, relative)
         if path.exists():
             st = path.stat()
+            if (stat.S_ISREG(st.st_mode) and path.read_bytes() != data and upgrade is not None
+                    and upgrade.accept(relative, path, st, mode)):
+                continue
             if not stat.S_ISREG(st.st_mode) or path.read_bytes() != data:
                 raise ValueError("existing file differs; refusing replacement: " + str(path))
             if stat.S_IMODE(st.st_mode) != mode:
                 raise ValueError("existing file has unexpected permissions: " + str(path))
             if os.geteuid() == 0 and st.st_uid != 0:
                 raise ValueError("existing file is not root owned: " + str(path))
+    replaced = {relative for relative, _, _ in upgrade.replaced} if upgrade is not None else set()
+    if upgrade is not None:
+        upgrade.save(root)
     for relative, (data, mode) in entries.items():
         path = checked_path(root, relative)
+        if relative in replaced:
+            publish(path, data, mode, replace=True)
+            continue
         if path.exists():
             continue
         make_parents(path.parent)
         # Publish complete files without replacing anything created concurrently.
-        fd, stage = tempfile.mkstemp(prefix=".superbench-install-", dir=path.parent)
-        try:
-            with os.fdopen(fd, "wb") as stream:
-                stream.write(data)
-                stream.flush()
-                os.fchmod(stream.fileno(), mode)
-                os.fsync(stream.fileno())
-            os.link(stage, path)
-            directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
-            try:
-                os.fsync(directory)
-            finally:
-                os.close(directory)
-        finally:
-            os.unlink(stage)
+        publish(path, data, mode, replace=False)
+
+
+def unit_stopped(run=subprocess.run):
+    """True only when systemd reports the unit inactive or failed with no main process."""
+    shown = run(["systemctl", "show", "--property=ActiveState", "--property=MainPID", "superbench.service"],
+                check=True, capture_output=True, text=True).stdout
+    values = dict(line.split("=", 1) for line in shown.splitlines() if "=" in line)
+    return values.get("ActiveState") in ("inactive", "failed") and values.get("MainPID") == "0"
 
 
 def main(argv=None):
@@ -453,7 +553,18 @@ def main(argv=None):
     parser.add_argument("--storage", type=Path, metavar="BUDGETS_JSON",
                         help="live managed root with --identity only: write the indexed storage.json from "
                              "these reviewed budgets and initialize its empty ledger once")
+    parser.add_argument("--upgrade", action="store_true",
+                        help="replace only the four executables, from the previous reviewed build, "
+                             "atomically and with a backup; the unit must be stopped")
+    parser.add_argument("--previous", type=Path, metavar="SHA256SUMS",
+                        help="with --upgrade: the previous revision's reviewed executable digests")
+    parser.add_argument("--backup", type=Path, metavar="DIR",
+                        help="with --upgrade: a new directory that receives the replaced executables")
+    parser.add_argument("--sums", type=Path, metavar="SHA256SUMS",
+                        help="with --upgrade: the new build's reviewed digests, checked against --bin-dir")
     args = parser.parse_args(argv)
+    if any(args.upgrade != (value is not None) for value in (args.previous, args.backup, args.sums)):
+        parser.error("--upgrade needs --previous, --backup and --sums, and they need --upgrade")
     if not args.root.is_absolute() or str(args.root) != os.path.normpath(str(args.root)) or args.root != args.root.resolve():
         parser.error("installation root must be absolute, normalized and use physical paths")
     if args.prepare and args.root != Path("/"):
@@ -475,13 +586,20 @@ def main(argv=None):
             parser.error("stop the existing service before changing installed files")
         if active.returncode not in (3, 4):
             parser.error("cannot establish the existing systemd service state")
+        if args.upgrade and not unit_stopped():
+            parser.error("--upgrade needs superbench.service inactive or failed, with no main process")
     apply(args)
     print("Installed payload; service has not been started or enabled.")
 
 
 def apply(args, run=subprocess.run, lookup=account_ids, mounted=check_data_mount):
     """Install what the checked arguments ask for, preparing the host if asked."""
+    upgrade = None
+    if getattr(args, "upgrade", False):
+        upgrade = Upgrade(read_previous(args.previous), args.backup)
     entries = payload(args.bin_dir, args.managed)
+    if upgrade is not None:
+        verify_incoming(entries, read_previous(args.sums))
     if args.activation:
         entries.update(activation_document())
     storage = getattr(args, "storage", None)
@@ -518,7 +636,7 @@ def apply(args, run=subprocess.run, lookup=account_ids, mounted=check_data_mount
     if args.managed and platform.system() == "Linux":
         source = Path(__file__).resolve().parent / "superbench.sudoers"
         run(["visudo", "-cf", str(source)], check=True)
-    install(args.root, entries)
+    install(args.root, entries, upgrade)
     if args.prepare:
         sysusers = ["/usr/lib/sysusers.d/superbench.conf"]
         if args.managed:

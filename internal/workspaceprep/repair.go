@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/freshtree"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/history"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/prepproof"
@@ -38,7 +39,7 @@ func (m Manager) InspectInitializationRepair(ctx context.Context, b *model.Bench
 	if err := m.stopped(b); err != nil {
 		return nil, err
 	}
-	vector, err := (workspace.Lifecycle{State: m.State, Data: m.Data, Git: m.Git}).Inspect(ctx, b, b.Workspace.Pending != nil)
+	vector, err := m.lifecycle().Inspect(ctx, b, b.Workspace.Pending != nil)
 	if err != nil {
 		return nil, err
 	}
@@ -57,7 +58,7 @@ func (m Manager) InspectInitializationRepair(ctx context.Context, b *model.Bench
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		c, digest, err := inputs(member.Path)
+		c, digest, err := freshtree.Inputs(ctx, m.Fresh, m.State, b, member)
 		if err != nil {
 			return nil, err
 		}
@@ -74,7 +75,7 @@ func (m Manager) InspectInitializationRepair(ctx context.Context, b *model.Bench
 		if p != nil && p.Digest == digest {
 			one := workspace.Clone(b)
 			one.Workspace.Members, one.Workspace.Preparation = []model.WorkspaceMember{member}, []model.WorkspacePreparation{*p}
-			if CheckPrepared(one) == nil && verifyProof(tx, b, p) == nil && (p.RunID == "" || prepproof.Success(tx, b, p.RunID)) {
+			if m.Prepared(one) == nil && verifyProof(tx, b, p) == nil && (p.RunID == "" || prepproof.Success(tx, b, p.RunID)) {
 				r.Action, r.RunID = "preserve", p.RunID
 			}
 		}
@@ -160,7 +161,7 @@ func (m Manager) ApplyInitializationRepair(ctx context.Context, b *model.Bench, 
 			b.Workspace.Preparation = append(b.Workspace.Preparation, model.WorkspacePreparation{Name: member.Name, Digest: member.Digest, RunID: member.RunID})
 		}
 		if member.RunID != "" && !validReceipt {
-			c, digest, err := inputs(b.Workspace.Members[i].Path)
+			c, digest, err := freshtree.Inputs(ctx, m.Fresh, m.State, b, b.Workspace.Members[i])
 			if err != nil || digest != member.Digest {
 				return errors.New("initialization repair inputs changed before receipt restoration")
 			}

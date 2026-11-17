@@ -48,6 +48,18 @@ func TestPreparationResponseBindsCompleteLayoutAndFixedInputs(t *testing.T) {
 	if err != nil || !bytes.Equal(got.Inputs.Config.Data, v.Inputs.Config.Data) {
 		t.Fatalf("maximum config response: %v", err)
 	}
+	if bytes.Contains(raw, []byte("Unregistered")) {
+		t.Fatal("a registered-only root changed the canonical response bytes")
+	}
+	v.Unregistered = true
+	dirty, err := v.Bytes(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err = ParsePreparation(p, dirty); err != nil || !got.Unregistered {
+		t.Fatalf("unregistered root entry was not preserved: %v", err)
+	}
+	v.Unregistered = false
 	v.Inputs.Member = "other"
 	if _, err := v.Bytes(p); !errors.Is(err, ErrBoundary) {
 		t.Fatalf("foreign member inputs accepted: %v", err)

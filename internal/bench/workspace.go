@@ -56,7 +56,7 @@ func (s Store) workspacePreparation() workspaceprep.Manager {
 func (s Store) workspaceLifecycle() workspace.Lifecycle {
 	return workspace.Lifecycle{State: s.State, Data: s.Data, Timeout: s.MirrorTimeout,
 		Within: s.workspaceWithin, Git: s.workspaceGit, Stopped: s.ensureStopped,
-		Prepared: workspaceprep.CheckPrepared, Released: workspaceprep.ReleaseHistory,
+		Prepared: s.workspacePreparation().Prepared, Released: workspaceprep.ReleaseHistory,
 		Admit: s.admit, Allocate: s.allocateWorkspace,
 		NoteCheckpoint: func(ctx context.Context, b *Bench) {
 			workspacearchive.NoteCheckpoint(ctx, repository.Mirrors{State: s.State, Data: s.Data, Timeout: s.MirrorTimeout}, b)

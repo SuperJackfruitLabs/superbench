@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strings"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/execution"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/gitcontrol"
@@ -35,6 +36,25 @@ type Route struct {
 	scalar          bool
 	input           payloadlaunch.GitInput
 	layout          *payloadexec.Layout
+	observe         bool
+}
+
+// observations are the only argv an owner-free Observe route executes: fixed
+// read-only identity and cleanliness queries, never a ref, index or file write.
+var observations = map[string]bool{}
+
+func init() {
+	for _, args := range [][]string{
+		{"rev-parse", "--show-toplevel"},
+		{"rev-parse", "--path-format=absolute", "--git-common-dir"},
+		{"rev-parse", "--show-object-format=storage"},
+		{"rev-parse", "--verify", "HEAD^{commit}"},
+		{"symbolic-ref", "--quiet", "HEAD"},
+		{"config", "--null", "--get-all", "remote.origin.url"},
+		{"status", "--porcelain", "--untracked-files=all"},
+	} {
+		observations[strings.Join(args, "\x00")] = true
+	}
 }
 
 // New requires a held owner and durable allocation identity. The caller keeps
@@ -44,7 +64,23 @@ func New(authority serviceidentity.Authority, b *model.Bench, member string) (Ro
 	if err != nil || b == nil || b.Lease == nil || b.Lease.Token == "" || b.Lease.Holder == "" || b.Lease.StopRequested || b.ArchivedAt != "" {
 		return Route{}, ErrRefused
 	}
-	expectedRoot := filepath.Join(p.DataRoot, "benches", b.Key)
+	return newRoute(authority, p.DataRoot, b, member)
+}
+
+// Observe binds an owner-free route to one registered aggregate member. It
+// grants no lease or admission: Execute then accepts only fixed observations.
+func Observe(authority serviceidentity.Authority, b *model.Bench, member string) (Route, error) {
+	p, err := authority.Policy()
+	if err != nil || b == nil || b.Workspace == nil || b.ArchivedAt != "" {
+		return Route{}, ErrRefused
+	}
+	r, err := newRoute(authority, p.DataRoot, b, member)
+	r.observe = err == nil
+	return r, err
+}
+
+func newRoute(authority serviceidentity.Authority, data string, b *model.Bench, member string) (Route, error) {
+	expectedRoot := filepath.Join(data, "benches", b.Key)
 	if b.Workspace == nil {
 		if member != "" || b.RegistrationID == "" || b.PayloadLayoutVersion == "" || model.ValidateScalarLayout(b) != nil || b.AllocationRoot != expectedRoot {
 			return Route{}, ErrRefused
@@ -77,7 +113,7 @@ func New(authority serviceidentity.Authority, b *model.Bench, member string) (Ro
 // Caller-specific author/config/credential environment is deliberately absent;
 // such commands must refuse at their adapter until explicitly supported.
 func (r Route) Execute(ctx context.Context, runner gitcontrol.Runner, args []string, input []byte, inputLimit, outputLimit uint64) ([]byte, error) {
-	if !gitpolicy.Subcommand(args) {
+	if !gitpolicy.Subcommand(args) || r.observe && !observations[strings.Join(args, "\x00")] {
 		return nil, errors.Join(ErrRefused, gitpolicy.ErrPolicy)
 	}
 	if outputLimit == 0 || uint64(len(input)) > inputLimit {
@@ -89,7 +125,7 @@ func (r Route) Execute(ctx context.Context, runner gitcontrol.Runner, args []str
 	}
 	r.input = payloadlaunch.GitInput{Bytes: bytes.Clone(input), Limit: inputLimit}
 	out := &bounded{limit: outputLimit}
-	stderr := &bounded{limit: outputLimit}
+	stderr := &bounded{limit: min(outputLimit, 64<<10)} // diagnostics stay small
 	cmd := gitcontrol.ManagedCommand(ctx, r.directory, args...)
 	cmd.Env = []string{}
 	cmd.Stdout = out

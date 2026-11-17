@@ -24,6 +24,36 @@ end-to-end card result:
 - **No activated run on a booted host yet.** Creating a Fresh bench and running a
   real task through the payload helper, with all five switches on, is covered by
   tests and fixtures but has not been run on an installed, booted host.
+- **Fresh lifecycle limits.** After bootstrap the member tree belongs to the
+  payload account, mode 0700, and benchd never reads it itself. The payload
+  helper does that: initialization, setup, runs, checkpoint and release observe
+  and run in the tree as the payload account. These steps refuse a Fresh
+  workspace before touching it:
+  - archive, reap and automatic archive (`fresh workspace tree is private to the
+    payload account`);
+  - transfer and cross-host export (the same refusal);
+  - setup from a `package-lock.json` or `pnpm-lock.yaml`, or a `[caches]`
+    setting (`no payload cache transport`). Use an explicit `[setup]` command.
+
+  A checkpoint copies new commits from the payload checkout into the daemon's
+  mirror as a Git bundle. The bundle holds only the commits the mirror lacks:
+  - The daemon checks the bundle's header.
+  - It unbundles the bundle with `index-pack --strict` into a private
+    quarantine repository in its state directory. Every Git process there runs
+    with no system or global config, one thread, a 1 GiB address-space limit
+    and a timeout.
+  - It checks that the quarantined commit is the inspected HEAD.
+  - Only then does it fetch the objects reachable from that commit into the
+    mirror. A refused bundle leaves the mirror unchanged.
+
+  The cap is 64 MiB of new objects per member and checkpoint. A larger one fails
+  with `fresh checkpoint export exceeds the 64 MiB per-member bundle cap`, and
+  a retry cannot succeed. Keep large generated or binary files out of the
+  checkpointed branches.
+- **Fresh benches are not yet reclaimable; release keeps the allocation.**
+  Release returns the lease but keeps the bench's full reservation, and archive
+  and reap refuse a Fresh workspace. Size the volume for every Fresh bench you
+  will create until a reclaim path exists.
 - **Harness configuration in the payload home.** The payload helper sets `HOME`
   from each bench's Fresh layout. Nothing yet places a harness's provider
   configuration there, and the harness adapter refuses to provision credentials.
@@ -240,6 +270,48 @@ replaced. To change one, remove it deliberately and review the new file.
 Rerunning the installer accepts identical files and refuses changed ones, so do
 not pass `--activation` again after editing the file.
 
+### Upgrade the executables
+
+A rerun from a newer revision refuses with `existing file differs; refusing
+replacement: /usr/local/bin/bench`, because its executables differ. `--upgrade`
+is the one mode that replaces them:
+
+```sh
+systemctl stop superbench.service
+python3 deploy/linux/install.py --bin-dir /absolute/build/bin --root / --managed \
+  --upgrade --previous /absolute/previous-build/bin/SHA256SUMS \
+  --sums /absolute/build/bin/SHA256SUMS \
+  --backup /var/lib/superbench-upgrade/<previous-revision>
+```
+
+- **What it replaces.** Only `bench`, `benchd`, `bench-quota` and
+  `bench-payload`. Every other installed file (the unit, sudo rule, environment,
+  sysusers, tmpfiles and the configuration documents) must still be byte-identical,
+  or the run refuses before it writes anything. A newer revision that changes one
+  of those files needs its own reviewed procedure.
+- **What it refuses.** It replaces an installed executable only if it is a plain
+  root-owned file, mode 0755 with one link, whose SHA-256 is the one `--previous`
+  lists for it. `--previous` is the previous build's `sha256sum` output. A locally
+  patched binary, a symlink, a hard link, a changed mode, or an executable that
+  `--previous` does not list refuses, before any effect. Each incoming
+  executable in `--bin-dir` must match the new build's reviewed `--sums`.
+- **When it runs.** On the live root, `systemctl show` must report the unit
+  `inactive` or `failed`, with no main process.
+- **Backups.** `--backup` must be a new directory. The installer creates it
+  (mode 0700) and writes each executable it replaces there, with a
+  `SHA256SUMS`, before it replaces anything.
+- **Atomicity.** Each executable is written beside its target, synced, then
+  renamed over it: a reader sees the old file or the new one, never a partial
+  one. If the run stops partway, rerun the same command with a new `--backup`.
+  Executables that already match are skipped, and the rest still match
+  `--previous`.
+- **Rollback.** Stop the unit and run the same command with the backup's
+  binaries as `--bin-dir`, the backup's `SHA256SUMS` as `--sums`, and the new
+  build's `SHA256SUMS` as `--previous`.
+- **Other flags.** `--upgrade` combines with the flags of the original install
+  (`--prepare`, `--identity`, `--activation`, `--storage`). They keep their own
+  rules, and only the executables get upgrade semantics.
+
 ### Indexed storage
 
 `--storage` sets up the storage the Fresh payload layout needs. The payload
@@ -260,9 +332,16 @@ other policy every Fresh `create` stops at `materializing` with `operation_faile
    initializes: it refuses unless the service is masked and stopped, nothing
    runs as either SuperBench account, the data filesystem is empty with no quota
    projects, and the ledger does not exist yet;
-4. checks that the helper can open the journal (`bench-quota operation-info`,
-   read-only), which it can only once `initialize-indexed` has written its ready
-   record, then installs the unit file in place of the mask and reloads systemd.
+4. checks that the helper can open the journal (`bench-quota operation-info`),
+   which it can only once `initialize-indexed` has written its ready record,
+   then installs the unit file in place of the mask and reloads systemd.
+
+`operation-info` records no operation and changes no allocation, but it is not
+read-only. Like every journal access, it opens `ledger.format-v2`, the
+operation lock and the journal database for writing, and takes the exclusive
+lock. A caller sandboxed with `ProtectSystem=strict` therefore needs
+`ReadWritePaths=/var/lib/superbench-quota`, which the shipped unit grants.
+Without it, the call fails with `read-only file system`.
 
 The ready record pins the helper's storage authority: the storage policy, the
 ledger header and its directory, the quota owner anchor, the data root's inode,
@@ -311,12 +390,27 @@ service still masked (do not unmask or start it):
 1. back up `/var/lib/superbench-quota` and the error output;
 2. remove `/var/lib/superbench-quota/ledger` and
    `/var/lib/superbench-quota/ledger.format-v2`, leaving the directory itself;
-3. recreate the data filesystem with project quotas (`mkfs.xfs` on its device or
-   image), update the fstab or mount unit if it names the filesystem UUID, and
-   mount it again; the first install needs an empty filesystem with no quota
-   projects;
+3. recreate the data filesystem with project quotas, as below. The first install
+   needs an empty filesystem with no quota projects;
 4. rerun the same installer command, `--storage` included. It keeps the
    identical `storage.json` and the mask, initializes again and then unmasks.
+
+To recreate the filesystem, unmount it first: `mkfs.xfs` must never run on a
+mounted device. Format the device the volume is mounted from: the fixed loop
+device (above) or the dedicated partition, never an image file through another
+loop device:
+
+```sh
+findmnt -n -o SOURCE /srv/superbench-data              # e.g. /dev/loop7, the fixed loop device
+umount /srv/superbench-data
+mkfs.xfs -f /dev/loop7                                 # the same device
+blkid -s UUID -o value /dev/loop7                      # the new UUID
+# put the new UUID in the fstab line, then: systemctl daemon-reload
+mount /srv/superbench-data
+xfs_quota -x -c 'state -p' /srv/superbench-data        # accounting and enforcement ON
+```
+
+Never format a loop device that another service uses.
 
 benchd also checks the journal at start: with `fresh_payload` on, it refuses to
 start unless the helper's `operation-info` opens the indexed journal.
@@ -345,15 +439,22 @@ the earlier revision installed. To reinitialize the storage as a first install:
    run `systemctl daemon-reload`, so the installer masks the service and
    initializes again instead of refusing an installed unit;
 5. unmount the data volume (`umount /srv/superbench-data`), then recreate the
-   data filesystem as in step 3 of
+   data filesystem as in
    [Recover a partial initialization](#recover-a-partial-initialization) and
    mount it again: its quota owner anchor belongs to the removed ledger, and
    `mkfs.xfs` must never run on a mounted filesystem;
 6. rerun the same installer command, `--storage` included, from the new revision.
-   Leave out `--activation` if you have edited `/etc/superbench/activation.json`;
+   Its executables differ from the installed ones, so add `--upgrade`, with the
+   installed build's `SHA256SUMS` as `--previous`, the new build's as `--sums`
+   and a new `--backup` directory
+   ([Upgrade the executables](#upgrade-the-executables)). Leave out
+   `--activation` if you have edited `/etc/superbench/activation.json`;
 7. rerun `bench configure-host` as the service account, with the same options as
-   in the first install (below): the new filesystem has none of the shared
-   projects it applied.
+   in the first install (below), before the first start: the new filesystem has
+   none of the fixed shared store and mirror projects or their directories, and
+   `configure-host` applies them;
+8. start the service with every switch off, then turn on the switches
+   ([Activation](#activation)).
 
 The same refusal on a host initialized by the current revision means the storage
 really changed: another filesystem is mounted, or the policy, ledger or anchor
@@ -470,7 +571,7 @@ the socket, and refuses a file that breaks one:
 | --- | --- | --- |
 | `fresh_payload` | `cancellation` | Fresh materialization runs inside the operation scope that only the cancellation path claims. Without it every v2 `create` or `recover` would record a durable `materializing` workspace and then fail. |
 | `fresh_payload` | the installed payload policy and service identity | benchd resolves `/etc/superbench/service-identity.json` (with `--identity`, above) for its own uid at start, for the same reason. |
-| `fresh_payload` | a ready indexed quota operation journal | benchd reads `/etc/superbench/storage.json` at start and refuses unless it sets `"OperationJournal": "indexed-v2"` and the helper's read-only `operation-info` opens that journal, which needs the ready record of a finished `initialize-indexed` ([Indexed storage](#indexed-storage)). The payload helper refuses anything else, so every Fresh create would stop at `materializing`. |
+| `fresh_payload` | a ready indexed quota operation journal | benchd reads `/etc/superbench/storage.json` at start and refuses unless it sets `"OperationJournal": "indexed-v2"` and the helper's `operation-info` opens that journal, which needs the ready record of a finished `initialize-indexed` ([Indexed storage](#indexed-storage)). The payload helper refuses anything else, so every Fresh create would stop at `materializing`. |
 | `finite_io` | `fresh_payload` | A finite run executes only on a Fresh payload tree. |
 | `registration_observation` | `fresh_payload` | Observation reads only a Fresh payload tree. |
 | `receipt_lookup`, `cancellation` | nothing | |

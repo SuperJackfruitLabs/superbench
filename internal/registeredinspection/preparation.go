@@ -48,10 +48,13 @@ func ParsePreparationRequest(raw []byte) (PreparationRequest, error) {
 
 // Preparation contains private read observations only. The daemon must parse
 // Inputs.Config using setup, and verify repository identity through typed Git.
+// Unregistered reports only whether the aggregate root holds any entry outside
+// the registered layout; no name or content of such an entry crosses.
 type Preparation struct {
-	Version string
-	Layout  Layout
-	Inputs  Inputs
+	Version      string
+	Layout       Layout
+	Inputs       Inputs
+	Unregistered bool `json:",omitempty"`
 }
 
 func (v Preparation) Bytes(p Policy) ([]byte, error) {

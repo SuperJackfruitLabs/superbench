@@ -5,6 +5,7 @@ import (
 	"errors"
 	"path/filepath"
 
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/freshtree"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspacepolicy"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/worktreetransfer"
@@ -79,10 +80,17 @@ func (l Lifecycle) InspectTransferred(ctx context.Context, b *model.Bench, clean
 		return nil, err
 	}
 	defer cancel()
+	i, err := l.inspector(b)
+	if err == nil && i.Tree != nil {
+		err = freshtree.ErrUnavailable // a Fresh tree is never transferred
+	}
+	if err != nil {
+		return nil, errors.Join(freshtree.ErrUnavailable, err)
+	}
 	if err = transferred(b); err != nil {
 		return nil, err
 	}
-	if err = l.inspectRoot(b, clean); err != nil {
+	if err = i.Root(ctx, b, clean); err != nil {
 		return nil, err
 	}
 	vector := make([]model.WorkspaceCommit, 0, len(b.Workspace.Members))

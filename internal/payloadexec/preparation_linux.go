@@ -29,7 +29,11 @@ func inspectPreparation(binding helperBinding, r registeredinspection.Preparatio
 		return err
 	}
 	defer inputs.Close()
-	result := registeredinspection.Preparation{Version: registeredinspection.PreparationVersion, Layout: layout.Layout(l), Inputs: inputs.Snapshot()}
+	unregistered, err := nodes.Unregistered(layout.Layout(l))
+	if err != nil {
+		return err
+	}
+	result := registeredinspection.Preparation{Version: registeredinspection.PreparationVersion, Layout: layout.Layout(l), Inputs: inputs.Snapshot(), Unregistered: unregistered}
 	raw, err := result.Bytes(p)
 	if err != nil {
 		return err

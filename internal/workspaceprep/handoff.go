@@ -40,7 +40,7 @@ func (m Manager) VerifyPrepared(ctx context.Context, key, token string) (*model.
 			if err := m.inspectPayload(ctx, b); err != nil {
 				return err
 			}
-			return prepared(tx, b)
+			return m.prepared(tx, b)
 		})
 	})
 	if errors.Is(err, transferguard.ErrGuard) {
@@ -70,7 +70,7 @@ func (m Manager) CompleteSetup(ctx context.Context, l workspace.Lifecycle, key, 
 		return b, err
 	}
 	l.Released = func(tx *sql.Tx, current *model.Bench) error {
-		if err := prepared(tx, current); err != nil {
+		if err := m.prepared(tx, current); err != nil {
 			return errors.Join(ErrPreparation, err)
 		}
 		return ReleaseHistory(tx, current)
