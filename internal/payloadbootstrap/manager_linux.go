@@ -32,6 +32,7 @@ type Manager struct {
 	store           *quotaoperationjournal.Store
 	digest          string
 	maintenanceGate func(context.Context, hoststorage.Policy) error
+	reclaim         bool // set only on Reclaim's own copy; see reclaimable
 }
 
 func Open(ctx context.Context, control *quotaoperationjournal.Control, i quotaoperation.Identity) (*Manager, error) {
