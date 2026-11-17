@@ -5,7 +5,7 @@
  * One page, no framework; the suite frame owns the header, footer and theme toggle. Its job before
  * the first release is "follow, not try": say what SuperBench is and why it matters, say plainly
  * that it is not released, and give a developer two ways to follow it, the GitHub repository and
- * its release feed. There is nothing to install and no app to sign in to, so the page offers
+ * its release feed, plus the pre-release docs (docs.superbench.dev). There is nothing to install and no app to sign in to, so the page offers
  * neither: no install command, no version number, no download.
  *
  * This directory is deliberately outside the Go module and has its own npm lockfile: nothing in
@@ -31,6 +31,8 @@ import Frame from '@superjackfruitlabs/vibekit-frame/components/Frame.astro';
 const SITE = 'https://superbench.dev';
 const REPO = 'https://github.com/SuperJackfruitLabs/superbench';
 const FEED = 'https://github.com/SuperJackfruitLabs/superbench/releases.atom';
+// The pre-release docs: they describe main and are refreshed at the first release.
+const DOCS = 'https://docs.superbench.dev';
 // vibekit's cyan: --cyan is the accent, --cyan-text body-size text, --cyan-tint its pale ground,
 // --cyan-ink text on the accent. The light set also answers the system when nothing is chosen.
 const { light: AL, dark: AD } = productAccent('superbench');
@@ -252,6 +254,7 @@ const STEPS = [
             </p>
             <div class="cta">
               <a class="btn btn-primary" href={REPO}>Watch on GitHub</a>
+              <a class="btn btn-ghost" href={DOCS}>Read the pre-release docs</a>
               <a class="btn btn-ghost" href={FEED}>Release feed</a>
             </div>
           </div>
@@ -403,7 +406,11 @@ const STEPS = [
             <a class="btn btn-primary" href={REPO}>Watch on GitHub</a>
             <a class="btn btn-ghost" href={FEED}>Release feed</a>
           </div>
-          <p class="after">MIT licensed. The source is on <a href={REPO}>GitHub</a>.</p>
+          <p class="after">
+            MIT licensed. The source is on <a href={REPO}>GitHub</a>. The
+            <a href={DOCS}>pre-release docs</a> describe the main branch and will be refreshed at the
+            first release.
+          </p>
         </div>
       </section>
     </main>
