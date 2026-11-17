@@ -21,10 +21,12 @@ func TestBootstrapCommandBindsExactOriginalIdentityBeforePolicyRead(t *testing.T
 	if err != nil || key != "card" || !identity.Valid() {
 		t.Fatalf("valid command refused: %s %+v %v", key, identity, err)
 	}
-	inspection := append([]string{}, valid...)
-	inspection[0] = "inspect-bootstrap-payload"
-	if gotKey, gotIdentity, err := parseBootstrapCommand(inspection); err != nil || gotKey != key || gotIdentity != identity {
-		t.Fatalf("inspection lost exact original binding: %s %+v %v", gotKey, gotIdentity, err)
+	for _, command := range []string{"inspect-bootstrap-payload", "reclaim-payload"} {
+		other := append([]string{}, valid...)
+		other[0] = command
+		if gotKey, gotIdentity, err := parseBootstrapCommand(other); err != nil || gotKey != key || gotIdentity != identity {
+			t.Fatalf("%s lost exact binding: %s %+v %v", command, gotKey, gotIdentity, err)
+		}
 	}
 	for _, bad := range [][]string{
 		valid[:6], append(append([]string{}, valid...), "extra"),
@@ -33,6 +35,8 @@ func TestBootstrapCommandBindsExactOriginalIdentityBeforePolicyRead(t *testing.T
 		{"bootstrap-payload", "card", strings.ToUpper(h), epoch, h, h, h},
 		{"inspect-bootstrap-payload", "../escape", h, epoch, h, h, h},
 		{"inspect-bootstrap-payload", "card", h, epoch, h, h, ""},
+		{"reclaim-payload", "../escape", h, epoch, h, h, h},
+		{"reclaim-payload", "card", h, epoch, h, h},
 		{"unknown", "card", h, epoch, h, h, h},
 	} {
 		if _, _, err := parseBootstrapCommand(bad); !errors.Is(err, errBootstrapCommand) {
@@ -42,6 +46,14 @@ func TestBootstrapCommandBindsExactOriginalIdentityBeforePolicyRead(t *testing.T
 	var out bytes.Buffer
 	if err = runBootstrapCommand(valid, true, nil, &out); !errors.Is(err, errBootstrapCommand) || out.Len() != 0 {
 		t.Fatalf("policy override admitted: %q %v", out.String(), err)
+	}
+	reclaim := append([]string{}, valid...)
+	reclaim[0] = "reclaim-payload"
+	if err = runBootstrapCommand(reclaim, true, nil, &out); !errors.Is(err, errBootstrapCommand) || out.Len() != 0 {
+		t.Fatalf("reclaim policy override admitted: %q %v", out.String(), err)
+	}
+	if err = run(append([]string{"--policy", "/tmp/other.json"}, reclaim...)); err == nil {
+		t.Fatal("reclaim accepted a policy override")
 	}
 	if err = runBootstrapCommand([]string{"initialize-indexed", "extra"}, false, nil, &out); !errors.Is(err, errBootstrapCommand) || out.Len() != 0 {
 		t.Fatalf("initializer args admitted: %q %v", out.String(), err)

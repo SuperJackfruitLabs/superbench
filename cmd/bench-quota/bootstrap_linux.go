@@ -9,6 +9,7 @@ import (
 	"os"
 	"time"
 
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/freshrecovery"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/payloadbootstrap"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotaoperation"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotaoperationcontrol"
@@ -88,6 +89,15 @@ func runBootstrapCommand(args []string, override bool, input *os.File, output io
 		}
 		return operationOutput(output, result)
 	}
+	if args[0] == "reclaim-payload" {
+		// The daemon's sudo route, like bootstrap-payload: the reclaim
+		// operation's own reservation, not the create's, admits it.
+		result, err := freshrecovery.Reclaim(ctx, manager, spec)
+		if err != nil {
+			return err
+		}
+		return operationOutput(output, result)
+	}
 	if inspection {
 		result, err := manager.Inspect(ctx, spec)
 		if err != nil {
@@ -104,7 +114,7 @@ func runBootstrapCommand(args []string, override bool, input *os.File, output io
 
 func parseBootstrapCommand(args []string) (string, quotaoperation.Identity, error) {
 	var zero quotaoperation.Identity
-	if len(args) != 7 || (args[0] != "bootstrap-payload" && args[0] != "inspect-bootstrap-payload" && args[0] != "plan-retire-bootstrap" && args[0] != "retire-bootstrap" && !isRecoveryCommand(args[0])) {
+	if len(args) != 7 || (args[0] != "bootstrap-payload" && args[0] != "reclaim-payload" && args[0] != "inspect-bootstrap-payload" && args[0] != "plan-retire-bootstrap" && args[0] != "retire-bootstrap" && !isRecoveryCommand(args[0])) {
 		return "", zero, errBootstrapCommand
 	}
 	i := quotaoperation.Identity{OperationID: args[2], Epoch: args[3], StateIdentity: args[4], Authority: args[5], BinarySHA256: args[6]}
