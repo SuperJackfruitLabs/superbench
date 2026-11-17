@@ -4,9 +4,13 @@
 // project. Each step is plan, review, then effect under a retained approval.
 // Root never deletes a file, never deletes recursively and never adopts storage.
 // Reclaim is the one step the daemon starts: it reaches it through the fixed
-// helper's sudo route, bound to its own reserved reclaim operation, for a
-// released bench the daemon has durably recorded as reclaiming, and the
-// payload account deletes that tree. Only cmd/bench-quota may import this package.
+// helper's sudo route, bound to its own reserved reclaim operation, and the
+// payload account deletes the tree. Its threat model: root trusts the daemon
+// that the bench's work is checkpointed, because that evidence lives in the
+// daemon-owned mirror and remote, which root cannot observe. Root verifies
+// itself that the bench is not in use (ErrReclaimBusy), that the request names
+// a completed bootstrap's own leaf and allocation, and that the identity is the
+// workspace's reclaim identity. Only cmd/bench-quota may import this package.
 package freshrecovery
 
 import (

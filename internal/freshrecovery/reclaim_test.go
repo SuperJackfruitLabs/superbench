@@ -17,6 +17,7 @@ type world struct {
 	phase                  string
 	present, full, retired bool
 	fenceErr               error
+	busy                   []bool // idle results in call order, then idle
 	calls                  []string
 	faultStep, faultWhen   string
 }
@@ -47,6 +48,17 @@ func (w *world) steps() reclaimSteps {
 		phase:  func() (string, error) { return w.phase, nil },
 		leaf:   func() (bool, error) { w.calls = append(w.calls, "leaf"); return w.present, nil },
 		fenced: func() error { w.calls = append(w.calls, "fenced"); return w.fenceErr },
+		idle: func() error {
+			w.calls = append(w.calls, "idle")
+			if len(w.busy) != 0 {
+				busy := w.busy[0]
+				w.busy = w.busy[1:]
+				if busy {
+					return ErrReclaimBusy
+				}
+			}
+			return nil
+		},
 		retain: w.effect("retain", func() error {
 			if w.phase != "completed" && w.phase != "reclaiming" {
 				return errors.New("retain from " + w.phase)
@@ -88,7 +100,7 @@ func TestReclaimRunsItsEffectsInTheirOnlyOrder(t *testing.T) {
 	if err != nil || !retained {
 		t.Fatalf("reclaim: %v %v", retained, err)
 	}
-	want := []string{"leaf", "fenced", "retain", "leaf", "purge", "remove", "retire", "finish"}
+	want := []string{"leaf", "fenced", "idle", "retain", "leaf", "idle", "purge", "remove", "retire", "finish"}
 	if !reflect.DeepEqual(w.calls, want) || w.phase != "reclaimed" || w.present || !w.retired {
 		t.Fatalf("calls %v, state %+v", w.calls, w)
 	}
@@ -113,7 +125,7 @@ func TestReclaimRefusesBeforeRetainingAnything(t *testing.T) {
 			t.Errorf("%s: retained %v, %v, state %+v", name, retained, err, w)
 		}
 		for _, call := range w.calls {
-			if call != "leaf" && call != "fenced" {
+			if call != "leaf" && call != "fenced" && call != "idle" {
 				t.Errorf("%s ran %s before refusing", name, call)
 			}
 		}
@@ -180,5 +192,30 @@ func TestOnlyAPurgeRunsAsThePayloadAccount(t *testing.T) {
 	}
 	if _, _, err := workerAccount(p, "remove"); err == nil || !strings.Contains(err.Error(), "refused") {
 		t.Errorf("unknown mode: %v", err)
+	}
+}
+
+// Root's own liveness check refuses before retention and, on a retained
+// reclaim, before the purge: a bench in use is never purged.
+func TestReclaimRefusesWhileTheBenchIsInUse(t *testing.T) {
+	w := released()
+	w.busy = []bool{true}
+	if retained, err := w.steps().run(); !errors.Is(err, ErrReclaimBusy) || retained || w.phase != "completed" {
+		t.Fatalf("busy before retention: %v %v %+v", retained, err, w)
+	}
+	w = released()
+	w.busy = []bool{false, true}
+	retained, err := w.steps().run()
+	if !errors.Is(err, ErrReclaimBusy) || !retained || !w.full || !w.present {
+		t.Fatalf("busy before the purge: %v %v %+v", retained, err, w)
+	}
+	for _, call := range w.calls {
+		if call == "purge" || call == "remove" || call == "retire" {
+			t.Fatalf("a busy bench ran %s", call)
+		}
+	}
+	w.calls = nil
+	if retained, err = w.steps().run(); err != nil || !retained || w.phase != "reclaimed" {
+		t.Fatalf("retry once idle: %v %v", retained, err)
 	}
 }

@@ -4,7 +4,14 @@ import (
 	"errors"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/cleanworker"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/freshliveness"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/payloadpolicy"
+)
+
+// ErrReclaimBusy and ErrReclaimPayloadActive are root's own liveness refusals.
+var (
+	ErrReclaimBusy          = freshliveness.ErrBusy
+	ErrReclaimPayloadActive = freshliveness.ErrPayloadActive
 )
 
 // errLeafGone refuses a completed bench whose leaf is already missing: that is
@@ -40,6 +47,10 @@ type reclaimSteps struct {
 	leaf func() (bool, error)
 	// fenced requires the bootstrap's Git controls fenced.
 	fenced func() error
+	// idle refuses (ErrReclaimBusy) while anything uses the bench: root's own
+	// check, never the daemon's record. It runs before retention and again
+	// before the purge.
+	idle func() error
 	// retain moves the intent completed -> reclaiming, before any effect.
 	retain func() error
 	// purge empties the leaf as the payload account; remove is root's removal
@@ -49,9 +60,9 @@ type reclaimSteps struct {
 	purge, remove, retire, finish func() error
 }
 
-// run applies the only order: retain, purge, remove, retire, finish. It
-// reports whether the reclaiming intent was retained, after which any error
-// may follow effects and the caller must say so.
+// run applies the only order: idle, retain, idle, purge, remove, retire,
+// finish. It reports whether the reclaiming intent was retained, after which
+// any error may follow effects and the caller must say so.
 func (r reclaimSteps) run() (retained bool, err error) {
 	phase, err := r.phase()
 	if err != nil {
@@ -69,6 +80,9 @@ func (r reclaimSteps) run() (retained bool, err error) {
 		if err = r.fenced(); err != nil {
 			return false, err
 		}
+		if err = r.idle(); err != nil {
+			return false, err
+		}
 		// A failed write can follow its rename: report it as retained.
 		if err = r.retain(); err != nil {
 			return true, err
@@ -84,6 +98,9 @@ func (r reclaimSteps) run() (retained bool, err error) {
 	if present {
 		if phase == "reclaimed" {
 			return true, ErrRecovery
+		}
+		if err = r.idle(); err != nil {
+			return true, err
 		}
 		if err = r.purge(); err != nil {
 			return true, err

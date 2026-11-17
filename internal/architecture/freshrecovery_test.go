@@ -22,6 +22,7 @@ func TestFreshRecoveryIsReachedOnlyFromTheQuotaCommand(t *testing.T) {
 		module + "internal/freshrecovery/fixture": {},
 		module + "internal/cleanworker":           {"cmd/bench-quota": true, "internal/freshrecovery": true, "internal/freshrecovery/fixture": true},
 		module + "internal/freshcleanup":          {"internal/freshrecovery": true, "internal/freshrecovery/fixture": true},
+		module + "internal/freshliveness":         {"internal/freshrecovery": true},
 	}
 	// Every import of every non-test file, whatever its build tags: a superset
 	// of any one build's graph, so reachability below is conservative.
