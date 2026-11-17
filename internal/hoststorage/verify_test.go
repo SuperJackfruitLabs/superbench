@@ -137,7 +137,7 @@ func TestManagedStorageWorkerUsesReadOnlyFixedHelperAndExactAssignment(t *testin
 		t.Fatal(err)
 	}
 	proof := StorageIdentity{Version: storageVersion, Root: w.Data, BenchKey: "source", Device: device, Inode: inode, Mount: "exact-mount", Managed: true, FilesystemUUID: "11111111-1111-1111-1111-111111111111", PolicySHA256: strings.Repeat("1", 64), LedgerSHA256: strings.Repeat("2", 64), AnchorSHA256: strings.Repeat("3", 64), Assignment: a}
-	for _, kind := range []string{"valid", "root", "key", "project", "bytes", "inodes", "device", "managed", "unknown", "missing-root", "duplicate", "oversized"} {
+	for _, kind := range []string{"valid", "root", "key", "project", "bytes", "inodes", "tombstone", "device", "managed", "unknown", "missing-root", "duplicate", "oversized"} {
 		t.Run(kind, func(t *testing.T) {
 			s := proof
 			switch kind {
@@ -151,6 +151,8 @@ func TestManagedStorageWorkerUsesReadOnlyFixedHelperAndExactAssignment(t *testin
 				s.Assignment.Bytes += 1024
 			case "inodes":
 				s.Assignment.Inodes++
+			case "tombstone": // a reclaimed bench's zero row fails Fresh verification closed
+				s.Assignment.Bytes, s.Assignment.Inodes = 0, 0
 			case "device":
 				s.Device++
 			case "managed":
@@ -198,12 +200,10 @@ func TestManagedStorageWorkerUsesReadOnlyFixedHelperAndExactAssignment(t *testin
 			} else if err == nil {
 				t.Fatal("conflicting helper authority accepted")
 			}
-			unchanged, _ := os.ReadFile(filepath.Join(w.State, "host.json"))
-			if string(unchanged) != string(config) {
+			if unchanged, _ := os.ReadFile(filepath.Join(w.State, "host.json")); string(unchanged) != string(config) {
 				t.Fatal("inspection modified host policy")
 			}
-			entries, _ := os.ReadDir(w.Data)
-			if len(entries) != 0 {
+			if entries, _ := os.ReadDir(w.Data); len(entries) != 0 {
 				t.Fatal("inspection materialized data", entries)
 			}
 		})
