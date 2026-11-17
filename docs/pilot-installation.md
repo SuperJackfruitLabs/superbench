@@ -21,9 +21,14 @@ hashes are not evidence of a successful card or writer fencing.
 The following must be closed or verified before the rehearsal can establish an
 end-to-end card result:
 
-- **No activated run on a booted host yet.** Creating a Fresh bench and running a
-  real task through the payload helper, with all five switches on, is covered by
-  tests and fixtures but has not been run on an installed, booted host.
+- **Activated lifecycle on an installed host.** With all five switches on, an
+  installed service on a booted staging host has run the Fresh lifecycle through
+  the `bench` CLI and the socket: create with `[setup]` hooks, lease, a run as the
+  payload account (`git clone`, edit and commit), checkpoint to the remote and
+  release; a `capacity_exhausted` refusal; cancellation of a running payload;
+  `systemctl restart` with a lease held and during a run, with the lease and its
+  receipt kept; and a non-Fresh workspace kept in its own layout beside Fresh
+  ones. No provider-backed card has run yet (see the harness gap below).
 - **Fresh lifecycle limits.** After bootstrap the member tree belongs to the
   payload account, mode 0700, and benchd never reads it itself. The payload
   helper does that: initialization, setup, runs, checkpoint and release observe
@@ -53,7 +58,15 @@ end-to-end card result:
 - **Fresh benches are not yet reclaimable; release keeps the allocation.**
   Release returns the lease but keeps the bench's full reservation, and archive
   and reap refuse a Fresh workspace. Size the volume for every Fresh bench you
-  will create until a reclaim path exists.
+  will create until a reclaim path exists. Before each launch and lease, benchd
+  checks a Fresh bench's pinned allocation with the helper's read-only
+  `verify bench KEY`; the helper refuses the ordinary bench apply for it.
+- **A refused or failed Fresh create keeps its record.** A Fresh create that fails
+  after its intent is recorded, including a `capacity_exhausted` refusal, leaves the
+  workspace at `materializing` or `initializing` with its `initialization`
+  lease, and no supported command removes that record yet. Reinitializing the
+  storage (below) does not remove it either: the records live in
+  `/var/lib/superbench`, which that procedure backs up but keeps.
 - **Harness configuration in the payload home.** The payload helper sets `HOME`
   from each bench's Fresh layout. Nothing yet places a harness's provider
   configuration there, and the harness adapter refuses to provision credentials.
@@ -278,6 +291,7 @@ is the one mode that replaces them:
 
 ```sh
 systemctl stop superbench.service
+install -d -o root -g root -m 0755 /var/lib/superbench-upgrade  # once per host
 python3 deploy/linux/install.py --bin-dir /absolute/build/bin --root / --managed \
   --upgrade --previous /absolute/previous-build/bin/SHA256SUMS \
   --sums /absolute/build/bin/SHA256SUMS \
@@ -297,7 +311,8 @@ python3 deploy/linux/install.py --bin-dir /absolute/build/bin --root / --managed
   executable in `--bin-dir` must match the new build's reviewed `--sums`.
 - **When it runs.** On the live root, `systemctl show` must report the unit
   `inactive` or `failed`, with no main process.
-- **Backups.** `--backup` must be a new directory. The installer creates it
+- **Backups.** `--backup` must be a new directory in an existing parent. The
+  installer creates it
   (mode 0700) and writes each executable it replaces there, with a
   `SHA256SUMS`, before it replaces anything.
 - **Atomicity.** Each executable is written beside its target, synced, then
@@ -426,7 +441,8 @@ installer refuses it the same way. With it, benchd refuses to start with `fresh_
 `bench-quota operation-info` fails with `quota operation journal authority
 changed: the ready record pins a storage authority that ... no longer match`. The
 record is never adopted or rewritten. Reinitializing recreates the data
-filesystem and so deletes every workspace on the volume: do it only on a host
+filesystem and so deletes every workspace tree on the volume (benchd's workspace
+records in `/var/lib/superbench` stay; see [Current gaps](#current-gaps)): do it only on a host
 whose work is disposable or already checkpointed and released, and otherwise keep
 the earlier revision installed. To reinitialize the storage as a first install:
 
