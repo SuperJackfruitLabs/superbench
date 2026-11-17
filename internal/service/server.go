@@ -16,9 +16,11 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/activation"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/autoarchive"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/bench"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/failurelog"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/freshreadiness"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/maintenance"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/protocol"
-	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/serviceidentity"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/scalarapi"
 )
 
 type Config struct {
@@ -46,6 +48,9 @@ type Server struct {
 	closing                         bool
 }
 
+// The installed prerequisites fresh_payload needs; only tests replace them.
+var freshIdentity, freshStorage = freshreadiness.Identity, freshreadiness.Storage
+
 func Serve(ctx context.Context, c Config) error { return serve(ctx, c, false) }
 
 func serve(ctx context.Context, c Config, proposed bool) error {
@@ -72,7 +77,7 @@ func serve(ctx context.Context, c Config, proposed bool) error {
 		a.Cancellation, a.ReceiptLookup = true, true
 	}
 	// Refuse a combination that would strand workspaces before any state or socket.
-	if err := a.Check(func() error { _, err := serviceidentity.ResolveService(); return err }); err != nil {
+	if err := a.Check(freshIdentity, freshStorage); err != nil {
 		return err
 	}
 	private := a.Cancellation || a.ReceiptLookup
@@ -289,6 +294,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	status, code, message := 200, "", ""
 	if operationErr != nil {
 		status, code, message = operationError(operationErr)
+		failurelog.V1(request, code, operationErr)
 	}
 	response := makeResponse(request, result, code, message)
 	encoded, e := json.Marshal(response)
@@ -298,6 +304,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if protocol.Growth(request.Operation) {
 		if e = s.receipts.Finish(uid, request.RequestID, encoded, status); e != nil {
+			failurelog.Receipt("v1", request.Operation, request.RequestID, request.Key, e)
 			s.reply(w, request, result, 503, "operation_in_doubt", "receipt save failed; inspect retained bench state")
 			return
 		}
@@ -312,15 +319,18 @@ func (s *Server) dispatch(r protocol.Request) (any, error) {
 		if e != nil {
 			return nil, e
 		}
-		items := make([]*benchDTO, 0, len(states))
+		items := make([]*scalarapi.BenchDTO, 0, len(states))
 		for i := range states {
-			items = append(items, benchView(&states[i], false))
+			items = append(items, scalarapi.BenchView(&states[i], false))
 		}
 		return map[string]any{"benches": items}, nil
 	case "host_status":
 		h, e := store.HostStatus()
 		return map[string]any{"managed": h.Managed, "data_free_bytes": h.Data.Free, "state_free_bytes": h.State.Free}, e
 	case "create", "recover":
+		if store.ProposedFreshPayload {
+			return map[string]any{"bench": nil}, scalarapi.ErrFreshCreate
+		}
 		var b *bench.Bench
 		var e error
 		options := bench.Options{Repo: r.Repository, Branch: r.Branch, Base: r.Base}
@@ -329,13 +339,13 @@ func (s *Server) dispatch(r protocol.Request) (any, error) {
 		} else {
 			b, e = store.CreateColdContext(s.ctx, r.Key, options, r.Operation == "recover")
 		}
-		return map[string]any{"bench": benchView(b, e != nil)}, e
+		return map[string]any{"bench": scalarapi.BenchView(b, e != nil)}, e
 	case "lease":
 		b, e := store.LeaseContext(s.ctx, r.Key, r.Holder)
-		return map[string]any{"bench": benchView(b, true)}, e
+		return map[string]any{"bench": scalarapi.BenchView(b, true)}, e
 	case "checkpoint":
 		b, e := store.Checkpoint(r.Key, r.LeaseToken)
-		return map[string]any{"bench": benchView(b, false)}, e
+		return map[string]any{"bench": scalarapi.BenchView(b, false)}, e
 	case "release":
 		e := store.Release(r.Key, r.LeaseToken)
 		if e != nil {
@@ -344,37 +354,25 @@ func (s *Server) dispatch(r protocol.Request) (any, error) {
 		return map[string]any{"released": r.Key}, nil
 	case "stop", "stop_admin":
 		b, e := store.Stop(r.Key, r.LeaseToken, r.Operation == "stop_admin")
-		return map[string]any{"bench": benchView(b, true)}, e
+		return map[string]any{"bench": scalarapi.BenchView(b, true)}, e
 	case "run":
 		checkpoint := true
 		if r.Checkpoint != nil {
 			checkpoint = *r.Checkpoint
 		}
 		result, e := store.Run(s.ctx, r.Key, r.Holder, r.Arguments, checkpoint)
-		return runView(result), e
+		return scalarapi.RunView(result), e
 	case "setup":
 		offline := false
 		if r.Offline != nil {
 			offline = *r.Offline
 		}
 		result, e := store.Setup(s.ctx, r.Key, r.Holder, offline)
-		return runView(result), e
+		return scalarapi.RunView(result), e
 	}
 	return nil, errors.New("unknown operation")
 }
-func operationError(e error) (int, string, string) {
-	switch {
-	case errors.Is(e, bench.ErrNotFound):
-		return 404, "not_found", "unknown bench"
-	case errors.Is(e, bench.ErrLease):
-		return 403, "forbidden", "valid holder capability required"
-	case errors.Is(e, bench.ErrWorkspace):
-		return 409, "conflict", "aggregate workspace requires the workspace API"
-	case errors.Is(e, bench.ErrArchived) || errors.Is(e, bench.ErrBusy) || errors.Is(e, bench.ErrExists) || errors.Is(e, bench.ErrNotFenced) || errors.Is(e, bench.ErrCheckpoint) || errors.Is(e, bench.ErrDirty):
-		return 409, "conflict", "bench state conflicts with this operation"
-	}
-	return 422, "operation_failed", "operation failed; inspect retained bench state and local logs"
-}
+func operationError(e error) (int, string, string) { return scalarapi.ErrorStatus(e) }
 
 func makeResponse(r protocol.Request, result any, code, message string) protocol.Response {
 	op := r.Operation

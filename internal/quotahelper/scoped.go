@@ -84,7 +84,12 @@ func helperCommandInput(ctx context.Context, c Config, uid int, guard bool, befo
 				return nil, fmt.Errorf("fixed-helper operation failed: %w: %w", err, capacity)
 			}
 		}
-		return nil, fmt.Errorf("fixed-helper operation failed: %w", err)
+		if stderr.overflow {
+			return nil, fmt.Errorf("fixed-helper operation failed: %w: helper output exceeds bounds", err)
+		}
+		// The helper's own refusal line is the cause benchd logs; it never
+		// reaches a client, and the helper holds no credentials or payload data.
+		return nil, fmt.Errorf("fixed-helper operation failed: %w: %s", err, helperDiagnostic(stderr.Bytes()))
 	}
 	if stdout.overflow || stderr.overflow {
 		return nil, errors.New("fixed-helper output exceeds bounds")
@@ -170,4 +175,31 @@ func applyScoped(ctx context.Context, c Config, kind, key string, requested uint
 		return zero, operationcontrol.ErrAuthority
 	}
 	return a, nil
+}
+
+// helperDiagnostic is the first stderr line, bounded and quoted.
+func helperDiagnostic(stderr []byte) string {
+	line, _, _ := bytes.Cut(stderr, []byte("\n"))
+	if len(line) > 512 {
+		line = line[:512]
+	}
+	return strconv.Quote(string(line))
+}
+
+// OperationInfo asks the installed helper for its read-only operation info. On
+// an indexed policy the helper answers only after opening its journal, which
+// requires the ready record of a completed initialize-indexed.
+func OperationInfo(ctx context.Context, c Config) (Info, error) {
+	var info Info
+	raw, err := helperCommand(ctx, c, os.Geteuid(), false, nil, "operation-info")
+	if err != nil {
+		return info, err
+	}
+	if err = strictReply(raw, &info); err != nil {
+		return info, err
+	}
+	if !validInfo(info) || info.Root != c.Data {
+		return info, errors.New("quota helper returned unexpected operation info")
+	}
+	return info, nil
 }

@@ -57,38 +57,44 @@ func TestParseRefusesEverythingButTheStrictSchema(t *testing.T) {
 func TestCheckRefusesCombinationsThatStrandWorkspaces(t *testing.T) {
 	ok := func() error { return nil }
 	missing := func() error { return errors.New("no installed identity") }
+	legacy := func() error { return errors.New("storage.json does not select indexed-v2") }
 	for name, c := range map[string]struct {
-		s        Switches
-		identity func() error
-		why      string
+		s                 Switches
+		identity, storage func() error
+		why               string
 	}{
-		"finite_io alone":                     {Switches{FiniteIO: true}, ok, "finite_io requires fresh_payload"},
-		"finite_io without fresh":             {Switches{FiniteIO: true, Cancellation: true, ReceiptLookup: true}, ok, "finite_io requires fresh_payload"},
-		"observation alone":                   {Switches{RegistrationObservation: true}, ok, "registration_observation requires fresh_payload"},
-		"observation without fresh":           {Switches{RegistrationObservation: true, Cancellation: true}, ok, "registration_observation requires fresh_payload"},
-		"fresh alone":                         {Switches{FreshPayload: true}, ok, "fresh_payload requires cancellation"},
-		"fresh without cancellation":          {Switches{FreshPayload: true, FiniteIO: true, ReceiptLookup: true, RegistrationObservation: true}, ok, "fresh_payload requires cancellation"},
-		"fresh without installed identity":    {Switches{FreshPayload: true, Cancellation: true}, missing, "no installed identity"},
-		"fresh with no identity check":        {Switches{FreshPayload: true, Cancellation: true}, nil, "requires the installed service identity"},
-		"all five without installed identity": {Switches{true, true, true, true, true}, missing, "no installed identity"},
+		"finite_io alone":                     {Switches{FiniteIO: true}, ok, ok, "finite_io requires fresh_payload"},
+		"finite_io without fresh":             {Switches{FiniteIO: true, Cancellation: true, ReceiptLookup: true}, ok, ok, "finite_io requires fresh_payload"},
+		"observation alone":                   {Switches{RegistrationObservation: true}, ok, ok, "registration_observation requires fresh_payload"},
+		"observation without fresh":           {Switches{RegistrationObservation: true, Cancellation: true}, ok, ok, "registration_observation requires fresh_payload"},
+		"fresh alone":                         {Switches{FreshPayload: true}, ok, ok, "fresh_payload requires cancellation"},
+		"fresh without cancellation":          {Switches{FreshPayload: true, FiniteIO: true, ReceiptLookup: true, RegistrationObservation: true}, ok, ok, "fresh_payload requires cancellation"},
+		"fresh without installed identity":    {Switches{FreshPayload: true, Cancellation: true}, missing, ok, "no installed identity"},
+		"fresh with no identity check":        {Switches{FreshPayload: true, Cancellation: true}, nil, ok, "requires the installed service identity"},
+		"all five without installed identity": {Switches{true, true, true, true, true}, missing, ok, "no installed identity"},
+		// The pilot host's every Fresh create stranded at materializing for this.
+		"fresh on a legacy storage policy":    {Switches{FreshPayload: true, Cancellation: true}, ok, legacy, "indexed quota operation journal: storage.json does not select indexed-v2"},
+		"all five on a legacy storage policy": {Switches{true, true, true, true, true}, ok, legacy, "requires the indexed quota operation journal"},
+		"fresh with no storage check":         {Switches{FreshPayload: true, Cancellation: true}, ok, nil, "requires the indexed quota operation journal"},
 	} {
-		if err := c.s.Check(c.identity); !errors.Is(err, ErrActivation) || !strings.Contains(err.Error(), c.why) {
+		if err := c.s.Check(c.identity, c.storage); !errors.Is(err, ErrActivation) || !strings.Contains(err.Error(), c.why) {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
 }
 
 func TestCheckAcceptsEveryCompleteCombination(t *testing.T) {
-	calls := 0
+	calls, storageCalls := 0, 0
 	identity := func() error { calls++; return nil }
+	storage := func() error { storageCalls++; return nil }
 	for _, s := range []Switches{{}, {ReceiptLookup: true}, {Cancellation: true}, {Cancellation: true, ReceiptLookup: true},
 		{FreshPayload: true, Cancellation: true}, {true, true, true, true, true}} {
-		if err := s.Check(identity); err != nil {
+		if err := s.Check(identity, storage); err != nil {
 			t.Errorf("%v: %v", s, err)
 		}
 	}
-	// Only fresh_payload needs the installed identity.
-	if calls != 2 {
-		t.Fatalf("identity resolved %d times, want 2", calls)
+	// Only fresh_payload needs the installed identity and the indexed journal.
+	if calls != 2 || storageCalls != 2 {
+		t.Fatalf("identity resolved %d times and storage %d times, want 2 each", calls, storageCalls)
 	}
 }

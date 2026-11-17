@@ -61,11 +61,14 @@ func (s *Switches) field(name string) *bool {
 //     or recover would leave a durable materializing record behind.
 //   - fresh_payload needs the installed payload policy and service identity,
 //     which identity resolves, for the same reason.
+//   - fresh_payload needs the indexed quota operation journal, which storage
+//     checks: the payload helper's bootstrap refuses any other storage policy,
+//     so every Fresh create would strand a materializing workspace.
 //   - finite_io and registration_observation act only on Fresh payload trees,
 //     so they need fresh_payload.
 //
 // receipt_lookup and cancellation have no prerequisite.
-func (s Switches) Check(identity func() error) error {
+func (s Switches) Check(identity, storage func() error) error {
 	switch {
 	case s.FiniteIO && !s.FreshPayload:
 		return refuse("finite_io requires fresh_payload")
@@ -77,9 +80,14 @@ func (s Switches) Check(identity func() error) error {
 		return nil
 	case identity == nil:
 		return refuse("fresh_payload requires the installed service identity")
+	case storage == nil:
+		return refuse("fresh_payload requires the indexed quota operation journal")
 	}
 	if err := identity(); err != nil {
 		return refuse("fresh_payload requires the installed payload policy and service identity: " + err.Error())
+	}
+	if err := storage(); err != nil {
+		return refuse("fresh_payload requires the indexed quota operation journal: " + err.Error())
 	}
 	return nil
 }

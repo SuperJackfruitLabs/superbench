@@ -13,10 +13,13 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotaoperationcontrol"
 )
 
-var errUnscopedIndexed = errors.New("indexed operation policy requires original typed operation identity; unscoped apply/release refused")
+var errUnscopedIndexed = errors.New("indexed operation policy requires original typed operation identity; unscoped bench apply/release refused")
 
-func checkIndexedCommand(p hoststorage.Policy, command string) error {
-	if p.OperationJournal != "" && (command == "apply" || command == "release") {
+// Bench allocations and releases need their operation's identity. The two shared
+// projects are fixed (IDs, paths and caps come only from policy), so host
+// configuration and admission may still apply them, inside the operation barrier.
+func checkIndexedCommand(p hoststorage.Policy, command, kind string) error {
+	if p.OperationJournal != "" && (command == "apply" && kind != "shared" || command == "release") {
 		return errUnscopedIndexed
 	}
 	return nil

@@ -4,7 +4,8 @@
 Use --root /absolute/staging to inspect a package image first. For a fresh host,
 --root / --prepare creates its accounts/directories and reloads systemd. On the
 live root, --identity then writes the payload policy and service identity derived
-from those accounts, and --activation writes the all-false activation file.
+from those accounts, --activation writes the all-false activation file, and
+--storage writes the indexed storage policy and initializes its empty ledger once.
 Starting or enabling the service is a separate operator action after configuration.
 """
 import argparse
@@ -79,6 +80,17 @@ REGISTRY_FILE = "etc/superbench/service-identity.json"
 ACTIVATION_FILE = "etc/superbench/activation.json"
 ACTIVATION_SWITCHES = ("fresh_payload", "finite_io", "receipt_lookup", "cancellation",
                        "registration_observation")
+STORAGE_FILE = "etc/superbench/storage.json"
+UNIT_FILE = "etc/systemd/system/superbench.service"
+QUOTA_HELPER = "/usr/local/libexec/bench-quota"
+# The indexed journal needs a private root-owned ledger parent; tmpfiles creates
+# /var/lib/superbench-quota 0700 root, and initialize-indexed creates the ledger.
+QUOTA_PARENT = "/var/lib/superbench-quota"
+LEDGER = QUOTA_PARENT + "/ledger"
+BYTE_BUDGETS = ("BenchBytes", "StoreBytes", "MirrorBytes", "ReserveBytes")
+INODE_BUDGETS = ("BenchInodes", "StoreInodes", "MirrorInodes", "ReserveInodes")
+LEGACY_STORAGE = ("in-place conversion of a legacy storage policy or ledger to the indexed "
+                  "operation journal is not supported; see docs/pilot-installation.md")
 # Conservative path syntax: Go and Python encode these bytes identically in JSON.
 POLICY_PATH = re.compile(r"/[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*")
 
@@ -118,6 +130,152 @@ def activation_document():
     lines = ['  "version": "superbench.activation.v1"']
     lines += ['  "%s": false' % name for name in ACTIVATION_SWITCHES]
     return {ACTIVATION_FILE: (("{\n" + ",\n".join(lines) + "\n}\n").encode(), 0o644)}
+
+
+def read_budgets(path):
+    """The operator's reviewed byte and inode budgets, checked as hoststorage.Policy.Validate does."""
+    raw = Path(path).read_bytes()
+    if len(raw) > 64 << 10:
+        raise ValueError("storage budgets exceed 64 KiB")
+    document = json.loads(raw, object_pairs_hook=lambda pairs: ("object", pairs))
+    if not isinstance(document, tuple) or len(dict(document[1])) != len(document[1]):
+        raise ValueError("storage budgets must be one JSON object without duplicate keys")
+    budgets = dict(document[1])
+    if sorted(budgets) != sorted(BYTE_BUDGETS + INODE_BUDGETS):
+        raise ValueError("storage budgets need exactly: " + ", ".join(BYTE_BUDGETS + INODE_BUDGETS))
+    for name, value in budgets.items():
+        if type(value) is not int:
+            raise ValueError("storage budget must be an integer: " + name)
+        if name in BYTE_BUDGETS and not (1024 <= value <= 1 << 50 and value % 1024 == 0):
+            raise ValueError("byte budgets must be positive whole KiB, at most 1 PiB: " + name)
+        if name in INODE_BUDGETS and not 0 < value <= 1 << 40:
+            raise ValueError("inode budgets must be explicit positive counts, at most 2^40: " + name)
+    return budgets
+
+
+def storage_document(daemon, budgets):
+    """The root-owned /etc/superbench/storage.json selecting the indexed journal.
+
+    Field names are hoststorage.Policy's; its strict decoder refuses any other.
+    """
+    policy = {"OperationJournal": "indexed-v2", "Root": DATA_ROOT, "Ledger": LEDGER,
+              "OwnerUID": daemon[0], "OwnerGID": daemon[1]}
+    policy.update((name, budgets[name]) for name in BYTE_BUDGETS + INODE_BUDGETS)
+    return {STORAGE_FILE: ((json.dumps(policy, indent=2) + "\n").encode(), 0o644)}
+
+
+def storage_state(root):
+    """Return "fresh" when the indexed ledger still has to be initialized, or
+    "initialized" when an earlier run finished it. A legacy policy or ledger, or
+    a partial initialization, refuses: the code cannot convert or adopt either.
+    """
+    policy = checked_path(root, STORAGE_FILE)
+    parent = checked_path(root, QUOTA_PARENT[1:])
+    names = set(os.listdir(parent)) if parent.is_dir() else set()
+    if os.path.lexists(policy):
+        try:
+            indexed = json.loads(policy.read_bytes()).get("OperationJournal") == "indexed-v2"
+        except (ValueError, AttributeError):
+            indexed = False
+        if not indexed:
+            raise ValueError("existing " + str(policy) + " does not select the indexed journal; " + LEGACY_STORAGE)
+    if names - {"ledger", "ledger.format-v2"}:
+        raise ValueError("existing quota ledger in " + str(parent) + "; " + LEGACY_STORAGE)
+    present = names & {"ledger", "ledger.format-v2"}
+    if not present:
+        return "fresh"
+    if len(present) == 2 and os.path.lexists(policy) and format_ready(parent / "ledger.format-v2"):
+        return "initialized"
+    raise ValueError(PARTIAL_STORAGE % parent)
+
+
+PARTIAL_STORAGE = ("partial indexed ledger initialization retained in %s: initialize-indexed did not "
+                   "write its ready record. It is never adopted or retried; the service stays masked. "
+                   "See \"Recover a partial initialization\" in docs/pilot-installation.md")
+FORMAT_INTENT = {"version", "ledger", "nonce"}
+FORMAT_READY = {"device", "inode", "lock_device", "lock_inode", "database_device", "database_inode",
+                "authority"}
+
+
+def format_ready(path):
+    """Whether initialize-indexed finished: its format file holds the intent line
+    and then the ready line it appends last (internal/quotaoperationjournal)."""
+    try:
+        raw = path.read_bytes()
+        lines = raw.split(b"\n")
+        if len(raw) > 2048 or len(lines) != 3 or lines[2]:
+            return False
+        intent, ready = json.loads(lines[0]), json.loads(lines[1])
+    except (OSError, ValueError):
+        return False
+    return (isinstance(intent, dict) and set(intent) == FORMAT_INTENT and intent["ledger"] == LEDGER and
+            isinstance(ready, dict) and set(ready) == FORMAT_READY)
+
+
+def masked_unit(root):
+    """The unit path, and whether it is the /dev/null mask initialization uses."""
+    path = checked_path(root, os.path.dirname(UNIT_FILE)) / os.path.basename(UNIT_FILE)
+    return path, path.is_symlink() and os.readlink(path) == "/dev/null"
+
+
+def check_data_mount(path=DATA_ROOT, mountinfo="/proc/self/mountinfo", stat=os.stat):
+    """Refuse unless path is the root of a mounted XFS filesystem enforcing project quotas.
+
+    Without the mount, state and the ledger would describe the root filesystem's
+    directory, and the volume mounted over it later would not match them.
+    """
+    hint = "; mount the data volume (persistently, see docs/pilot-installation.md) first"
+    try:
+        separate = stat(path).st_dev != stat(os.path.dirname(path)).st_dev
+    except FileNotFoundError:
+        separate = False
+    if not separate:
+        raise ValueError(path + " is not a mounted filesystem" + hint)
+    found = None
+    for line in Path(mountinfo).read_text().splitlines():
+        mount, _, source = line.partition(" - ")
+        fields, tail = mount.split(), source.split()
+        if len(fields) >= 5 and fields[4] == path and len(tail) >= 3:
+            found = fields[3], tail[0], tail[2].split(",")  # the last mount is the visible one
+    if found is None or found[0] != "/" or found[1] != "xfs":
+        raise ValueError(path + " must be the root of a mounted XFS filesystem" + hint)
+    if not {"prjquota", "pquota"} & set(found[2]) or "pqnoenforce" in found[2]:
+        raise ValueError(path + " must be mounted with enforced project quotas (prjquota)" + hint)
+
+
+UNIT_INSTALLED = ("the service unit is already installed; the indexed ledger can only be "
+                  "initialized during a first install. See docs/pilot-installation.md")
+
+
+def initialize_storage(root, run):
+    """Run the direct-root, first-install-only bench-quota initialize-indexed.
+
+    Its installation gate requires the service to be masked and stopped, so the
+    unit file is installed only after this returns. On failure the service stays
+    masked, without its unit file, and nothing is retried or removed.
+    """
+    mask, masked = masked_unit(root)
+    if not masked:
+        if os.path.lexists(mask):
+            raise ValueError(UNIT_INSTALLED)
+        make_parents(mask.parent)
+        os.symlink("/dev/null", mask)
+    run(["systemctl", "daemon-reload"], check=True)
+    try:
+        run([QUOTA_HELPER, "initialize-indexed"], check=True)
+    except subprocess.CalledProcessError:
+        raise ValueError("bench-quota initialize-indexed refused or failed; the service stays masked "
+                         "without its unit file. See docs/pilot-installation.md") from None
+
+
+def verify_storage(run):
+    """The helper's read-only operation-info opens the indexed journal, which
+    needs its ready record: the real check that initialization finished."""
+    try:
+        run([QUOTA_HELPER, "operation-info"], check=True, stdout=subprocess.DEVNULL)
+    except subprocess.CalledProcessError:
+        raise ValueError("bench-quota operation-info cannot open the indexed journal; the service is not "
+                         "unmasked. See docs/pilot-installation.md") from None
 
 
 class MissingAccount(ValueError):
@@ -280,6 +438,9 @@ def main(argv=None):
                         help="the unit's delegated cgroup, as superbench-start passes it to benchd")
     parser.add_argument("--activation", action="store_true",
                         help="write /etc/superbench/activation.json with every switch false")
+    parser.add_argument("--storage", type=Path, metavar="BUDGETS_JSON",
+                        help="live managed root with --identity only: write the indexed storage.json from "
+                             "these reviewed budgets and initialize its empty ledger once")
     args = parser.parse_args(argv)
     if not args.root.is_absolute() or str(args.root) != os.path.normpath(str(args.root)) or args.root != args.root.resolve():
         parser.error("installation root must be absolute, normalized and use physical paths")
@@ -288,6 +449,12 @@ def main(argv=None):
     if args.identity and (args.root != Path("/") or not args.managed):
         # The documents carry numeric IDs from this host's account database.
         parser.error("--identity applies only to a live / root with --managed")
+    if args.storage is not None and not args.identity:
+        parser.error("--storage applies only with --identity on a live / root with --managed")
+    if args.storage is not None and "SUDO_UID" in os.environ:
+        # bench-quota initialize-indexed refuses sudo callers; never launder that.
+        parser.error("--storage needs a direct root login, not sudo: bench-quota initialize-indexed "
+                     "refuses a caller with SUDO_UID set")
     if args.root == Path("/"):
         if platform.system() != "Linux" or os.geteuid() != 0:
             parser.error("live installation requires Linux root")
@@ -300,17 +467,41 @@ def main(argv=None):
     print("Installed payload; service has not been started or enabled.")
 
 
-def apply(args, run=subprocess.run, lookup=account_ids):
+def apply(args, run=subprocess.run, lookup=account_ids, mounted=check_data_mount):
     """Install what the checked arguments ask for, preparing the host if asked."""
     entries = payload(args.bin_dir, args.managed)
     if args.activation:
         entries.update(activation_document())
+    storage = getattr(args, "storage", None)
+    unit = None
+    if storage is not None:
+        budgets = read_budgets(storage)
+        state = storage_state(args.root)
+        data = checked_path(args.root, DATA_ROOT[1:])
+        mounted(str(data))
+        if state == "fresh" and data.is_dir() and os.listdir(data):
+            raise ValueError(str(data) + " must be empty for a first install of the indexed ledger")
+        mask, masked = masked_unit(args.root)
+        if state == "fresh" and os.path.lexists(mask) and not masked:
+            raise ValueError(UNIT_INSTALLED)
+        # A masked unit is an earlier initialization this run must finish.
+        if state == "fresh" or masked:
+            unit = entries.pop(UNIT_FILE)
     deferred = False
     if args.identity:
         identity_documents((1, 2), (3, 4), args.cgroup_root)  # refuse a bad cgroup root first
         deferred = preflight_identity(args.root, args.prepare, lookup)
         if not deferred:
             entries.update(installed_identity(args.cgroup_root, lookup))
+    if storage is not None:
+        # Refuse a different existing storage policy before any effect.
+        policy = checked_path(args.root, STORAGE_FILE)
+        if os.path.lexists(policy):
+            if deferred:
+                raise ValueError("storage policy exists without its accounts: " + str(policy))
+            expected = storage_document(lookup(DAEMON_ACCOUNT), budgets)[STORAGE_FILE][0]
+            if policy.is_symlink() or not policy.is_file() or policy.read_bytes() != expected:
+                raise ValueError("existing file differs; refusing replacement: " + str(policy))
     # Validate the exact sudo policy before installing any live/staged files.
     if args.managed and platform.system() == "Linux":
         source = Path(__file__).resolve().parent / "superbench.sudoers"
@@ -325,6 +516,17 @@ def apply(args, run=subprocess.run, lookup=account_ids):
         run(["systemctl", "daemon-reload"], check=True)
     if deferred:
         install(args.root, installed_identity(args.cgroup_root, lookup))
+    if storage is not None:
+        install(args.root, storage_document(lookup(DAEMON_ACCOUNT), budgets))
+        if state == "fresh":
+            initialize_storage(args.root, run)
+        verify_storage(run)
+        if unit is not None:
+            mask, masked = masked_unit(args.root)
+            if masked:
+                os.unlink(mask)
+            install(args.root, {UNIT_FILE: unit})
+        run(["systemctl", "daemon-reload"], check=True)
 
 
 if __name__ == "__main__":

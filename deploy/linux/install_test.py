@@ -9,10 +9,14 @@ import struct
 from types import SimpleNamespace
 import unittest
 
+import subprocess
+
 from install import (ACTIVATION_FILE, ACTIVATION_SWITCHES, CGROUP_ROOT, POLICY_FILE, REGISTRY_FILE,
-                     MissingAccount, account_ids, activation_document, apply, checked_path,
-                     identity_documents, install, installed_identity, main, payload, preflight_identity,
-                     static_helper)
+                     DATA_ROOT, QUOTA_HELPER, STORAGE_FILE, UNIT_FILE, MissingAccount, account_ids,
+                     check_data_mount,
+                     activation_document, apply, checked_path, identity_documents, install,
+                     installed_identity, main, payload, preflight_identity, read_budgets, static_helper,
+                     storage_document, storage_state)
 
 # The exact canonical bytes internal/payloadpolicy and internal/serviceidentity
 # accept for these IDs (cross-checked in Go by TestInstallerDocumentsAreCanonical).
@@ -329,6 +333,223 @@ class Main(unittest.TestCase):
         self.assertEqual((target / REGISTRY_FILE).read_bytes(),
                          installed_identity(CGROUP_ROOT, lookup=ready)[REGISTRY_FILE][0])
         self.assertTrue((target / "usr/lib/sysusers.d/superbench-payload.conf").exists())
+
+
+BUDGETS = {"BenchBytes": 1 << 30, "StoreBytes": 2 << 30, "MirrorBytes": 1 << 30, "ReserveBytes": 1 << 30,
+           "BenchInodes": 100000, "StoreInodes": 1000000, "MirrorInodes": 500000, "ReserveInodes": 100000}
+
+
+class IndexedStorage(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(prefix="sb-storage-", dir="/tmp")
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name).resolve()
+        self.target = self.root / "host"
+        self.target.mkdir()
+        (self.target / "var/lib/superbench-quota").mkdir(parents=True, mode=0o700)
+        self.budgets = self.root / "budgets.json"
+        self.budgets.write_text(json.dumps(BUDGETS))
+        self.bins = binaries(self.root / "bin")
+        self.commands = []
+        self.mounts = []
+        self.fail_initialize = None
+
+    def args(self, **overrides):
+        values = dict(bin_dir=self.bins, root=self.target, managed=True, prepare=False, identity=True,
+                      activation=True, cgroup_root=CGROUP_ROOT, storage=self.budgets)
+        values.update(overrides)
+        return SimpleNamespace(**values)
+
+    def run_command(self, command, check, **options):
+        self.assertTrue(check)
+        self.commands.append(command)
+        quota = self.target / "var/lib/superbench-quota"
+        if command == [QUOTA_HELPER, "operation-info"]:
+            # The real helper opens the journal only with its ready record.
+            if not (quota / "ledger").is_dir() or len((quota / "ledger.format-v2").read_bytes().splitlines()) != 2:
+                raise subprocess.CalledProcessError(1, command)
+        if command == [QUOTA_HELPER, "initialize-indexed"]:
+            unit = self.target / UNIT_FILE
+            # The helper's installation gate needs the masked unit and the indexed policy.
+            self.assertTrue(unit.is_symlink())
+            self.assertEqual(os.readlink(unit), "/dev/null")
+            self.assertIn(b'"OperationJournal": "indexed-v2"', (self.target / STORAGE_FILE).read_bytes())
+            self.assertIn(["systemctl", "daemon-reload"], self.commands[:-1])
+            if self.fail_initialize == "before":
+                raise subprocess.CalledProcessError(1, command)
+            # The real initializer's order (quotaoperationjournal): the format
+            # intent, the ledger directory, its records, and the ready line last.
+            (quota / "ledger.format-v2").write_text(
+                json.dumps({"version": "v2", "ledger": "/var/lib/superbench-quota/ledger", "nonce": "0" * 64}) + "\n")
+            (quota / "ledger").mkdir()
+            (quota / "ledger" / "operations.lock").write_bytes(b"")
+            if self.fail_initialize == "partway":
+                raise subprocess.CalledProcessError(1, command)
+            (quota / "ledger" / "assignments.json").write_bytes(b"{}")
+            with (quota / "ledger.format-v2").open("a") as anchor:
+                anchor.write(json.dumps({"device": 1, "inode": 2, "lock_device": 1, "lock_inode": 3,
+                                         "database_device": 1, "database_inode": 4,
+                                         "authority": "a" * 64}) + "\n")
+
+    def mounted(self, path):
+        self.mounts.append(path)
+
+    def apply(self, **overrides):
+        apply(self.args(**overrides), run=self.run_command, lookup=accounts(), mounted=self.mounted)
+
+    def test_budgets_are_checked_as_the_go_policy_checks_them(self):
+        self.assertEqual(read_budgets(self.budgets), BUDGETS)
+        for bad in ['[["BenchBytes", 1024]]', '{"BenchBytes": 1024}',
+                    json.dumps(dict(BUDGETS, BenchBytes=1000)), json.dumps(dict(BUDGETS, BenchInodes=0)),
+                    json.dumps(dict(BUDGETS, StoreBytes=True)), json.dumps(dict(BUDGETS, Root="/srv")),
+                    json.dumps(BUDGETS)[:-1] + ', "BenchBytes": 2048}']:
+            self.budgets.write_text(bad)
+            with self.assertRaises(ValueError, msg=bad):
+                read_budgets(self.budgets)
+
+    def test_fresh_install_writes_the_indexed_policy_and_initializes_once(self):
+        self.apply()
+        self.assertEqual(self.commands.count([QUOTA_HELPER, "initialize-indexed"]), 1)
+        unit = self.target / UNIT_FILE
+        self.assertFalse(unit.is_symlink(), "the service stayed masked")
+        self.assertEqual(unit.read_bytes(), (Path(__file__).resolve().parent / "superbench.service").read_bytes())
+        self.assertEqual(self.commands[-1], ["systemctl", "daemon-reload"])
+        policy = json.loads((self.target / STORAGE_FILE).read_bytes())
+        self.assertEqual(policy["OperationJournal"], "indexed-v2")
+        self.assertEqual(policy["Ledger"], "/var/lib/superbench-quota/ledger")
+        self.assertEqual((policy["OwnerUID"], policy["OwnerGID"]), (977, 977))
+        self.assertEqual((self.target / STORAGE_FILE).stat().st_mode & 0o777, 0o644)
+        self.assertEqual(storage_state(self.target), "initialized")
+        # Rerunning the same command never initializes again.
+        self.commands.clear()
+        self.apply()
+        self.assertNotIn([QUOTA_HELPER, "initialize-indexed"], self.commands)
+
+    def test_failed_initialization_keeps_the_service_masked_and_can_be_retried(self):
+        self.fail_initialize = "before"
+        with self.assertRaisesRegex(ValueError, "stays masked"):
+            self.apply()
+        unit = self.target / UNIT_FILE
+        self.assertTrue(unit.is_symlink())
+        self.assertEqual(storage_state(self.target), "fresh")
+        self.fail_initialize = None
+        self.apply()
+        self.assertFalse(unit.is_symlink())
+        self.assertEqual(storage_state(self.target), "initialized")
+
+    def test_initialization_that_stopped_partway_is_refused_and_stays_masked(self):
+        # Both names exist, but without the ready line the journal never opens:
+        # a rerun must not call this initialized and unmask the service.
+        self.fail_initialize = "partway"
+        with self.assertRaisesRegex(ValueError, "stays masked"):
+            self.apply()
+        unit = self.target / UNIT_FILE
+        self.fail_initialize = None
+        self.commands.clear()
+        with self.assertRaisesRegex(ValueError, "partial indexed ledger"):
+            self.apply()
+        self.assertTrue(unit.is_symlink(), "a partial initialization unmasked the service")
+        self.assertEqual(os.readlink(unit), "/dev/null")
+        self.assertEqual(self.commands, [])
+
+    def test_unit_stays_masked_when_the_journal_does_not_open(self):
+        real = self.run_command
+
+        def closed(command, check, **options):
+            if command == [QUOTA_HELPER, "operation-info"]:
+                self.commands.append(command)
+                raise subprocess.CalledProcessError(1, command)
+            return real(command, check, **options)
+        with self.assertRaisesRegex(ValueError, "not unmasked"):
+            apply(self.args(), run=closed, lookup=accounts(), mounted=self.mounted)
+        self.assertTrue((self.target / UNIT_FILE).is_symlink())
+
+    def test_a_different_storage_policy_refuses_before_any_effect(self):
+        other = storage_document((977, 977), dict(BUDGETS, BenchBytes=2 << 30))
+        install(self.target, other)
+        with self.assertRaisesRegex(ValueError, "existing file differs"):
+            self.apply()
+        self.assertFalse((self.target / "usr/local/bin/benchd").exists(), "effects before refusal")
+        self.assertEqual((self.target / STORAGE_FILE).read_bytes(), other[STORAGE_FILE][0])
+
+    def test_legacy_or_partial_ledgers_refuse_before_any_effect(self):
+        quota = self.target / "var/lib/superbench-quota"
+        legacy = storage_document((977, 977), BUDGETS)[STORAGE_FILE][0].replace(
+            b'  "OperationJournal": "indexed-v2",\n', b"")
+        for name, setup, message in [
+            ("legacy policy", lambda: install(self.target, {STORAGE_FILE: (legacy, 0o644)}), "does not select the indexed"),
+            ("legacy ledger", lambda: (quota / "assignments.json").write_bytes(b"{}"), "existing quota ledger"),
+            ("partial anchor", lambda: (quota / "ledger.format-v2").write_bytes(b"x"), "partial indexed ledger"),
+            ("ledger without policy", lambda: [(quota / "ledger").mkdir(), (quota / "ledger.format-v2").write_bytes(b"x")],
+             "partial indexed ledger"),
+            ("installed unit", lambda: install(self.target, {UNIT_FILE: (b"unit", 0o644)}), "already installed"),
+        ]:
+            with self.subTest(name):
+                setup()
+                with self.assertRaisesRegex(ValueError, message):
+                    self.apply()
+                self.assertNotIn([QUOTA_HELPER, "initialize-indexed"], self.commands)
+                self.assertFalse((self.target / "usr/local/bin/benchd").exists(), "effects before refusal")
+                for path in [self.target / STORAGE_FILE, self.target / UNIT_FILE, *quota.iterdir()]:
+                    if path.is_dir():
+                        path.rmdir()
+                    elif os.path.lexists(path):
+                        path.unlink()
+
+    def test_storage_is_written_only_onto_the_mounted_empty_data_volume(self):
+        def unmounted(path):
+            raise ValueError(path + " is not a mounted filesystem")
+        with self.assertRaisesRegex(ValueError, "not a mounted filesystem"):
+            apply(self.args(), run=self.run_command, lookup=accounts(), mounted=unmounted)
+        self.assertFalse(os.path.lexists(self.target / STORAGE_FILE))
+        self.assertFalse((self.target / "usr/local/bin/benchd").exists())
+        stray = self.target / DATA_ROOT[1:] / "benches"
+        stray.mkdir(parents=True)
+        with self.assertRaisesRegex(ValueError, "must be empty"):
+            self.apply()
+        self.assertFalse(os.path.lexists(self.target / STORAGE_FILE))
+        stray.rmdir()
+        self.apply()
+        self.assertEqual(self.mounts[-1], str(self.target / DATA_ROOT[1:]))
+
+    def test_mount_check_reads_the_visible_mount(self):
+        def devices(mapping):
+            return lambda path: SimpleNamespace(st_dev=mapping[path])
+        separate = devices({DATA_ROOT: 2, "/srv": 1})
+        info = self.root / "mountinfo"
+        good = "36 25 7:1 / " + DATA_ROOT + " rw,relatime - xfs /dev/loop1 rw,attr2,inode64,prjquota\n"
+        info.write_text(good)
+        check_data_mount(DATA_ROOT, info, separate)
+        with self.assertRaisesRegex(ValueError, "not a mounted filesystem"):
+            check_data_mount(DATA_ROOT, info, devices({DATA_ROOT: 1, "/srv": 1}))
+        with self.assertRaisesRegex(ValueError, "not a mounted filesystem"):
+            check_data_mount(str(self.root / "absent"), info)
+        for bad, message in [
+                ("", "root of a mounted XFS"),
+                (good.replace(" xfs ", " ext4 "), "root of a mounted XFS"),
+                (good.replace(" / " + DATA_ROOT, " /sub " + DATA_ROOT), "root of a mounted XFS"),
+                (good.replace(",prjquota", ""), "enforced project quotas"),
+                (good.replace("prjquota", "prjquota,pqnoenforce"), "enforced project quotas"),
+                (good + "40 36 0:5 / " + DATA_ROOT + " rw - tmpfs tmpfs rw\n", "root of a mounted XFS")]:
+            info.write_text(bad)
+            with self.assertRaisesRegex(ValueError, message, msg=bad):
+                check_data_mount(DATA_ROOT, info, separate)
+
+    def test_storage_needs_identity_and_a_direct_root_login(self):
+        for flags, environment, message in [
+                (["--managed"], {}, "--storage applies only with --identity"),
+                (["--managed", "--identity"], {"SUDO_UID": "1000"}, "direct root login")]:
+            stderr = io.StringIO()
+            previous = dict(os.environ)
+            os.environ.update(environment)
+            try:
+                with contextlib.redirect_stderr(stderr), self.assertRaises(SystemExit) as stop:
+                    main(["--bin-dir", str(self.bins), "--root", "/", "--storage", str(self.budgets), *flags])
+            finally:
+                os.environ.clear()
+                os.environ.update(previous)
+            self.assertEqual(stop.exception.code, 2)
+            self.assertIn(message, stderr.getvalue())
 
 
 if __name__ == "__main__":

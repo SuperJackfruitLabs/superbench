@@ -67,12 +67,62 @@ These are the four binaries required by the managed installer. The payload
 helper must be a static Linux executable for the target architecture; do not
 omit it or substitute a dynamically linked build. Review the staged files,
 owners, modes, systemd unit, wrapper and sudo rule before applying anything.
-Staging writes only below the supplied physical absolute root. On a fresh host,
-direct Linux root then runs:
+Staging writes only below the supplied physical absolute root.
+
+### Mount the data volume persistently
+
+Mount the dedicated XFS filesystem at `/srv/superbench-data` with project quotas
+before installing, and make the mount survive a reboot. With a block device, add
+an `/etc/fstab` line using the filesystem's UUID (`blkid -s UUID -o value DEVICE`):
+
+```text
+UUID=FILESYSTEM-UUID  /srv/superbench-data  xfs  defaults,prjquota  0  2
+```
+
+For a filesystem image on a staging host, use a root-owned image outside the
+state and data directories:
+
+```text
+/var/lib/superbench-data.img  /srv/superbench-data  xfs  loop,prjquota  0  0
+```
+
+Instead of fstab, a systemd mount unit named `srv-superbench\x2ddata.mount`
+(`systemd-escape -p --suffix=mount /srv/superbench-data`) with `What=`, `Where=`,
+`Type=xfs` and `Options=prjquota`, enabled with `WantedBy=local-fs.target`, does
+the same. After `systemctl daemon-reload`, mount it (`mount /srv/superbench-data`
+or `systemctl start 'srv-superbench\x2ddata.mount'`) and check it with
+`findmnt /srv/superbench-data` and `xfs_quota -x -c 'state -p' /srv/superbench-data`
+(project accounting and enforcement both `ON`). Do not add `nofail` or `noauto`.
+
+The service unit has `RequiresMountsFor=/srv/superbench-data`, so systemd mounts
+the volume before benchd and does not start benchd without it. The quota ledger is
+bound to the filesystem UUID: mount the same filesystem every time (a different
+loop device number is fine). The installer's `--storage` refuses to write the
+storage policy unless `/srv/superbench-data` is a separate mounted XFS filesystem
+root with enforced project quotas (`prjquota`, not `pqnoenforce`) and, on a first
+install, empty.
+
+### Install on the host
+
+Write the reviewed byte **and** inode budgets for the dedicated data volume to a
+root-owned file, for example `/root/superbench-budgets.json` (the eight fields of
+[the storage policy example](storage.md), and nothing else):
+
+```json
+{"BenchBytes": 8589934592, "StoreBytes": 4294967296, "MirrorBytes": 4294967296,
+ "ReserveBytes": 2147483648, "BenchInodes": 250000, "StoreInodes": 2000000,
+ "MirrorInodes": 1000000, "ReserveInodes": 250000}
+```
+
+Every bench reserves its full `BenchBytes`, on top of the two shared caps and the
+reserve, so size the volume for the number of benches you expect: an allocation
+that would exceed the filesystem is refused. On a fresh host, with the data volume
+mounted, direct Linux root (a root login, not `sudo`) then runs:
 
 ```sh
 python3 deploy/linux/install.py --bin-dir /absolute/build/bin --root / \
-  --managed --prepare --identity --activation
+  --managed --prepare --identity --activation \
+  --storage /root/superbench-budgets.json
 ```
 
 This prepares the stable `superbench` account, the separate `superbench-payload`
@@ -105,12 +155,89 @@ replaced. To change one, remove it deliberately and review the new file.
 Rerunning the installer accepts identical files and refuses changed ones, so do
 not pass `--activation` again after editing the file.
 
-Write root-owned `/etc/superbench/storage.json` using the actual numeric
-`id -u superbench` and `id -g superbench`, the dedicated data mount and reviewed
-byte **and** inode budgets. Use [the storage policy example](storage.md), replacing
-its example IDs and sizes. Preserve reserve space; do not recursively chown the
-volume or delete a ledger to bypass refusal. Configure fresh state as the service
-account:
+### Indexed storage
+
+`--storage` sets up the storage the Fresh payload layout needs. The payload
+helper's `bench-quota bootstrap-payload` only accepts a storage policy that selects
+the indexed operation journal, `"OperationJournal": "indexed-v2"`, with a ledger
+that `bench-quota initialize-indexed` created on an empty filesystem. With any
+other policy every Fresh `create` stops at `materializing` with `operation_failed`.
+`--storage`:
+
+1. checks that `/srv/superbench-data` is the root of a mounted XFS filesystem
+   with enforced project quotas, and empty on a first install, before it writes
+   anything ([above](#mount-the-data-volume-persistently));
+2. writes root-owned `/etc/superbench/storage.json` (mode 0644) from the budgets
+   file, the `superbench` account's numeric IDs, the data root, the ledger
+   `/var/lib/superbench-quota/ledger` and `"OperationJournal": "indexed-v2"`;
+3. masks the service (a `/dev/null` link in place of its unit file) and runs
+   `bench-quota initialize-indexed` once, as direct root. That command only
+   initializes: it refuses unless the service is masked and stopped, nothing
+   runs as either SuperBench account, the data filesystem is empty with no quota
+   projects, and the ledger does not exist yet;
+4. checks that the helper can open the journal (`bench-quota operation-info`,
+   read-only), which it can only once `initialize-indexed` has written its ready
+   record, then installs the unit file in place of the mask and reloads systemd.
+
+Run it as part of the first install, before `configure-host` and before the
+service ever starts. Rerunning the same command is safe: a host whose ledger is
+already initialized (its ready record is present) skips step 3, and a run that
+stopped after step 3 finishes step 4. If `initialize-indexed` fails before it
+writes anything, the service stays masked without its unit file; fix the reported
+cause and rerun the same command. If it stopped partway, see
+[Recover a partial initialization](#recover-a-partial-initialization). The
+installer refuses, before it changes anything, when:
+
+- `/etc/superbench/storage.json` exists without the indexed journal, or
+  `/var/lib/superbench-quota` holds a legacy ledger (`assignments.json`, `lock`,
+  `operations`). In-place conversion is not supported;
+- `/var/lib/superbench-quota` holds an indexed ledger without its ready record
+  (`ledger.format-v2` lacks its second line). An interrupted initialization is
+  never adopted or retried, and the service stays masked;
+- `/etc/superbench/storage.json` exists but differs from what these budgets and
+  accounts produce;
+- the unit file is already installed from an earlier run without `--storage`;
+- `SUDO_UID` is set: `initialize-indexed` refuses `sudo` callers.
+
+#### Recover a partial initialization
+
+`initialize-indexed` writes, in order: the format intent
+(`/var/lib/superbench-quota/ledger.format-v2`, one line), the ledger directory,
+its `operations.lock` and `assignments.json`, the quota owner anchor
+`/srv/superbench-data/.superbench-quota-owner.json`, the journal database, and
+last the ready line appended to `ledger.format-v2`. Only that line makes the
+journal usable. If the command stopped before it, nothing has been allocated and
+no workspace exists, but the records cannot be adopted or completed. With the
+service still masked (do not unmask or start it):
+
+1. back up `/var/lib/superbench-quota` and the error output;
+2. remove `/var/lib/superbench-quota/ledger` and
+   `/var/lib/superbench-quota/ledger.format-v2`, leaving the directory itself;
+3. recreate the data filesystem with project quotas (`mkfs.xfs` on its device or
+   image), update the fstab or mount unit if it names the filesystem UUID, and
+   mount it again; the first install needs an empty filesystem with no quota
+   projects;
+4. rerun the same installer command, `--storage` included. It keeps the
+   identical `storage.json` and the mask, initializes again and then unmasks.
+
+benchd also checks the journal at start: with `fresh_payload` on, it refuses to
+start unless the helper's `operation-info` opens the indexed journal.
+
+**An existing host with a legacy ledger** cannot turn on `fresh_payload`; benchd
+refuses to start with it (see [Activation](#activation)). Either keep the switch
+off, or rebuild the host's storage: checkpoint and release the work you want to
+keep, stop and disable the service, keep a backup of `/etc/superbench`,
+`/var/lib/superbench` and `/var/lib/superbench-quota`, then remove the installed
+files, the state, the ledger and the storage policy, recreate the data
+filesystem (old quota projects on it also refuse initialization) and install
+again with `--storage`. Do not delete a ledger to get past a refusal on a host
+whose data you still need.
+
+On an indexed host the helper still applies the two fixed shared projects for
+`configure-host` and admission, but it refuses an unscoped bench allocation or
+release: every bench effect needs its operation's identity. Preserve reserve
+space; do not recursively chown the volume. Configure fresh state as the
+service account:
 
 ```sh
 sudo -u superbench /usr/local/bin/bench configure-host \
@@ -145,6 +272,20 @@ systemctl enable --now superbench.service
 systemctl status superbench.service
 journalctl -u superbench.service --no-pager
 ```
+
+Clients receive only the static error their protocol defines, such as
+`operation_failed`. benchd writes the cause of every failed operation, and of
+every outcome it could not record, to its journal as one line:
+
+```text
+operation failed: api=v2 operation="create" request_id="fresh1-create" key="fresh-1" phase="materializing" code=operation_failed cause="fixed-helper operation failed: exit status 1: \"bench-quota: …\""
+```
+
+`phase` is the workspace phase the response reports (`-` when there is none). The
+cause is the error chain, at most 1 KiB, with the quota helper's own refusal line
+and with repository URL credentials and queries removed. A line never holds the
+request body, lease tokens, command arguments or run output. Find one with
+`journalctl -u superbench.service --grep 'operation failed'`.
 
 The installed wrapper discovers the delegated cgroup from the running service.
 Keep `Delegate=yes` and the reviewed managed helper boundary. Do not change the
@@ -192,12 +333,25 @@ the socket, and refuses a file that breaks one:
 | --- | --- | --- |
 | `fresh_payload` | `cancellation` | Fresh materialization runs inside the operation scope that only the cancellation path claims. Without it every v2 `create` or `recover` would record a durable `materializing` workspace and then fail. |
 | `fresh_payload` | the installed payload policy and service identity | benchd resolves `/etc/superbench/service-identity.json` (with `--identity`, above) for its own uid at start, for the same reason. |
+| `fresh_payload` | a ready indexed quota operation journal | benchd reads `/etc/superbench/storage.json` at start and refuses unless it sets `"OperationJournal": "indexed-v2"` and the helper's read-only `operation-info` opens that journal, which needs the ready record of a finished `initialize-indexed` ([Indexed storage](#indexed-storage)). The payload helper refuses anything else, so every Fresh create would stop at `materializing`. |
 | `finite_io` | `fresh_payload` | A finite run executes only on a Fresh payload tree. |
 | `registration_observation` | `fresh_payload` | Observation reads only a Fresh payload tree. |
 | `receipt_lookup`, `cancellation` | nothing | |
 
 So the registered launch, which needs all five, sets every switch to `true`, and
 `receipt_lookup` or `cancellation` may run alone.
+
+While `fresh_payload` is on, benchd refuses a v1 `create` or `recover` before any
+bench effect (no creation intent, allocation or bench record), with `409 conflict`
+and the message `scalar benches cannot be created while fresh_payload is active;
+use the workspace API`. The request's receipt is still recorded, so retrying the
+same `request_id` replays the same 409. The indexed journal that `fresh_payload`
+needs refuses the unscoped bench allocation a scalar create makes, so the create
+would otherwise fail after recording its intent. Other v1
+operations on existing scalar benches are unchanged. Separately, v1 has no
+capacity code: a v1 create that would take the volume past its reservations (every
+bench reserves its full `BenchBytes`) returns `operation_failed`, and only the
+journal line says `capacity_exhausted`.
 
 When the file exists, benchd refuses to start unless it is a single-link regular
 file of at most 4 KiB, owned by root and not group- or world-writable, and every
@@ -210,6 +364,29 @@ installer creates it with mode 0755). If it cannot, benchd cannot tell whether
 the file exists and refuses to start. At start
 benchd logs one line with the effective switches, for example
 `activation: fresh_payload=false finite_io=false receipt_lookup=false cancellation=false registration_observation=false`.
+
+**Existing non-Fresh workspaces.** `fresh_payload` changes only new v2 `create`
+and `recover`. A v2 workspace that completed in the non-Fresh layout before the
+switch went on (for example one created with `cancellation` on and
+`fresh_payload` off) keeps that layout and can still be leased while Fresh is on:
+lease, setup, run, checkpoint, release and stop work as before. This is
+intended, so that work in flight is not stranded, but that workspace gets none of
+the Fresh guarantees: its commands run as the `superbench` account rather than
+the payload account, without the payload helper, and finite I/O and registration
+observation do not apply to it. It is never converted in place. To move the work
+to the Fresh layout, checkpoint and release it, then create a new workspace from
+the checkpointed branches. An incomplete non-Fresh workspace is not adopted
+either (see [Current gaps](#current-gaps)).
+
+**Cancellation and receipt lookup are API-only.** The `bench` CLI has no cancel
+or receipt-lookup command: both exist for the coordinator, which sends them over
+the socket. An operator who needs one uses an HTTP client on
+`/run/superbench/benchd.sock`: `POST /v2/operations` with `"operation":"cancel"`
+for [cancellation](operation-cancellation.md), or `POST /v2/receipts/lookup`
+for [receipt lookup](receipt-lookup.md). Each names the original request ID and
+the typed digest of the original request, so keep the exact original request
+(the CLI's `--request-id` sets the ID). Cancelling a request ID that was never
+dispatched still records the cancellation, so that ID cannot be used afterwards.
 
 An activated daemon never migrates its state. After installing or upgrading
 benchd, start it once with every switch off so it brings the state current, stop

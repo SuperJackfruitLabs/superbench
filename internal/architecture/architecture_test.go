@@ -123,11 +123,14 @@ func TestArchitecture(t *testing.T) {
 				"internal/operationreceipts":           {"internal/operationcontrol", "internal/finiteio"},
 				"internal/operationbody":               {"internal/protocolv2"},                                                         // Body bound and profile classification only.
 				"internal/receiptlookup":               {"internal/operationbody", "internal/operationreceipts", "internal/protocolv2"}, // Read-only historical evidence.
-				"internal/service":                     {"internal/activation", "internal/operationbody", "internal/receiptlookup", "internal/registrationobserve", "internal/serviceidentity", "internal/operationreceipts", "internal/operationcontrol", "internal/protocolv2", "internal/workspaceops", "internal/workspaceapi", "internal/autoarchive", "internal/bench", "internal/protocol", "internal/maintenance"},
+				"internal/service":                     {"internal/activation", "internal/failurelog", "internal/freshreadiness", "internal/scalarapi", "internal/operationbody", "internal/receiptlookup", "internal/registrationobserve", "internal/serviceidentity", "internal/operationreceipts", "internal/operationcontrol", "internal/protocolv2", "internal/workspaceops", "internal/workspaceapi", "internal/autoarchive", "internal/bench", "internal/protocol", "internal/maintenance"},
 				"internal/workspacetransfer":           {"internal/history", "internal/reap", "internal/retention", "internal/hoststorage", "internal/bench", "internal/benchstate", "internal/execution", "internal/gitcontrol", "internal/model", "internal/quotapolicy", "internal/reftransfer", "internal/repository", "internal/workspace", "internal/workspacepolicy", "internal/workspacerepair", "internal/worktreetransfer"},
 				"cmd/bench":                            {"internal/buildinfo", "internal/localprep", "internal/crosshostflow", "internal/crosshost", "internal/handoffjournal", "internal/mirroradmin", "internal/mirrorstage", "internal/workspacetransfer", "internal/workspacerepair", "internal/workspaceprep", "internal/protocolv2", "internal/workspaceops", "internal/workspaceapi", "internal/workspacearchive", "internal/autoarchive", "internal/bench", "internal/client", "internal/protocol", "internal/reap", "internal/retention", "internal/history", "internal/maintenance"},
 				"cmd/benchd":                           {"internal/activation", "internal/buildinfo", "internal/bench", "internal/service"},
 				"internal/activation":                  {}, // Root-owned switch file reader; no other authority.
+				"internal/freshreadiness":              {"internal/hoststorage", "internal/quotahelper", "internal/serviceidentity"},
+				"internal/scalarapi":                   {"internal/bench"},
+				"internal/failurelog":                  {"internal/protocol", "internal/protocolv2"},
 				"cmd/bench-payload":                    {"internal/payloadexec"},
 				"cmd/bench-quota":                      {"internal/cleanworker", "internal/freshrecovery", "internal/payloadbootstrap", "internal/hoststorage", "internal/quotahelper", "internal/quotaoperation", "internal/quotaoperationcontrol"},
 

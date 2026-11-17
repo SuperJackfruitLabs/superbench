@@ -18,6 +18,7 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/bench"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/client"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/protocol"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/scalarapi"
 )
 
 func serviceFixture(t *testing.T, operator, reader bool) (Config, string) {
@@ -126,7 +127,7 @@ func TestUnixLifecycleAndReceiptReplay(t *testing.T) {
 	requireCode(t, c, changed, "conflict")
 	lease := protocol.Request{Operation: "lease", Key: "task", Holder: "first", RequestID: "lease-1"}
 	leased := call(t, c, lease)
-	var result struct{ Bench benchDTO }
+	var result struct{ Bench scalarapi.BenchDTO }
 	if e := json.Unmarshal(leased, &result); e != nil {
 		t.Fatal(e)
 	}
@@ -239,11 +240,5 @@ func TestSocketSingletonAndFilePreservation(t *testing.T) {
 	data, e := os.ReadFile(file)
 	if e != nil || string(data) != "keep" {
 		t.Fatal("file changed", e)
-	}
-}
-func TestRepositoryDisplayRedactsSecrets(t *testing.T) {
-	got := displayRepository("https://user:password@example.invalid/repo?access_token=secret#private")
-	if got != "https://user@example.invalid/repo" {
-		t.Fatalf("repository not sanitized: %s", got)
 	}
 }

@@ -113,16 +113,28 @@ func TestBufferedQuotaWithholdsSuccessfulEffectAfterFinalAuthorityFailure(t *tes
 
 func TestIndexedUnscopedMutationsRequireOriginalProvenance(t *testing.T) {
 	for _, command := range []string{"apply", "release"} {
-		if err := checkIndexedCommand(hoststorage.Policy{OperationJournal: "indexed-v2"}, command); !errors.Is(err, errUnscopedIndexed) {
+		if err := checkIndexedCommand(hoststorage.Policy{OperationJournal: "indexed-v2"}, command, "bench"); !errors.Is(err, errUnscopedIndexed) {
 			t.Fatalf("%s: %v", command, err)
 		}
-		if err := checkIndexedCommand(hoststorage.Policy{}, command); err != nil {
+		if err := checkIndexedCommand(hoststorage.Policy{}, command, "bench"); err != nil {
 			t.Fatalf("legacy %s changed: %v", command, err)
 		}
 	}
 	for _, command := range []string{"apply-operation", "cancel-operation", "retire-approved", "verify-retired", "verify", "inspect-allocation"} {
-		if err := checkIndexedCommand(hoststorage.Policy{OperationJournal: "indexed-v2"}, command); err != nil {
+		if err := checkIndexedCommand(hoststorage.Policy{OperationJournal: "indexed-v2"}, command, "bench"); err != nil {
 			t.Fatalf("typed/reviewed %s refused: %v", command, err)
 		}
+	}
+}
+
+// bench configure-host and admission apply the fixed shared projects without an
+// operation scope. Refusing them made an indexed host impossible to configure.
+func TestIndexedHostCanStillApplyFixedSharedProjects(t *testing.T) {
+	indexed := hoststorage.Policy{OperationJournal: "indexed-v2"}
+	if err := checkIndexedCommand(indexed, "apply", "shared"); err != nil {
+		t.Fatal("fixed shared apply refused", err)
+	}
+	if err := checkIndexedCommand(indexed, "release", "shared"); !errors.Is(err, errUnscopedIndexed) {
+		t.Fatal("unscoped release accepted", err)
 	}
 }
