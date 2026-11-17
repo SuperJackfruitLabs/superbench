@@ -66,6 +66,19 @@ class InstallationGuards(unittest.TestCase):
         self.assertFalse((self.root / "usr/local/bin/benchd").exists())
         self.assertEqual(config.read_bytes(), b"reviewed operator configuration")
 
+    def test_created_directories_are_0755_under_any_umask(self):
+        # 002 would make /etc/superbench group-writable; 077 would hide it from benchd.
+        for umask in (0o002, 0o077):
+            root = self.root / ("umask-%o" % umask)
+            root.mkdir(mode=0o755)
+            previous = os.umask(umask)
+            try:
+                install(root, {"etc/superbench/activation.json": (b"{}", 0o644)})
+            finally:
+                os.umask(previous)
+            for directory in ["etc", "etc/superbench"]:
+                self.assertEqual((root / directory).stat().st_mode & 0o7777, 0o755, directory)
+
     def test_symlink_and_writable_ancestor_cannot_redirect_installation(self):
         outside = self.root / "outside"
         outside.mkdir()

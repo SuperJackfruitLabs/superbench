@@ -201,6 +201,24 @@ def payload(bin_dir, managed):
     return result
 
 
+def make_parents(directory):
+    """Create missing directories 0755 whatever the caller's umask.
+
+    benchd runs as its own account: it must search /etc/superbench and refuses a
+    group- or world-writable one that holds the activation file.
+    """
+    missing = []
+    while not os.path.lexists(directory):
+        missing.append(directory)
+        directory = directory.parent
+    for path in reversed(missing):
+        try:
+            os.mkdir(path, 0o755)
+        except FileExistsError:
+            continue
+        os.chmod(path, 0o755)
+
+
 def install(root, entries):
     # Preflight every destination before writing any: conflicting config must
     # not leave a half-upgraded binary set. Upgrades require a reviewed procedure.
@@ -218,7 +236,7 @@ def install(root, entries):
         path = checked_path(root, relative)
         if path.exists():
             continue
-        path.parent.mkdir(parents=True, exist_ok=True)
+        make_parents(path.parent)
         # Publish complete files without replacing anything created concurrently.
         fd, stage = tempfile.mkstemp(prefix=".superbench-install-", dir=path.parent)
         try:
