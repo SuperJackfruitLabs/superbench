@@ -30,6 +30,7 @@ type Server struct {
 	proposedCancellation            bool
 	proposedReceiptLookup           bool
 	proposedRegistrationObservation bool
+	proposedFiniteIO                bool // never set by Serve; see docs/finite-io.md
 	receiptSlots                    chan struct{}
 	cancelWake                      chan struct{}
 	config                          Config
