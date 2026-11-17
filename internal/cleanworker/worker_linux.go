@@ -86,7 +86,10 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	case Purge:
 		// Root starts a purge as the tree's owner, the payload account, so even
 		// a fault here can remove only what that account could remove itself.
-		if err = purge(request.Root, *request.Target); err != nil {
+		// Progress bytes precede the reply; root kills a worker that goes quiet.
+		progress := func() { _, _ = stdout.Write([]byte{'.'}) }
+		progress()
+		if err = purge(request.Root, *request.Target, progress); err != nil {
 			return err
 		}
 	}

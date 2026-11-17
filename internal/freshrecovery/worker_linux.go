@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/cleanworker"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/freshliveness"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/payloadpolicy"
 	"golang.org/x/sys/unix"
 )
@@ -63,7 +64,7 @@ func runWorker(ctx context.Context, p payloadpolicy.Policy, request cleanworker.
 		// goroutine exits. It stays alive until the worker is reaped, because
 		// Pdeathsig fires when the forking thread, not the process, exits.
 		runtime.LockOSThread()
-		out, err := spawn(ctx, uid, gid, frame, s)
+		out, err := spawn(ctx, uid, gid, frame, s, request.Mode == cleanworker.Purge)
 		done <- result{out, err}
 	}()
 	res := <-done
@@ -79,7 +80,7 @@ func runWorker(ctx context.Context, p payloadpolicy.Policy, request cleanworker.
 }
 
 // spawn runs on a locked thread that it restricts first.
-func spawn(ctx context.Context, uid, gid uint32, frame []byte, s *scope) ([]byte, error) {
+func spawn(ctx context.Context, uid, gid uint32, frame []byte, s *scope, watched bool) ([]byte, error) {
 	rootKeyring, err := restrictThread()
 	if err != nil {
 		return nil, err
@@ -111,7 +112,16 @@ func spawn(ctx context.Context, uid, gid uint32, frame []byte, s *scope) ([]byte
 	}
 	// A refusal, a kill or a cancelled context closes the worker's stdout, so
 	// the exchange cannot outlive the worker. Wait follows every read.
-	out, exchangeErr := exchange(stdout, stdin, frame)
+	var watch func(io.Reader) ([]byte, error)
+	if watched {
+		// A purge runs as the payload account, which can stop it; a worker that
+		// reports no progress for PurgeIdle is killed rather than left holding
+		// operations.lock until workerTimeout.
+		watch = func(r io.Reader) ([]byte, error) {
+			return freshliveness.WatchedRead(r, freshliveness.PurgeIdle, s.kill, cleanworker.MaxFrame)
+		}
+	}
+	out, exchangeErr := exchange(stdout, stdin, frame, watch)
 	if exchangeErr != nil {
 		_ = s.kill()
 	}
@@ -130,8 +140,8 @@ func spawn(ctx context.Context, uid, gid uint32, frame []byte, s *scope) ([]byte
 // untraced, in its own session, with only stdio, exactly the daemon's
 // credentials and a keyring that is not root's. Nothing reaches a worker
 // that refused or was traced before it became non-dumpable. It then reads
-// the bounded reply to EOF.
-func exchange(stdout io.Reader, stdin io.WriteCloser, frame []byte) ([]byte, error) {
+// the bounded reply to EOF, through watch when one is given.
+func exchange(stdout io.Reader, stdin io.WriteCloser, frame []byte, watch func(io.Reader) ([]byte, error)) ([]byte, error) {
 	ready := make([]byte, len(cleanworker.Ready))
 	if _, err := io.ReadFull(stdout, ready); err != nil || string(ready) != cleanworker.Ready {
 		stdin.Close()
@@ -143,6 +153,9 @@ func exchange(stdout io.Reader, stdin io.WriteCloser, frame []byte) ([]byte, err
 	}
 	if err != nil {
 		return nil, err
+	}
+	if watch != nil {
+		return watch(stdout)
 	}
 	out, err := io.ReadAll(io.LimitReader(stdout, cleanworker.MaxFrame+1))
 	if err != nil {
@@ -359,28 +372,11 @@ func sweep(root string) {
 		}
 		path := filepath.Join(root, entry.Name())
 		events, err := os.ReadFile(filepath.Join(path, "cgroup.events"))
-		if err != nil || !unpopulated(events) {
+		if err != nil || !freshliveness.Unpopulated(events) {
 			continue
 		}
 		_ = unix.Rmdir(path)
 	}
-}
-
-// unpopulated parses cgroup.events: exactly one "populated" key whose value is
-// 0, whatever the surrounding whitespace.
-func unpopulated(events []byte) bool {
-	found := 0
-	for _, line := range strings.Split(string(events), "\n") {
-		f := strings.Fields(line)
-		if len(f) == 0 || f[0] != "populated" {
-			continue
-		}
-		if len(f) != 2 || f[1] != "0" {
-			return false
-		}
-		found++
-	}
-	return found == 1
 }
 
 func (s *scope) kill() error {
@@ -401,7 +397,7 @@ func (s *scope) fence() error {
 		if err != nil {
 			return err
 		}
-		if unpopulated(raw) {
+		if freshliveness.Unpopulated(raw) {
 			return os.Remove(s.path)
 		}
 		if time.Now().After(deadline) {

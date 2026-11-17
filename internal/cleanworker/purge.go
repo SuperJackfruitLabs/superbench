@@ -17,6 +17,9 @@ const purgeDepth = 64
 // continues where it stopped.
 const purgeSteps = 1 << 26
 
+// liftTries bounds the fresh names one lift tries beneath the root.
+const liftTries = 1000
+
 // liftPrefix names a directory a purge renamed up beneath the root.
 const liftPrefix = ".superbench-purge-"
 

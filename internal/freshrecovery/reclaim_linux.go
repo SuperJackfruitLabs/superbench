@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/cleanworker"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/freshliveness"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/freshretirement"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/payloadbootstrap"
@@ -29,6 +30,7 @@ type reclaiming struct {
 	assignment hoststorage.Assignment
 	parent     freshretirement.Parent
 	authority  string
+	live       freshliveness.Liveness
 }
 
 // Reclaim deletes a released Fresh bench's tree as the payload account, removes
@@ -44,21 +46,28 @@ func Reclaim(ctx context.Context, m *payloadbootstrap.Manager, s payloadbootstra
 		return result, ErrRecovery
 	}
 	err := m.Reclaim(ctx, s, func(r payloadbootstrap.Reclamation) error {
+		// A retry of a retained reclaim may follow effects, whatever fails.
+		if i, err := r.Inspection(); err == nil && (i.Phase == "reclaiming" || i.Phase == "reclaimed") {
+			retained = true
+		}
 		c, err := bindReclaim(ctx, r, s)
 		if err != nil {
 			return err
 		}
 		var tombstone hoststorage.Assignment
-		retained, err = reclaimSteps{
+		var ran bool
+		ran, err = reclaimSteps{
 			phase:  func() (string, error) { return c.i.Phase, nil },
 			leaf:   c.leafPresent,
 			fenced: func() error { return controlsFenced(r.Storage.Ledger, s.Key, c.i) },
+			idle:   c.live.Idle,
 			retain: func() error { return r.Advance("reclaiming") },
 			purge:  func() error { return c.purge(ctx) },
-			remove: func() error { return c.remove(ctx) },
-			retire: func() (err error) { tombstone, err = c.retire(ctx); return err },
+			remove: func() error { return c.active(c.remove(ctx)) },
+			retire: func() (err error) { tombstone, err = c.retire(ctx); return c.active(err) },
 			finish: func() error { return r.Advance("reclaimed") },
 		}.run()
+		retained = retained || ran
 		if err != nil {
 			return err
 		}
@@ -121,7 +130,18 @@ func bindReclaim(ctx context.Context, r payloadbootstrap.Reclamation, s payloadb
 	}
 	stat := info.Sys().(*syscall.Stat_t)
 	c.parent = freshretirement.Parent{Device: uint64(stat.Dev), Inode: stat.Ino, Mode: uint32(info.Mode()), UID: stat.Uid, GID: stat.Gid}
+	c.live = freshliveness.Installed(p.CgroupRoot, p.PayloadUID, c.parent.Device, a.ProjectID)
 	return c, nil
+}
+
+// active names a failed removal or retirement ErrReclaimPayloadActive when
+// the reason is that something still uses the bench: entries reappeared after
+// the purge, or an open file keeps usage above zero.
+func (c *reclaiming) active(err error) error {
+	if err != nil && errors.Is(c.live.Idle(), ErrReclaimBusy) {
+		return errors.Join(ErrReclaimPayloadActive, err)
+	}
+	return err
 }
 
 // holdLeaf opens the bench's own leaf below the pinned parent: the recorded

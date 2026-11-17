@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/cleanworker"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/freshliveness"
 	"golang.org/x/sys/unix"
 )
 
@@ -161,7 +162,7 @@ func (r *recorded) Close() error { r.closed = true; return nil }
 func TestExchangeSendsTheRequestOnlyAfterTheReadyLine(t *testing.T) {
 	frame := []byte(`{"request":true}`)
 	in := &recorded{}
-	out, err := exchange(strings.NewReader(cleanworker.Ready+`{"reply":true}`), in, frame)
+	out, err := exchange(strings.NewReader(cleanworker.Ready+`{"reply":true}`), in, frame, nil)
 	if err != nil || string(out) != `{"reply":true}` || in.String() != string(frame) || !in.closed {
 		t.Fatalf("ready worker: %q %q %v", out, in.String(), err)
 	}
@@ -173,24 +174,24 @@ func TestExchangeSendsTheRequestOnlyAfterTheReadyLine(t *testing.T) {
 		"ready, oddly": strings.ToUpper(cleanworker.Ready),
 	} {
 		in := &recorded{}
-		if _, err := exchange(strings.NewReader(stdout), in, frame); !errors.Is(err, ErrRecovery) || in.Len() != 0 || !in.closed {
+		if _, err := exchange(strings.NewReader(stdout), in, frame, nil); !errors.Is(err, ErrRecovery) || in.Len() != 0 || !in.closed {
 			t.Errorf("%s: request sent or stdin left open: %q %v", name, in.String(), err)
 		}
 	}
 	big := cleanworker.Ready + strings.Repeat(" ", cleanworker.MaxFrame+1)
-	if _, err := exchange(strings.NewReader(big), &recorded{}, frame); !errors.Is(err, ErrRecovery) {
+	if _, err := exchange(strings.NewReader(big), &recorded{}, frame, nil); !errors.Is(err, ErrRecovery) {
 		t.Error("oversize reply accepted", err)
 	}
 }
 
 func TestUnpopulatedParsesCgroupEvents(t *testing.T) {
 	for _, raw := range []string{"populated 0\nfrozen 0\n", "frozen 0\npopulated 0", "populated\t0 \n"} {
-		if !unpopulated([]byte(raw)) {
+		if !freshliveness.Unpopulated([]byte(raw)) {
 			t.Errorf("%q read as populated", raw)
 		}
 	}
 	for _, raw := range []string{"populated 1\nfrozen 0\n", "", "frozen 0\n", "populated 0\npopulated 1\n", "populated 0 1\n", "populated\n"} {
-		if unpopulated([]byte(raw)) {
+		if freshliveness.Unpopulated([]byte(raw)) {
 			t.Errorf("%q read as unpopulated", raw)
 		}
 	}

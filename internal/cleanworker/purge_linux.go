@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"time"
 	"unsafe"
 
 	"golang.org/x/sys/unix"
@@ -35,15 +36,22 @@ type purger struct {
 	uid, project uint32
 	steps, limit int
 	lifted       uint64
-	projectOf    func(fd int) (uint32, error)
-	// beforeEnter runs between a directory's lstat and its open; tests only.
+	depth, tries int
+	// progress reports that the purge is still working; root kills a worker
+	// that reports nothing for a while. It is called at most once a second.
+	progress  func()
+	reported  time.Time
+	projectOf func(fd int) (uint32, error)
+	// beforeEnter runs between a directory's lstat and its open, and
+	// afterStat after an entry's lstat; tests only.
 	beforeEnter func(name string)
+	afterStat   func(name string, st *unix.Stat_t)
 }
 
 // purge empties the tree at root, which must be target's node, and leaves the
 // root itself, emptied and fsynced, for root's own removal. A refusal leaves
 // every entry it has not yet removed; the same purge then continues.
-func purge(root string, target Target) error {
+func purge(root string, target Target, progress func()) error {
 	raw, err := os.ReadFile("/proc/self/mountinfo")
 	if err != nil {
 		return errors.Join(ErrWorker, err)
@@ -51,7 +59,7 @@ func purge(root string, target Target) error {
 	if err = mountsBeneath(raw, root); err != nil {
 		return err
 	}
-	p := &purger{uid: uint32(os.Getuid()), project: target.ProjectID, limit: purgeSteps, projectOf: projectID}
+	p := &purger{uid: uint32(os.Getuid()), project: target.ProjectID, limit: purgeSteps, depth: purgeDepth, tries: liftTries, projectOf: projectID, progress: progress}
 	return p.run(root, target)
 }
 
@@ -164,6 +172,10 @@ func (p *purger) remove(dir int, name string, depth int) error {
 	if p.steps++; p.steps > p.limit {
 		return fmt.Errorf("%w: purge step bound reached; retry the same purge", ErrWorker)
 	}
+	if p.progress != nil && time.Since(p.reported) >= time.Second {
+		p.reported = time.Now()
+		p.progress()
+	}
 	var st unix.Stat_t
 	err := unix.Fstatat(dir, name, &st, unix.AT_SYMLINK_NOFOLLOW)
 	if errors.Is(err, unix.ENOENT) {
@@ -171,6 +183,9 @@ func (p *purger) remove(dir int, name string, depth int) error {
 	}
 	if err != nil {
 		return err
+	}
+	if p.afterStat != nil {
+		p.afterStat(name, &st)
 	}
 	if st.Dev != p.device {
 		return fmt.Errorf("%w: another filesystem beneath the tree", ErrWorker)
@@ -182,7 +197,7 @@ func (p *purger) remove(dir int, name string, depth int) error {
 		}
 		return err
 	}
-	if depth+1 >= purgeDepth {
+	if depth+1 >= p.depth {
 		return p.lift(dir, name)
 	}
 	child, err := p.enter(dir, name, st)
@@ -203,7 +218,7 @@ func (p *purger) remove(dir int, name string, depth int) error {
 // lift renames a directory found at the depth bound to a fresh name beneath
 // the root, without replacing anything there, where a later pass empties it.
 func (p *purger) lift(dir int, name string) error {
-	for range 1000 {
+	for range p.tries {
 		p.lifted++
 		err := unix.Renameat2(dir, name, p.root, liftName(p.lifted), unix.RENAME_NOREPLACE)
 		if errors.Is(err, unix.ENOENT) {
