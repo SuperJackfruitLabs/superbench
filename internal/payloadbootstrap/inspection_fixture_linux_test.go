@@ -109,6 +109,7 @@ func assertLowerRetainedInspection(t *testing.T, control *quotaoperationjournal.
 	if err != nil || (!bytes.Contains(log, []byte("RETIREMENT_APPROVAL_CUSTODY_PASS")) || !bytes.Contains(log, []byte("RETIREMENT_ORDERING_AND_BINDING_PASS"))) || fixture.Logged(log) != nil || bytes.Contains(log, []byte("SKIP")) {
 		t.Fatalf("actual root approval custody failed: %v\n%s", err, log)
 	}
+	fixture.Relay(t, log)
 	t.Log("LOWER_RETAINED_BOOTSTRAP_INSPECTION_WITHOUT_REVIVAL_PASS")
 }
 

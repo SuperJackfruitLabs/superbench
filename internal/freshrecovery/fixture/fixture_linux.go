@@ -48,7 +48,7 @@ var Markers = []string{
 	"FRESH_RECOVERY_NONEMPTY_LEAF_REFUSED_PASS",
 	"FRESH_RECOVERY_WRONG_PHASE_REFUSED_PASS",
 	"FRESH_RECOVERY_REPAIR_FOREIGN_CAPS_REFUSED_PASS",
-	"FRESH_RECOVERY_DURABLE_RETIREMENT_PASS",
+	"FRESH_RECOVERY_ALL_LEAKS_RETIRED_PASS",
 }
 
 // Logged requires the child's log to hold every marker exactly once.
@@ -59,6 +59,18 @@ func Logged(log []byte) error {
 		}
 	}
 	return nil
+}
+
+// Relay logs, in the caller's (parent) test, each marker the child emitted
+// exactly once. It logs nothing the child did not log; call it only after
+// Logged has accepted the child's log.
+func Relay(t *testing.T, log []byte) {
+	t.Helper()
+	for _, marker := range Markers {
+		if bytes.Count(log, []byte(marker)) == 1 {
+			t.Log(marker)
+		}
+	}
 }
 
 type node struct{ Device, Inode uint64 }
@@ -82,6 +94,7 @@ type env struct {
 	p        hoststorage.Policy
 	template record
 	gate     Gate
+	retired  int
 }
 
 type leak struct {
@@ -120,7 +133,12 @@ func Run(t *testing.T, gate Gate) {
 	e.nonEmptyRefused()
 	e.wrongPhaseRefused()
 	e.repairForeignCaps()
-	t.Log("FRESH_RECOVERY_DURABLE_RETIREMENT_PASS")
+	// syncfs before retirement is order-tested by freshretirement's unit test;
+	// this fixture only shows every leak reached a committed tombstone with it.
+	if e.retired != 9 {
+		t.Fatalf("%d of 9 leaks retired", e.retired)
+	}
+	t.Log("FRESH_RECOVERY_ALL_LEAKS_RETIRED_PASS")
 }
 
 // newLeak reserves a real Fresh allocation under a real operation, stops it
@@ -366,6 +384,7 @@ func (e *env) retire(l *leak) {
 	if again, err := l.manager.RetireAbsent(t.Context(), l.spec, plan); err != nil || again != got {
 		t.Fatalf("retirement retry: %+v %v", again, err)
 	}
+	e.retired++
 	// A retired row cannot be selected for another recovery step.
 	if _, err := freshrecovery.PlanRepair(t.Context(), l.manager, l.spec); err == nil {
 		t.Fatal("retired allocation selected for repair")
