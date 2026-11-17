@@ -67,48 +67,44 @@ func run(ctx context.Context, p hoststorage.Policy, key string, approved *Approv
 			}
 			return nil
 		}
-		if err := check(); err != nil {
-			return err
-		}
-		for _, unit := range []string{"-b", "-i"} {
-			report, e := quotaReport(ctx, p.Root, a.ProjectID, unit)
-			want := a.Inodes
-			if unit == "-b" {
-				want = a.Bytes / 1024
+		zeroUsage := func() error {
+			for _, unit := range []string{"-b", "-i"} {
+				report, e := quotaReport(ctx, p.Root, a.ProjectID, unit)
+				want := a.Inodes
+				if unit == "-b" {
+					want = a.Bytes / 1024
+				}
+				if e != nil {
+					return e
+				}
+				if e = unused(report, a.ProjectID, want); e != nil {
+					return e
+				}
 			}
-			if e != nil {
-				return e
-			}
-			if e = unused(report, a.ProjectID, want); e != nil {
-				return e
+			return nil
+		}
+		tombstone := a
+		tombstone.Bytes, tombstone.Inodes = 0, 0
+		var save func() error
+		if approved != nil {
+			save = func() error {
+				if h.retired {
+					return nil
+				}
+				l := h.ledger
+				l.Assignments["bench:"+key] = tombstone
+				if err := l.Validate(p.Root, p.AllocationBinding(), false); err != nil {
+					return err
+				}
+				return allocationledger.Save(p.Ledger, filepath.Join(p.Ledger, "assignments.json"), l)
 			}
 		}
-		// Leaf and content removal must be durable on the data filesystem before
-		// its ENOENT is trusted for a tombstone saved on the ledger filesystem.
-		if err := h.syncData(); err != nil {
-			return err
-		}
-		if err := check(); err != nil {
+		if err := ordered(check, zeroUsage, h.syncData, save); err != nil {
 			return err
 		}
 		if approved == nil {
 			observed, result = h.observed, a
 			return nil
-		}
-		tombstone := a
-		tombstone.Bytes, tombstone.Inodes = 0, 0
-		if !h.retired {
-			l := h.ledger
-			l.Assignments["bench:"+key] = tombstone
-			if err := l.Validate(p.Root, p.AllocationBinding(), false); err != nil {
-				return err
-			}
-			if err := allocationledger.Save(p.Ledger, filepath.Join(p.Ledger, "assignments.json"), l); err != nil {
-				return err
-			}
-		}
-		if err := check(); err != nil {
-			return err
 		}
 		observed, result = h.observed, tombstone
 		return nil

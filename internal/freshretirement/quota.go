@@ -38,3 +38,21 @@ func (b *reportOutput) Write(raw []byte) (int, error) {
 	b.raw = append(b.raw, raw...)
 	return len(raw), nil
 }
+
+// ordered is retirement's fixed sequence: the leaf is absent, usage is zero,
+// the data filesystem is synced so that removal is durable, the leaf is still
+// absent, and only then is the tombstone saved (save is nil when only
+// observing) and absence checked once more. A tombstone on the ledger
+// filesystem must never outlive an unsynced removal on the data filesystem.
+func ordered(absent, unused, sync, save func() error) error {
+	steps := []func() error{absent, unused, sync, absent}
+	if save != nil {
+		steps = append(steps, save, absent)
+	}
+	for _, step := range steps {
+		if err := step(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
