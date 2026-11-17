@@ -92,7 +92,7 @@ func TestArchitecture(t *testing.T) {
 				"internal/serviceidentity":             {"internal/payloadpolicy"},
 				"internal/payloadwire":                 {"internal/gitpolicy", "internal/registeredinspection"},
 				"internal/payloadinput":                {"internal/finiteio"}, // Sealed memfd stdin leaf; no authority.
-				"internal/payloadexec":                 {"internal/payloadinput", "internal/payloadwire", "internal/registeredinspection", "internal/registeredinspection/layout", "internal/payloadpolicy", "internal/serviceidentity", "internal/gitpolicy"},
+				"internal/payloadexec":                 {"internal/payloadconfine", "internal/payloadinput", "internal/payloadwire", "internal/registeredinspection", "internal/registeredinspection/layout", "internal/payloadpolicy", "internal/serviceidentity", "internal/gitpolicy"},
 				"internal/payloadlaunch":               {"internal/payloadexec", "internal/execution"},
 				"internal/registrationobserve":         {"internal/bench", "internal/gitcontrol", "internal/execution", "internal/localprep", "internal/model", "internal/payloadexec", "internal/payloadpolicy", "internal/serviceidentity", "internal/protocolv2"},
 				"internal/stageexec":                   {"internal/execution", "internal/output"},
