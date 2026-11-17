@@ -47,11 +47,11 @@ func (m Manager) Inspect(ctx context.Context, source, target, id string, quota u
 
 func (m Manager) inspectState(ctx context.Context, a workspacerepair.Manager, rows benchstate.Database, p Plan) (Plan, error) {
 	b := rows[p.SourceKey]
+	if fresh, err := freshtree.Selected(nil, m.Store.State, b); err != nil || fresh {
+		return p, errors.Join(freshtree.ErrUnavailable, err) // a Fresh tree is never transferred
+	}
 	if err := workspacepolicy.Validate(b); err != nil {
 		return p, err
-	}
-	if fresh, err := freshtree.Selected(nil, b); err != nil || fresh {
-		return p, errors.Join(freshtree.ErrUnavailable, err) // a Fresh tree is never transferred
 	}
 	if b.Workspace.Transfer != nil || b.Workspace.Phase != "ready" || b.Workspace.Archive != nil || b.Lease != nil || b.Workspace.Stage != nil || b.Workspace.Pending != nil || b.Workspace.Checkpoint == nil || rows[p.TargetKey] != nil {
 		return p, errors.New("transfer requires an unleased ready source with a complete checkpoint and an unused destination")

@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"syscall"
 	"testing"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/benchstate"
@@ -452,25 +451,51 @@ func (r *routed) Transport(*model.Bench, string) (stageexec.PrepareTransport, er
 	}, nil
 }
 
-func TestSelectKeepsDaemonOwnedRootsLegacy(t *testing.T) {
-	root := t.TempDir()
-	for _, b := range []*model.Bench{nil, {}, {Workspace: &model.Workspace{}, Path: filepath.Join(root, "missing")}, {Workspace: &model.Workspace{}, Path: root}} {
-		if tree, err := freshtree.Select(b); tree != nil || err != nil {
-			t.Fatalf("daemon-owned or absent root selected a payload route: %v %v", tree, err)
-		}
-	}
-	if st, ok := mustStat(t, root).Sys().(*syscall.Stat_t); !ok || int(st.Uid) != os.Geteuid() {
-		t.Fatal("fixture root is not daemon-owned")
-	}
-}
-
-func mustStat(t *testing.T, path string) os.FileInfo {
+func register(t *testing.T, state, key, id string) {
 	t.Helper()
-	info, err := os.Lstat(path)
+	dir := filepath.Join(state, "payload-layouts")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(map[string]string{"Version": "superbench.payload-layout.v1", "Key": key, "ID": id})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return info
+	if err = os.WriteFile(filepath.Join(dir, key+".json"), raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSelectionComesFromTheRegistrationAndFailsClosed(t *testing.T) {
+	state := t.TempDir()
+	b := &model.Bench{Key: "card", Path: t.TempDir(), Workspace: &model.Workspace{ID: strings.Repeat("a", 32)}}
+	for _, legacy := range []*model.Bench{nil, {}, b} {
+		if tree, err := freshtree.Select(state, legacy); tree != nil || err != nil {
+			t.Fatalf("unregistered workspace left the legacy path: %v %v", tree, err)
+		}
+	}
+	if tree, err := freshtree.Select("", b); tree != nil || err != nil {
+		t.Fatalf("a caller without state left the legacy path: %v %v", tree, err)
+	}
+	// Ownership no longer decides: a daemon-owned root with a registration is
+	// Fresh, and without an installed helper route it refuses, never legacy.
+	register(t, state, "card", b.Workspace.ID)
+	if tree, err := freshtree.Select(state, b); tree != nil || !errors.Is(err, freshtree.ErrUnavailable) {
+		t.Fatalf("registered workspace without its helper route did not refuse: %v %v", tree, err)
+	}
+	if fresh, err := freshtree.Selected(nil, state, b); fresh || !errors.Is(err, freshtree.ErrUnavailable) {
+		t.Fatalf("Selected hid the refusal: %v %v", fresh, err)
+	}
+	register(t, state, "card", strings.Repeat("b", 32))
+	if registered, err := freshtree.Registered(state, b); !registered || !errors.Is(err, freshtree.ErrUnavailable) {
+		t.Fatalf("a registration for another workspace under this key was accepted: %v %v", registered, err)
+	}
+	if err := os.WriteFile(filepath.Join(state, "payload-layouts", "card.json"), []byte("{"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if registered, err := freshtree.Registered(state, b); !registered || err == nil {
+		t.Fatalf("a malformed registration was not refused: %v %v", registered, err)
+	}
 }
 
 func TestConfigAndFrozenMatchLegacyInputs(t *testing.T) {
@@ -491,7 +516,7 @@ func TestConfigAndFrozenMatchLegacyInputs(t *testing.T) {
 	if err != nil || c == nil || !c.Hooks() {
 		t.Fatalf("observed config: %v %v", c, err)
 	}
-	legacy, legacyDigest, err := freshtree.Inputs(context.Background(), nil, &model.Bench{}, model.WorkspaceMember{Path: dir})
+	legacy, legacyDigest, err := freshtree.Inputs(context.Background(), nil, "", &model.Bench{}, model.WorkspaceMember{Path: dir})
 	if err != nil || legacyDigest != digest || legacy.Digest != c.Digest {
 		t.Fatalf("fresh digest %s differs from legacy %s: %v", digest, legacyDigest, err)
 	}

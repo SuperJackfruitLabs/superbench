@@ -58,7 +58,7 @@ func (m Manager) InspectInitializationRepair(ctx context.Context, b *model.Bench
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		c, digest, err := freshtree.Inputs(ctx, m.Fresh, b, member)
+		c, digest, err := freshtree.Inputs(ctx, m.Fresh, m.State, b, member)
 		if err != nil {
 			return nil, err
 		}
@@ -161,7 +161,7 @@ func (m Manager) ApplyInitializationRepair(ctx context.Context, b *model.Bench, 
 			b.Workspace.Preparation = append(b.Workspace.Preparation, model.WorkspacePreparation{Name: member.Name, Digest: member.Digest, RunID: member.RunID})
 		}
 		if member.RunID != "" && !validReceipt {
-			c, digest, err := freshtree.Inputs(ctx, m.Fresh, b, b.Workspace.Members[i])
+			c, digest, err := freshtree.Inputs(ctx, m.Fresh, m.State, b, b.Workspace.Members[i])
 			if err != nil || digest != member.Digest {
 				return errors.New("initialization repair inputs changed before receipt restoration")
 			}

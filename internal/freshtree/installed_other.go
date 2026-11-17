@@ -4,5 +4,6 @@ package freshtree
 
 import "forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
 
-// The payload helper and its account exist only on Linux.
-func installed(*model.Bench, uint32) (Tree, error) { return nil, nil }
+// The payload helper and its account exist only on Linux, so a registration
+// here can never be served: Select fails closed.
+func installed(*model.Bench) (Tree, error) { return nil, ErrUnavailable }

@@ -7,6 +7,8 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"fmt"
+	"io"
 	"os/exec"
 	"path/filepath"
 	"time"
@@ -22,21 +24,18 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/stageexec"
 )
 
-// ErrHelper reports a refused or malformed payload helper observation.
-var ErrHelper = errors.New("fresh workspace payload helper observation refused")
-
 const maxObservation = 1 << 20
 
-// installed selects the helper route only for the installed payload account's
-// root. Without an installed service identity no Fresh tree can exist.
-func installed(b *model.Bench, owner uint32) (Tree, error) {
+// installed binds a registered workspace to the installed service identity.
+// Any failure is a refusal; a registered workspace is never treated as legacy.
+func installed(b *model.Bench) (Tree, error) {
 	authority, err := serviceidentity.ResolveService()
 	if err != nil {
-		return nil, nil
+		return nil, err
 	}
 	p, err := authority.Policy()
-	if err != nil || owner != p.PayloadUID {
-		return nil, nil
+	if err != nil {
+		return nil, err
 	}
 	if b.Path != filepath.Join(p.DataRoot, "benches", b.Key) {
 		return nil, ErrHelper
@@ -93,18 +92,9 @@ func (t helperTree) preparation(ctx context.Context, b *model.Bench, member stri
 	if err = cmd.Run(); err != nil || ctx.Err() != nil {
 		return zero, errors.Join(ErrHelper, err)
 	}
-	reply := out.Bytes()
-	if len(reply) < 4 || int(binary.BigEndian.Uint32(reply[:4])) != len(reply)-4 {
-		return zero, ErrHelper
-	}
-	v, err := registeredinspection.ParsePreparation(t.policy, reply[4:])
-	if err != nil || v.Layout.Key != b.Key || v.Layout.ID != b.Workspace.ID || v.Layout.PolicyDigest != t.digest || v.Inputs.Member != member || len(v.Layout.Members) != len(b.Workspace.Members) {
-		return zero, errors.Join(ErrHelper, err)
-	}
-	for i, m := range v.Layout.Members {
-		if m.Name != b.Workspace.Members[i].Name {
-			return zero, ErrHelper
-		}
+	v, err := bindPreparation(t.policy, t.digest, b, member, out.Bytes())
+	if err != nil {
+		return zero, err
 	}
 	return v, t.current(b)
 }
@@ -123,10 +113,7 @@ func (t helperTree) Root(ctx context.Context, b *model.Bench, clean bool) error 
 	if err != nil {
 		return err
 	}
-	if clean && v.Unregistered {
-		return model.ErrDirty
-	}
-	return nil
+	return rootResult(v, clean)
 }
 
 func (t helperTree) Inputs(ctx context.Context, b *model.Bench, member string) (registeredinspection.Inputs, error) {
@@ -169,5 +156,9 @@ func (t helperTree) Export(ctx context.Context, b *model.Bench, member string, e
 	if len(exclude) != 0 {
 		args = append(append(args, "--not"), exclude...)
 	}
-	return route.Execute(ctx, t.runner(), args, nil, 0, MaxExport)
+	raw, err := route.Execute(ctx, t.runner(), args, nil, 0, MaxExport)
+	if errors.Is(err, io.ErrShortBuffer) {
+		return nil, fmt.Errorf("%w: member %s", ErrExportCap, member)
+	}
+	return raw, err
 }

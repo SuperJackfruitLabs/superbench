@@ -23,6 +23,9 @@ import (
 
 func inspect(ctx context.Context, a workspacerepair.Manager, rows benchstate.Database, tx *sql.Tx, p Plan) (Plan, error) {
 	b := rows[p.SourceKey]
+	if fresh, err := freshtree.Selected(nil, a.Lifecycle.State, b); err != nil || fresh {
+		return p, errors.Join(freshtree.ErrUnavailable, err) // a Fresh tree is never exported
+	}
 	if err := workspacepolicy.Validate(b); err != nil {
 		return p, err
 	}
@@ -37,9 +40,6 @@ func inspect(ctx context.Context, a workspacerepair.Manager, rows benchstate.Dat
 	state, err := handoffjournal.StateID(tx)
 	if err != nil {
 		return p, err
-	}
-	if fresh, err := freshtree.Selected(nil, b); err != nil || fresh {
-		return p, errors.Join(freshtree.ErrUnavailable, err) // a Fresh tree is never exported
 	}
 	if err = a.Lifecycle.Stopped(workspace.Clone(b)); err != nil {
 		return p, err

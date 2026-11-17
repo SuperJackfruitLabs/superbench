@@ -73,7 +73,7 @@ func (l Lifecycle) git(ctx context.Context, dir string, args ...string) (string,
 }
 
 func (l Lifecycle) inspector(b *model.Bench) (memberinspect.Inspector, error) {
-	tree, err := freshtree.Resolve(l.Fresh, b)
+	tree, err := freshtree.Resolve(l.Fresh, l.State, b)
 	return memberinspect.Inspector{Data: l.Data, Git: l.Git, Tree: tree}, err
 }
 

@@ -43,7 +43,7 @@ func (m Manager) execute(ctx context.Context, key, token string, plan memberPlan
 			if err = m.inspectMember(ctx, b, plan.member.Name); err != nil {
 				return err
 			}
-			_, digest, err := freshtree.Inputs(ctx, m.Fresh, b, plan.member)
+			_, digest, err := freshtree.Inputs(ctx, m.Fresh, m.State, b, plan.member)
 			if err != nil || digest != plan.digest {
 				return errors.New("workspace preparation inputs changed before launch")
 			}
@@ -54,7 +54,7 @@ func (m Manager) execute(ctx context.Context, key, token string, plan memberPlan
 				}
 				args = plan.config.Command(done, offline)
 			} else {
-				args, err = freshtree.FrozenCommand(ctx, m.Fresh, b, plan.member, plan.config, m.Data, offline)
+				args, err = freshtree.FrozenCommand(ctx, m.Fresh, m.State, b, plan.member, plan.config, m.Data, offline)
 				if errors.Is(err, setup.ErrNoLockfile) {
 					noCommand = true
 					return saveProof(tx, b, plan, "")
@@ -100,7 +100,7 @@ func (m Manager) execute(ctx context.Context, key, token string, plan memberPlan
 			stage.HostID, stage.BootID = identity.HostID, identity.BootID
 			b.Lease.Execution = stage
 			b.Workspace.Stage = &model.WorkspaceStage{Name: plan.member.Name, Digest: plan.digest}
-			if prepare, err = freshtree.StageTransport(m.Fresh, b, plan.member.Name); err != nil {
+			if prepare, err = freshtree.StageTransport(m.Fresh, m.State, b, plan.member.Name); err != nil {
 				return err
 			}
 			continuation = b.Lease.Continuation
@@ -158,7 +158,7 @@ func (m Manager) execute(ctx context.Context, key, token string, plan memberPlan
 		if err = m.inspectMember(ctx, b, plan.member.Name); err != nil {
 			return err
 		}
-		_, digest, err := freshtree.Inputs(ctx, m.Fresh, b, plan.member)
+		_, digest, err := freshtree.Inputs(ctx, m.Fresh, m.State, b, plan.member)
 		if err != nil || digest != plan.digest {
 			return errors.New("workspace preparation inputs changed during execution")
 		}
@@ -185,7 +185,7 @@ func (m Manager) start(ctx context.Context, key, token, continuation string, pla
 			if err = m.inspectMember(ctx, b, plan.member.Name); err != nil {
 				return err
 			}
-			_, digest, err := freshtree.Inputs(ctx, m.Fresh, b, plan.member)
+			_, digest, err := freshtree.Inputs(ctx, m.Fresh, m.State, b, plan.member)
 			if err != nil || digest != plan.digest {
 				return errors.New("workspace preparation inputs changed before process start")
 			}

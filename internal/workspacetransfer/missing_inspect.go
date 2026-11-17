@@ -64,11 +64,11 @@ func (m Manager) InspectMissing(ctx context.Context, source, target, id string, 
 
 func (m Manager) inspectMissingState(ctx context.Context, a workspacerepair.Manager, rows benchstate.Database, tx *sql.Tx, p MissingPlan, locks *transferCaptures) (MissingPlan, error) {
 	b := rows[p.SourceKey]
+	if fresh, err := freshtree.Selected(nil, m.Store.State, b); err != nil || fresh {
+		return p, errors.Join(freshtree.ErrUnavailable, err) // a Fresh tree is never transferred
+	}
 	if err := workspacepolicy.Validate(b); err != nil {
 		return p, err
-	}
-	if fresh, err := freshtree.Selected(nil, b); err != nil || fresh {
-		return p, errors.Join(freshtree.ErrUnavailable, err) // a Fresh tree is never transferred
 	}
 	if b.Workspace.Transfer != nil || b.Workspace.Phase != "ready" || b.Workspace.Archive != nil || b.Workspace.Pending != nil || b.Workspace.Checkpoint == nil || rows[p.TargetKey] != nil || b.Path != filepath.Join(m.Store.Data, "benches", b.Key) {
 		return p, errors.New("missing-source transfer requires a ready source, complete checkpoint, no pending publication and unused destination")

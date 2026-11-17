@@ -81,13 +81,13 @@ func (m Manager) record(b *model.Bench) error {
 	return nil
 }
 func (m Manager) available(b *model.Bench) error {
-	if err := m.record(b); err != nil {
-		return err
-	}
 	// Archive freezes, plans and reaps the tree as the daemon; a Fresh tree has
 	// no payload-side archive route yet, so it refuses before any of that.
-	if fresh, err := freshtree.Selected(nil, b); err != nil || fresh {
+	if fresh, err := freshtree.Selected(nil, m.State, b); err != nil || fresh {
 		return errors.Join(freshtree.ErrUnavailable, err)
+	}
+	if err := m.record(b); err != nil {
+		return err
 	}
 	if b.Workspace.Transfer != nil && b.Workspace.Transfer.Phase != "transferred" {
 		return errors.New("aggregate source transfer is incomplete")

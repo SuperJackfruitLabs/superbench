@@ -161,7 +161,7 @@ func (m Manager) Prepare(ctx context.Context, key, token, selector string, offli
 		if selector != "" && selector != member.Name {
 			continue
 		}
-		c, digest, e := freshtree.Inputs(ctx, m.Fresh, b, member)
+		c, digest, e := freshtree.Inputs(ctx, m.Fresh, m.State, b, member)
 		if e != nil {
 			return b, e
 		}
@@ -197,7 +197,7 @@ func (m Manager) Prepare(ctx context.Context, key, token, selector string, offli
 			return e
 		}
 		for _, member := range current.Workspace.Members {
-			_, digest, e := freshtree.Inputs(ctx, m.Fresh, current, member)
+			_, digest, e := freshtree.Inputs(ctx, m.Fresh, m.State, current, member)
 			if e != nil {
 				return e
 			}
@@ -244,7 +244,7 @@ func (m Manager) member(ctx context.Context, key, token string, plan memberPlan,
 		if err = m.inspectMember(ctx, b, plan.member.Name); err != nil {
 			return err
 		}
-		_, digest, err := freshtree.Inputs(ctx, m.Fresh, b, plan.member)
+		_, digest, err := freshtree.Inputs(ctx, m.Fresh, m.State, b, plan.member)
 		if err != nil || digest != plan.digest {
 			return errors.New("workspace preparation inputs changed before execution")
 		}
@@ -293,7 +293,7 @@ func (m Manager) member(ctx context.Context, key, token string, plan memberPlan,
 }
 
 func (m Manager) environment(ctx context.Context, b *model.Bench, plan memberPlan) ([]string, error) {
-	if fresh, err := freshtree.Selected(m.Fresh, b); err != nil || fresh {
+	if fresh, err := freshtree.Selected(m.Fresh, m.State, b); err != nil || fresh {
 		return freshtree.Environment(plan.config, err)
 	}
 	settings := plan.config.CacheSettings()
@@ -318,7 +318,7 @@ func (m Manager) checkPrepared(ctx context.Context, b *model.Bench) error {
 		return errors.New("every workspace member requires preparation evidence")
 	}
 	for _, member := range b.Workspace.Members {
-		c, digest, err := freshtree.Inputs(ctx, m.Fresh, b, member)
+		c, digest, err := freshtree.Inputs(ctx, m.Fresh, m.State, b, member)
 		if err != nil {
 			return err
 		}
@@ -333,7 +333,7 @@ func (m Manager) checkPrepared(ctx context.Context, b *model.Bench) error {
 			if c != nil && c.Hooks() {
 				return errors.New("configured workspace setup requires successful execution evidence")
 			}
-			_, err := freshtree.FrozenCommand(ctx, m.Fresh, b, member, c, filepath.Dir(filepath.Dir(b.Path)), false)
+			_, err := freshtree.FrozenCommand(ctx, m.Fresh, m.State, b, member, c, filepath.Dir(filepath.Dir(b.Path)), false)
 			if !errors.Is(err, setup.ErrNoLockfile) {
 				return errors.New("frozen workspace setup requires successful execution evidence")
 			}

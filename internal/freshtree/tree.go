@@ -6,10 +6,11 @@ package freshtree
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
-	"syscall"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/cachepolicy"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
@@ -28,6 +29,10 @@ var ErrCache = errors.New("fresh workspace setup has no payload cache transport;
 
 // MaxExport bounds one member's exported checkpoint bundle held in memory.
 const MaxExport = 64 << 20
+
+// ErrExportCap refuses a checkpoint whose new objects for one member exceed
+// MaxExport. Retrying cannot succeed; the work must be split or made smaller.
+var ErrExportCap = errors.New("fresh checkpoint export exceeds the 64 MiB per-member bundle cap")
 
 // Tree routes every access to one Fresh workspace's members through the
 // payload helper. Each call names a registered member of b; none takes a path.
@@ -50,31 +55,56 @@ type Tree interface {
 // Selector chooses the tree for a workspace record; nil uses Select.
 type Selector func(*model.Bench) (Tree, error)
 
-// Resolve applies s, or Select when s is nil. A nil Tree means legacy access.
-func Resolve(s Selector, b *model.Bench) (Tree, error) {
+// Resolve applies s, or Select with state when s is nil. A nil Tree is legacy.
+func Resolve(s Selector, state string, b *model.Bench) (Tree, error) {
 	if s == nil {
-		return Select(b)
+		return Select(state, b)
 	}
 	return s(b)
 }
 
-// Select reads only the root entry's owner, which is visible to the daemon.
-// A root the daemon owns, or that is absent, is legacy and keeps its exact
-// existing behavior; only the installed payload account's root selects the
-// helper route. Off Linux no Fresh tree can exist.
-func Select(b *model.Bench) (Tree, error) {
-	if b == nil || b.Workspace == nil || b.Path == "" {
-		return nil, nil
+// Select decides from the workspace's own registration in daemon state, never
+// from ownership: a registration selects the helper route and fails closed
+// when that route is unavailable. Only a workspace with no registration, or a
+// caller with no state root, takes the unchanged legacy path.
+func Select(state string, b *model.Bench) (Tree, error) {
+	registered, err := Registered(state, b)
+	if err != nil || !registered {
+		return nil, err
 	}
-	info, err := os.Lstat(b.Path)
+	tree, err := installed(b)
+	if err != nil || tree == nil {
+		return nil, errors.Join(ErrUnavailable, err)
+	}
+	return tree, nil
+}
+
+// MaxRegistration bounds the registration read; it is a payload layout record.
+const MaxRegistration = 256 << 10
+
+// Registered reports whether the daemon-owned payload layout registry holds
+// b's layout. A registration under b's key for another workspace refuses.
+func Registered(state string, b *model.Bench) (bool, error) {
+	if state == "" || b == nil || b.Workspace == nil {
+		return false, nil
+	}
+	path := filepath.Join(state, "payload-layouts", b.Key+".json")
+	info, err := os.Lstat(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return false, nil
+	}
 	if err != nil {
-		return nil, nil // the legacy caller reports its own unchanged error
+		return true, errors.Join(ErrUnavailable, err)
 	}
-	st, ok := info.Sys().(*syscall.Stat_t)
-	if !ok || !info.IsDir() || int(st.Uid) == os.Geteuid() {
-		return nil, nil
+	if !info.Mode().IsRegular() || info.Size() > MaxRegistration {
+		return true, ErrUnavailable
 	}
-	return installed(b, st.Uid)
+	raw, err := os.ReadFile(path)
+	var named struct{ Key, ID string }
+	if err != nil || json.Unmarshal(raw, &named) != nil || named.Key != b.Key || named.ID != b.Workspace.ID {
+		return true, errors.Join(ErrUnavailable, errors.New("payload layout registration does not name this workspace"), err)
+	}
+	return true, nil
 }
 
 // Admin is the member's registered independent Git directory.

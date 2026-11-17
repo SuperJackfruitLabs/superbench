@@ -14,8 +14,8 @@ import (
 // no tree, and otherwise use only the selected payload route.
 
 // Inputs binds preparation to the member's parsed config and manifests.
-func Inputs(ctx context.Context, s Selector, b *model.Bench, member model.WorkspaceMember) (*setup.Config, string, error) {
-	tree, err := Resolve(s, b)
+func Inputs(ctx context.Context, s Selector, state string, b *model.Bench, member model.WorkspaceMember) (*setup.Config, string, error) {
+	tree, err := Resolve(s, state, b)
 	if err != nil {
 		return nil, "", err
 	}
@@ -30,8 +30,8 @@ func Inputs(ctx context.Context, s Selector, b *model.Bench, member model.Worksp
 }
 
 // FrozenCommand selects lockfile-driven setup for a member without hooks.
-func FrozenCommand(ctx context.Context, s Selector, b *model.Bench, member model.WorkspaceMember, c *setup.Config, data string, offline bool) ([]string, error) {
-	tree, err := Resolve(s, b)
+func FrozenCommand(ctx context.Context, s Selector, state string, b *model.Bench, member model.WorkspaceMember, c *setup.Config, data string, offline bool) ([]string, error) {
+	tree, err := Resolve(s, state, b)
 	if err != nil {
 		return nil, err
 	}
@@ -46,8 +46,8 @@ func FrozenCommand(ctx context.Context, s Selector, b *model.Bench, member model
 }
 
 // StageTransport is nil for a legacy checkout, which the daemon runs directly.
-func StageTransport(s Selector, b *model.Bench, member string) (stageexec.PrepareTransport, error) {
-	tree, err := Resolve(s, b)
+func StageTransport(s Selector, state string, b *model.Bench, member string) (stageexec.PrepareTransport, error) {
+	tree, err := Resolve(s, state, b)
 	if err != nil || tree == nil {
 		return nil, err
 	}
@@ -55,7 +55,7 @@ func StageTransport(s Selector, b *model.Bench, member string) (stageexec.Prepar
 }
 
 // Selected reports whether b is a Fresh tree under s.
-func Selected(s Selector, b *model.Bench) (bool, error) {
-	tree, err := Resolve(s, b)
+func Selected(s Selector, state string, b *model.Bench) (bool, error) {
+	tree, err := Resolve(s, state, b)
 	return tree != nil, err
 }

@@ -80,14 +80,14 @@ func (l Lifecycle) InspectTransferred(ctx context.Context, b *model.Bench, clean
 		return nil, err
 	}
 	defer cancel()
-	if err = transferred(b); err != nil {
-		return nil, err
-	}
 	i, err := l.inspector(b)
 	if err == nil && i.Tree != nil {
 		err = freshtree.ErrUnavailable // a Fresh tree is never transferred
 	}
 	if err != nil {
+		return nil, errors.Join(freshtree.ErrUnavailable, err)
+	}
+	if err = transferred(b); err != nil {
 		return nil, err
 	}
 	if err = i.Root(ctx, b, clean); err != nil {

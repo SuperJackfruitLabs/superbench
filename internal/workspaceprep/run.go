@@ -69,7 +69,7 @@ func (m Manager) payloadEnvironment(ctx context.Context, b *model.Bench, selecto
 	if selector != "" {
 		for _, member := range b.Workspace.Members {
 			if member.Name == selector {
-				c, digest, err := freshtree.Inputs(ctx, m.Fresh, b, member)
+				c, digest, err := freshtree.Inputs(ctx, m.Fresh, m.State, b, member)
 				if err != nil {
 					return nil, err
 				}
@@ -80,7 +80,7 @@ func (m Manager) payloadEnvironment(ctx context.Context, b *model.Bench, selecto
 	}
 	// Omitted repository_name means the aggregate root. No member implicitly
 	// supplies the root's configuration; its caches use the fixed shared policy.
-	if fresh, err := freshtree.Selected(m.Fresh, b); err != nil || fresh {
+	if fresh, err := freshtree.Selected(m.Fresh, m.State, b); err != nil || fresh {
 		return nil, err // a Fresh root's payload gets only the helper's environment
 	}
 	paths, err := operationcontrol.Value(ctx, func() (cachepolicy.Paths, error) { return cachepolicy.Prepare(m.Data, b.Path, cachepolicy.Settings{}) })
@@ -207,7 +207,7 @@ func (m Manager) Run(ctx context.Context, key, token, selector string, args []st
 			b.Lease.Execution = stage
 			b.Workspace.Stage = nil
 			if prepare, err = payloadstage.Transport(finite, b, selector); err == nil && prepare == nil {
-				prepare, err = freshtree.StageTransport(m.Fresh, b, selector)
+				prepare, err = freshtree.StageTransport(m.Fresh, m.State, b, selector)
 			}
 			if err != nil {
 				return err
