@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 #
 # Build release archives and SHA256SUMS for the four SuperBench commands:
-# bench, benchd, bench-quota and bench-payload, for Linux amd64 and arm64.
+# bench, benchd, bench-quota and bench-payload, for Linux amd64.
+# arm64 waits until the payload helper builds on arm64, which needs a reviewed Dup2
+# replacement with its privileged fixture.
 #
 # The builds are reproducible, binary and archive both. CGO is off, so every
 # binary is static (the managed installer requires bench-payload to be), and
@@ -67,7 +69,7 @@ cd "$root"
 echo "building superbench $VERSION"
 stage="$(mktemp -d)"
 trap 'rm -rf "$stage"' EXIT
-for arch in amd64 arm64; do
+for arch in amd64; do
   printf '  linux/%-8s' "$arch"
   mkdir -p "$stage/$arch"
   for cmd in $COMMANDS; do
@@ -83,7 +85,7 @@ done
 
 # Verify what was built: linux, the right arch, CGO off, -trimpath. -X against a
 # missing symbol or a const is silently ignored, so the stamp is checked below too.
-for arch in amd64 arm64; do
+for arch in amd64; do
   check="$stage/verify-$arch"; mkdir -p "$check"
   tar -C "$check" -xzf "$out/superbench_linux_${arch}.tar.gz"
   for cmd in $COMMANDS; do

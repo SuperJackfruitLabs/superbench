@@ -9,14 +9,11 @@ stamps the section `## vX.Y.Z — YYYY-MM-DD`, and the release notes quote it.
 - First release, v0.0.1. SuperBench is an experimental single-host prototype, not a production
   system, and nothing here has been proven beyond what the repository's docs describe. The
   release carries the four commands the managed installer needs: `bench`, `benchd`,
-  `bench-quota` and `bench-payload`, built for Linux amd64 and arm64 with CGO off, so every
+  `bench-quota` and `bench-payload`, built for Linux amd64 with CGO off, so every
   binary is static (`bench-payload` must be). Each archive is reproducible from the tag, and
   `SHA256SUMS` and a build-provenance attestation come with them. `bench version` and
   `benchd version` print the release version; a build from a branch prints `dev`. Read
   `docs/pilot-installation.md` before installing anything.
-- Fix the Linux arm64 build: the payload helper called `dup2`, which that platform lacks, so no
-  arm64 binary could be built. It now uses `dup3` with the same effect.
-
 - Return a specific v2 logical-capacity refusal with needed and total byte/inode budgets when a fixed quota reservation cannot fit. Preserve quota limits, retained creation intents and nonzero failures; log only the same bounded diagnostics. Keep the v1 closed error code and message unchanged.
 
 - Add a proposed explicit finite-I/O request codec with bounded opaque bytes and
