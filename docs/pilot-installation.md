@@ -65,9 +65,14 @@ end-to-end card result:
   `reclaimed` and a later create can use the space. `reclaiming` never returns to
   `ready`: after any failure, rerun the same command. A large tree holds the
   helper's operation lock while it is deleted, so other creates wait. No
-  automatic policy reclaims yet; the caller that finishes a card reclaims it. Before each launch and lease, benchd
-  checks a Fresh bench's pinned allocation with the helper's read-only
-  `verify bench KEY`; the helper refuses the ordinary bench apply for it.
+  automatic policy reclaims yet; the caller that finishes a card reclaims it.
+  Root trusts the daemon that the work is checkpointed (that evidence is in the
+  daemon's mirror, which root cannot see); root itself refuses while anything
+  still uses the bench, and stops the deletion if the payload account interferes
+  with it. See [Reclaiming a released bench](fresh-bootstrap-recovery.md#reclaiming-a-released-bench).
+  Before each launch and lease, benchd checks a Fresh bench's pinned allocation
+  with the helper's read-only `verify bench KEY`; the helper refuses the ordinary
+  bench apply for it.
 - **A refused or failed Fresh create keeps its record.** A Fresh create that fails
   after its intent is recorded, including a `capacity_exhausted` refusal, leaves the
   workspace at `materializing` or `initializing` with its `initialization`
@@ -331,7 +336,9 @@ python3 deploy/linux/install.py --bin-dir /absolute/build/bin --root / --managed
   `--previous`.
 - **Rollback.** Stop the unit and run the same command with the backup's
   binaries as `--bin-dir`, the backup's `SHA256SUMS` as `--sums`, and the new
-  build's `SHA256SUMS` as `--previous`.
+  build's `SHA256SUMS` as `--previous`. Once any bench has been reclaimed (or a
+  reclaim started), a build without reclaim refuses to start: it cannot read the
+  state's `reclaiming` and `reclaimed` records. Roll forward instead.
 - **Other flags.** `--upgrade` combines with the flags of the original install
   (`--prepare`, `--identity`, `--activation`, `--storage`). They keep their own
   rules, and only the executables get upgrade semantics.

@@ -130,6 +130,8 @@ root-owned file. It is backed up to the new directory and then replaced
 atomically, while the unit is stopped. Every other installed file must stay
 identical ([pilot installation](pilot-installation.md#upgrade-the-executables)).
 Do not delete private state, receipts or quota ledgers to bypass a refusal.
+Rolling back to a build without workspace reclaim fails once any bench is
+`reclaiming` or `reclaimed`: the older daemon refuses to start on those records.
 
 ## Verification
 

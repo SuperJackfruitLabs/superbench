@@ -301,13 +301,28 @@ fixtures it replaces only the booted maintenance gate.
 ## Reclaiming a released bench
 
 Reclaim is not a recovery step: the daemon starts it, through the fixed
-helper's sudo route (`bench-quota reclaim-payload`), for a released bench it has
-recorded `reclaiming`. Its operation identity derives from the workspace's key
-and ID, and its reservation holds `operations.lock`, so no bootstrap, recovery
-or retirement step runs beside it. Root binds the retained `completed` intent to
-the request and requires the bench's own leaf (the recorded inode, payload-owned,
-in the assigned project) and fenced Git controls. Then, in order, and each step
-safe to repeat:
+helper's sudo route (`bench-quota reclaim-payload`), after it has recorded the
+bench `reclaiming`. Its operation identity derives from the workspace's key and
+ID; root recomputes it and refuses any other. Its reservation holds
+`operations.lock`, so no bootstrap, recovery or retirement step runs beside it.
+
+What root trusts and what it checks:
+
+- **Checkpointed: trusted from the daemon.** Whether the bench's work is
+  checkpointed and durable lives in the daemon-owned mirror and the remote,
+  which root cannot observe. A compromised daemon can have root delete work it
+  never checkpointed.
+- **Not in use: checked by root.** Root refuses with "the bench is in use"
+  while a populated cgroup scope beneath the policy's cgroup root holds a
+  process with its working directory, root or an open file in the bench, or
+  while such a process of the payload account runs anywhere. A malformed
+  `cgroup.events` counts as populated. Root checks before it retains
+  `reclaiming` and again before the purge.
+- **Provenance: checked by root.** The retained `completed` intent must match
+  the request, and the leaf must be the bench's own (the recorded inode,
+  payload-owned, in the assigned project) with fenced Git controls.
+
+Then, in order, and each step safe to repeat:
 
 1. the intent moves to `reclaiming`, before any effect;
 2. the clean worker, through the same hardened spawn but as the payload account,
@@ -320,6 +335,14 @@ safe to repeat:
 5. the intent moves to `reclaimed`.
 
 A completed bench whose leaf is already missing refuses; inspect it with the
-steps above. Errors after step 1 say `effects may have occurred; retry the same
-reclaim`.
+steps above. Errors after step 1, and every error of a retry whose intent is
+already `reclaiming`, say `effects may have occurred; retry the same reclaim`.
+
+The purge worker runs as the payload account, so the payload can stop it. The
+worker reports progress at least once a second; root kills one that reports
+nothing for 30 seconds, instead of holding `operations.lock` until the 20-minute
+worker timeout. The reclaim then fails with "the payload account is still active
+in the bench", as it does when entries reappear after the purge or usage stays
+above zero because a payload process still holds a file. Stop the bench's
+processes and rerun the same reclaim.
 
