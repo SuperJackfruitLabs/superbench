@@ -87,7 +87,7 @@ func CaptureRetirementRoot(s StorageIdentity) (RetirementRoot, error) {
 	if err := s.Validate(); err != nil {
 		return r, err
 	}
-	parent, err := openRetirementParent(s, nil)
+	parent, err := openRetirementParent(s, nil, 0)
 	if err != nil {
 		return r, err
 	}
@@ -117,49 +117,58 @@ func CaptureRetirementRoot(s StorageIdentity) (RetirementRoot, error) {
 	return r, nil
 }
 
+// retirementParent is the opened benches parent and this boot's data device.
+type retirementParent struct {
+	*os.Root
+	device uint64
+}
+
 // openRetirementParent compares a managed identity's and a retained root's
 // device numbers only with this boot's data root device: a reboot can renumber
-// the data device, and the UUID binds the volume (Identity.Matches).
-func openRetirementParent(s StorageIdentity, expected *RetirementRoot) (*os.Root, error) {
+// the data device, and the UUID binds the volume (Identity.Matches). A nonzero
+// bound is the device a caller's own storage verification observed; the parent
+// must be on that same filesystem.
+func openRetirementParent(s StorageIdentity, expected *RetirementRoot, bound uint64) (retirementParent, error) {
+	var none retirementParent
 	device, inode, err := physicalStorageRoot(s.Root)
 	if err != nil {
-		return nil, err
+		return none, err
 	}
-	if device != s.Device && !s.Managed || inode != s.Inode {
-		return nil, errors.New("retirement data root identity changed")
+	if device != s.Device && !s.Managed || bound != 0 && device != bound || inode != s.Inode {
+		return none, errors.New("retirement data root identity changed")
 	}
 	path := filepath.Join(s.Root, "benches")
 	physical, err := filepath.EvalSymlinks(path)
 	if err != nil {
-		return nil, err
+		return none, err
 	}
 	if physical != path {
-		return nil, errors.New("retirement parent contains a symlink")
+		return none, errors.New("retirement parent contains a symlink")
 	}
 	parent, err := os.OpenRoot(path)
 	if err != nil {
-		return nil, err
+		return none, err
 	}
 	info, err := parent.Lstat(".")
 	if err != nil {
 		parent.Close()
-		return nil, err
+		return none, err
 	}
 	st := info.Sys().(*syscall.Stat_t)
 	if !info.IsDir() || uint64(st.Dev) != device {
 		parent.Close()
-		return nil, errors.New("retirement parent filesystem changed")
+		return none, errors.New("retirement parent filesystem changed")
 	}
 	if expected != nil && (uint64(st.Dev) != expected.ParentDevice && !s.Managed || st.Ino != expected.ParentInode || uint32(info.Mode()) != expected.ParentMode) {
 		parent.Close()
-		return nil, errors.New("retirement parent identity changed")
+		return none, errors.New("retirement parent identity changed")
 	}
-	return parent, nil
+	return retirementParent{parent, device}, nil
 }
 
 // checkRetirementRoot distinguishes leaf ENOENT inside an already opened exact
 // parent from missing ancestors, symlinks, ENOTDIR and permission failures.
-func checkRetirementRoot(parent *os.Root, a RetirementApproval, requireAbsent bool) (bool, error) {
+func checkRetirementRoot(parent retirementParent, a RetirementApproval, requireAbsent bool) (bool, error) {
 	info, err := parent.Lstat(a.Key)
 	if errors.Is(err, syscall.ENOENT) {
 		return true, nil
@@ -170,12 +179,8 @@ func checkRetirementRoot(parent *os.Root, a RetirementApproval, requireAbsent bo
 	if requireAbsent || a.Root.Absent {
 		return false, errors.New("retirement root reappeared; preserve it")
 	}
-	held, err := parent.Lstat(".")
-	if err != nil {
-		return false, err
-	}
 	st := info.Sys().(*syscall.Stat_t)
-	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || st.Dev != held.Sys().(*syscall.Stat_t).Dev || st.Ino != a.Root.Inode || uint32(info.Mode()) != a.Root.Mode {
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || uint64(st.Dev) != parent.device || st.Ino != a.Root.Inode || uint32(info.Mode()) != a.Root.Mode {
 		return false, errors.New("approved retirement root was replaced or changed")
 	}
 	return false, nil

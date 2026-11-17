@@ -56,7 +56,7 @@ func (w Worker) retirementOperation(ctx context.Context, a RetirementApproval, o
 	if storageDigest(config) != a.Storage.ConfigSHA256 {
 		return errors.New("retirement host policy changed")
 	}
-	parent, e := openRetirementParent(a.Storage, &a.Root)
+	parent, e := openRetirementParent(a.Storage, &a.Root, 0)
 	if e != nil {
 		return e
 	}
@@ -94,7 +94,7 @@ func (w Worker) retirementOperation(ctx context.Context, a RetirementApproval, o
 	if (actual != expected && (!authorityOnly || actual != a.Storage.Assignment)) || !bytes.Equal(output, canonical) {
 		return errors.New("retirement helper returned different authority")
 	}
-	parent, e = openRetirementParent(a.Storage, &a.Root)
+	parent, e = openRetirementParent(a.Storage, &a.Root, 0)
 	if e != nil {
 		return e
 	}

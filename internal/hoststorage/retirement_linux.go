@@ -62,6 +62,9 @@ func (p Policy) retireApproved(ctx context.Context, a RetirementApproval, verify
 		return zero, errors.New("quota ledger is busy")
 	}
 	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+	// bound is the data device this verification observed; the benches parent is
+	// opened on that same filesystem, and a later verification must agree.
+	var bound uint64
 	checkStorage := func() error {
 		current, e := p.verifyStorage(ctx, a.Key, true, &a.Storage.Assignment)
 		if e != nil {
@@ -69,9 +72,10 @@ func (p Policy) retireApproved(ctx context.Context, a RetirementApproval, verify
 		}
 		expected := a.Storage
 		expected.ConfigSHA256 = "" // independently bound by Worker, not root policy input
-		if expected.Matches(current) != nil {
+		if expected.Matches(current) != nil || bound != 0 && current.Device != bound {
 			return errors.New("retirement storage authority changed")
 		}
+		bound = current.Device
 		return nil
 	}
 	if err = checkStorage(); err != nil {
@@ -92,7 +96,7 @@ func (p Policy) retireApproved(ctx context.Context, a RetirementApproval, verify
 	if verifyOnly && !retired {
 		return zero, errors.New("approved source allocation has not been retired")
 	}
-	parent, err := openRetirementParent(a.Storage, &a.Root)
+	parent, err := openRetirementParent(a.Storage, &a.Root, bound)
 	if err != nil {
 		return zero, err
 	}
@@ -107,7 +111,7 @@ func (p Policy) retireApproved(ctx context.Context, a RetirementApproval, verify
 	checkRoot := func(requireAbsent bool) (bool, error) {
 		// Reopen the named parent too: an open fd alone cannot authorize a replaced
 		// fixed path. The managed benches parent is root-owned and not worker-writable.
-		current, e := openRetirementParent(a.Storage, &a.Root)
+		current, e := openRetirementParent(a.Storage, &a.Root, bound)
 		if e != nil {
 			return false, e
 		}
