@@ -32,7 +32,11 @@ func (r *receipts) finalizationCutoffLocked(i operationcontrol.Intent) error {
 	if digest != i.Target.Digest {
 		return errConflict
 	}
-	if state != "done" || barrier != "" || !status.Valid || status.Int64 < 100 || status.Int64 > 599 || len(body) > 64<<10 || !json.Valid(body) {
+	limit, err := r.responseLimit(r.db, i.Target.UID, i.Target.RequestID)
+	if err != nil {
+		return errInDoubt
+	}
+	if state != "done" || barrier != "" || !status.Valid || status.Int64 < 100 || status.Int64 > 599 || int64(len(body)) > limit || !json.Valid(body) {
 		return errInDoubt
 	}
 	return nil

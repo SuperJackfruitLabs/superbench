@@ -13,7 +13,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const receiptSchemaVersion = 6
+const receiptSchemaVersion = 6 // Open migrates to 6; only a finite claim creates 7
 
 var errConflict = errors.New("request id reused with a different operation body")
 var errInDoubt = errors.New("request outcome requires reconciliation")
@@ -30,6 +30,7 @@ type receipts struct {
 	mu          sync.Mutex
 	active      map[string]bool
 	controllers map[string]func()
+	finite      bool // format 7: per-identity response limits exist
 }
 
 func openReceipts(state string) (*receipts, error) {
@@ -65,7 +66,7 @@ func openReceipts(state string) (*receipts, error) {
 		db.Close()
 		return nil, e
 	}
-	if version < 0 || version > receiptSchemaVersion {
+	if version < 0 || version > finiteSchemaVersion {
 		db.Close()
 		return nil, errors.New("unsupported receipt schema")
 	}
@@ -194,7 +195,12 @@ func openReceipts(state string) (*receipts, error) {
 			return nil, err
 		}
 	}
-	ledger := &receipts{db: db, active: map[string]bool{}}
+	finite, e := finiteFormat(db, version)
+	if e != nil {
+		db.Close()
+		return nil, e
+	}
+	ledger := &receipts{db: db, active: map[string]bool{}, finite: finite}
 	if e = ledger.validateHistory(); e != nil {
 		db.Close()
 		return nil, e
@@ -265,10 +271,18 @@ func (r *receipts) lookupLocked(uid uint32, id, digest string) (*receipt, bool, 
 	return nil, false, nil
 }
 func (r *receipts) claim(uid uint32, id, digest string) (*receipt, error) {
+	return r.claimLimit(uid, id, digest, legacyResponseLimit)
+}
+func (r *receipts) claimLimit(uid uint32, id, digest string, limit int64) (*receipt, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if cached, found, err := r.lookupLocked(uid, id, digest); found || err != nil {
 		return cached, err
+	}
+	if limit != legacyResponseLimit {
+		if err := r.enableFiniteLocked(); err != nil {
+			return nil, err
+		}
 	}
 	key := receiptKey(uid, id)
 	tx, e := r.db.Begin()
@@ -279,11 +293,14 @@ func (r *receipts) claim(uid uint32, id, digest string) (*receipt, error) {
 	if e = cancelBarrier(tx, uid, id, digest); e != nil {
 		return nil, e
 	}
-	if e = requireReceiptCapacity(tx); e != nil {
+	if e = r.reserveResponse(tx, limit); e != nil {
 		return nil, e
 	}
 	result, e := tx.Exec("INSERT INTO receipts(owner,id,digest,state) VALUES (?,?,?,'running')", uid, id, digest)
 	if e = oneInserted(result, e); e != nil {
+		return nil, e
+	}
+	if e = r.recordResponseLimit(tx, uid, id, limit); e != nil {
 		return nil, e
 	}
 	var storedDigest, state, barrier string
@@ -312,7 +329,11 @@ func (r *receipts) finish(uid uint32, id string, body []byte, status int) error 
 			r.active[key] = false
 		}
 	}()
-	if len(body) > 64<<10 {
+	limit, e := r.responseLimit(r.db, uid, id)
+	if e != nil {
+		return e
+	}
+	if int64(len(body)) > limit {
 		return errCapacity
 	}
 	if !r.active[receiptKey(uid, id)] {
