@@ -78,7 +78,7 @@ func TestArchitecture(t *testing.T) {
 				"internal/storageproof":                {"internal/quotahelper", "internal/allocationledger", "internal/storagecustody"},
 				"internal/allocationledger":            {"internal/quotapolicy"},
 				"internal/freshcleanup":                {"internal/payloadpolicy", "internal/quotaoperation", "internal/reap"},
-				"internal/cleanworker":                 {"internal/reap"}, // The daemon-uid worker: frames and self-checks only.
+				"internal/cleanworker":                 {"internal/reap"}, // The unprivileged worker: frames, self-checks, owner-only deletion.
 				"internal/freshretirement":             {"internal/allocationledger", "internal/hoststorage", "internal/storagecustody", "internal/storageproof"},
 				"internal/freshrecovery":               {"internal/cleanworker", "internal/freshcleanup", "internal/freshretirement", "internal/gitcontrol", "internal/hoststorage", "internal/payloadbootstrap", "internal/payloadpolicy", "internal/retainedfile", "internal/storagecustody"},
 				"internal/freshrecovery/fixture":       {"internal/cleanworker", "internal/freshcleanup", "internal/freshrecovery", "internal/freshretirement", "internal/hoststorage", "internal/payloadbootstrap", "internal/payloadexec", "internal/quotahelper", "internal/quotaoperation", "internal/quotaoperationcontrol", "internal/quotaoperationjournal", "internal/retainedfile"},
@@ -154,7 +154,7 @@ func TestArchitecture(t *testing.T) {
 			if p == "github.com/pelletier/go-toml/v2" && rel == "internal/setup" && filepath.Base(path) == "config.go" {
 				allowed = true
 			}
-			if p == "golang.org/x/sys/unix" && (rel == "internal/service" && filepath.Base(path) == "peer_darwin.go" || rel == "internal/retainedfile" && filepath.Base(path) == "publish_linux.go" || rel == "internal/freshretirement" && filepath.Base(path) == "retire_linux.go" || rel == "internal/freshrecovery" && strings.HasSuffix(path, "_linux.go")) {
+			if p == "golang.org/x/sys/unix" && (rel == "internal/service" && filepath.Base(path) == "peer_darwin.go" || rel == "internal/retainedfile" && filepath.Base(path) == "publish_linux.go" || rel == "internal/freshretirement" && filepath.Base(path) == "retire_linux.go" || rel == "internal/cleanworker" && filepath.Base(path) == "purge_linux.go" || rel == "internal/freshrecovery" && strings.HasSuffix(path, "_linux.go")) {
 				allowed = true
 			}
 			if !allowed {

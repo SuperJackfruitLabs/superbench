@@ -56,7 +56,7 @@ func TestTheRealWorkerRefusesBeforeReadingItsRequest(t *testing.T) {
 		t.Fatal("ordinary test requires an unprivileged user")
 	}
 	root := t.TempDir()
-	request, err := EncodeRequest(Request{Version, Observe, root, nil})
+	request, err := EncodeRequest(Request{Version, Observe, root, nil, nil})
 	if err != nil {
 		t.Fatal(err)
 	}

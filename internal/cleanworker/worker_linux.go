@@ -83,6 +83,12 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		if err = reap.DeleteContents(request.Root, *request.Approved); err != nil {
 			return err
 		}
+	case Purge:
+		// Root starts a purge as the tree's owner, the payload account, so even
+		// a fault here can remove only what that account could remove itself.
+		if err = purge(request.Root, *request.Target); err != nil {
+			return err
+		}
 	}
 	out, err := EncodeReply(reply, request.Mode)
 	if err != nil {

@@ -1,10 +1,12 @@
-// Package cleanworker is the daemon-uid child that bench-quota re-executes to
-// observe or delete the contents of a leaked Fresh tree. Root never opens the
-// tree's files or deletes them: it starts this worker with the daemon's
-// credentials, sends one bounded request frame on stdin and reads one bounded
-// reply frame from stdout, which it treats as data. The worker checks its own
-// credentials and descriptors before it reads anything. It holds no policy,
-// ledger, quota or journal authority, and only cmd/bench-quota may import it.
+// Package cleanworker is the unprivileged child that bench-quota re-executes to
+// observe or delete the contents of a Fresh tree. Root never opens the tree's
+// files or deletes them: it starts this worker with the credentials of the
+// tree's owner, sends one bounded request frame on stdin and reads one bounded
+// reply frame from stdout, which it treats as data. The owner is the daemon
+// for a leaked bootstrap tree (observe, delete) and the payload account for a
+// reclaimed bench (purge). The worker checks its own credentials and
+// descriptors before it reads anything. It holds no policy, ledger, quota or
+// journal authority, and only cmd/bench-quota may import it.
 package cleanworker
 
 import (
@@ -20,10 +22,12 @@ import (
 
 const Version = "superbench.clean-worker.v1"
 
-// The two modes. Observe is read-only; delete removes only approved contents.
+// The modes. Observe is read-only; delete removes only approved contents;
+// purge empties a payload-owned tree whose contents nobody reviewed.
 const (
 	Observe = "observe"
 	Delete  = "delete"
+	Purge   = "purge"
 )
 
 // Command is the argument that selects the worker in bench-quota's main. It is
@@ -40,10 +44,21 @@ const MaxFrame = 2 * reap.MaxManifest
 // ErrWorker reports a refused worker frame or self-check.
 var ErrWorker = errors.New("clean worker refused")
 
-// Request is root's single frame. Approved is set only for delete.
+// Request is root's single frame. Approved is set only for delete, Target
+// only for purge.
 type Request struct {
 	Version, Mode, Root string
 	Approved            *reap.Tree
+	Target              *Target `json:",omitempty"`
+}
+
+// Target is the tree a purge empties: the root directory's node, which the
+// worker must find at Root, and the XFS project every directory beneath it
+// must carry. A directory on another device or in another project is never
+// entered, so the purge cannot leave the tree.
+type Target struct {
+	Device, Inode uint64
+	ProjectID     uint32
 }
 
 // Owner is one entry's physical owner, link count and raw Go file mode, from an
@@ -71,9 +86,12 @@ func (r Request) valid() bool {
 	}
 	switch r.Mode {
 	case Observe:
-		return r.Approved == nil
+		return r.Approved == nil && r.Target == nil
 	case Delete:
-		return r.Approved != nil
+		return r.Approved != nil && r.Target == nil
+	case Purge:
+		// Fixed-policy projects start at 10000; zero is the filesystem default.
+		return r.Approved == nil && r.Target != nil && r.Target.Device != 0 && r.Target.Inode != 0 && r.Target.ProjectID >= 10000
 	}
 	return false
 }
@@ -85,7 +103,7 @@ func (r Reply) Valid(mode string) error {
 		return ErrWorker
 	}
 	switch mode {
-	case Delete:
+	case Delete, Purge:
 		if r.Tree != nil || r.Owners != nil {
 			return ErrWorker
 		}
