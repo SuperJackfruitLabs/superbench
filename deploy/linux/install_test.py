@@ -352,7 +352,7 @@ class IndexedStorage(unittest.TestCase):
         self.bins = binaries(self.root / "bin")
         self.commands = []
         self.mounts = []
-        self.fail_initialize = False
+        self.fail_initialize = None
 
     def args(self, **overrides):
         values = dict(bin_dir=self.bins, root=self.target, managed=True, prepare=False, identity=True,
@@ -360,9 +360,14 @@ class IndexedStorage(unittest.TestCase):
         values.update(overrides)
         return SimpleNamespace(**values)
 
-    def run_command(self, command, check):
+    def run_command(self, command, check, **options):
         self.assertTrue(check)
         self.commands.append(command)
+        quota = self.target / "var/lib/superbench-quota"
+        if command == [QUOTA_HELPER, "operation-info"]:
+            # The real helper opens the journal only with its ready record.
+            if not (quota / "ledger").is_dir() or len((quota / "ledger.format-v2").read_bytes().splitlines()) != 2:
+                raise subprocess.CalledProcessError(1, command)
         if command == [QUOTA_HELPER, "initialize-indexed"]:
             unit = self.target / UNIT_FILE
             # The helper's installation gate needs the masked unit and the indexed policy.
@@ -370,11 +375,21 @@ class IndexedStorage(unittest.TestCase):
             self.assertEqual(os.readlink(unit), "/dev/null")
             self.assertIn(b'"OperationJournal": "indexed-v2"', (self.target / STORAGE_FILE).read_bytes())
             self.assertIn(["systemctl", "daemon-reload"], self.commands[:-1])
-            if self.fail_initialize:
+            if self.fail_initialize == "before":
                 raise subprocess.CalledProcessError(1, command)
-            quota = self.target / "var/lib/superbench-quota"
-            (quota / "ledger.format-v2").write_bytes(b"anchor")
+            # The real initializer's order (quotaoperationjournal): the format
+            # intent, the ledger directory, its records, and the ready line last.
+            (quota / "ledger.format-v2").write_text(
+                json.dumps({"version": "v2", "ledger": "/var/lib/superbench-quota/ledger", "nonce": "0" * 64}) + "\n")
             (quota / "ledger").mkdir()
+            (quota / "ledger" / "operations.lock").write_bytes(b"")
+            if self.fail_initialize == "partway":
+                raise subprocess.CalledProcessError(1, command)
+            (quota / "ledger" / "assignments.json").write_bytes(b"{}")
+            with (quota / "ledger.format-v2").open("a") as anchor:
+                anchor.write(json.dumps({"device": 1, "inode": 2, "lock_device": 1, "lock_inode": 3,
+                                         "database_device": 1, "database_inode": 4,
+                                         "authority": "a" * 64}) + "\n")
 
     def mounted(self, path):
         self.mounts.append(path)
@@ -411,16 +426,51 @@ class IndexedStorage(unittest.TestCase):
         self.assertNotIn([QUOTA_HELPER, "initialize-indexed"], self.commands)
 
     def test_failed_initialization_keeps_the_service_masked_and_can_be_retried(self):
-        self.fail_initialize = True
+        self.fail_initialize = "before"
         with self.assertRaisesRegex(ValueError, "stays masked"):
             self.apply()
         unit = self.target / UNIT_FILE
         self.assertTrue(unit.is_symlink())
         self.assertEqual(storage_state(self.target), "fresh")
-        self.fail_initialize = False
+        self.fail_initialize = None
         self.apply()
         self.assertFalse(unit.is_symlink())
         self.assertEqual(storage_state(self.target), "initialized")
+
+    def test_initialization_that_stopped_partway_is_refused_and_stays_masked(self):
+        # Both names exist, but without the ready line the journal never opens:
+        # a rerun must not call this initialized and unmask the service.
+        self.fail_initialize = "partway"
+        with self.assertRaisesRegex(ValueError, "stays masked"):
+            self.apply()
+        unit = self.target / UNIT_FILE
+        self.fail_initialize = None
+        self.commands.clear()
+        with self.assertRaisesRegex(ValueError, "partial indexed ledger"):
+            self.apply()
+        self.assertTrue(unit.is_symlink(), "a partial initialization unmasked the service")
+        self.assertEqual(os.readlink(unit), "/dev/null")
+        self.assertEqual(self.commands, [])
+
+    def test_unit_stays_masked_when_the_journal_does_not_open(self):
+        real = self.run_command
+
+        def closed(command, check, **options):
+            if command == [QUOTA_HELPER, "operation-info"]:
+                self.commands.append(command)
+                raise subprocess.CalledProcessError(1, command)
+            return real(command, check, **options)
+        with self.assertRaisesRegex(ValueError, "not unmasked"):
+            apply(self.args(), run=closed, lookup=accounts(), mounted=self.mounted)
+        self.assertTrue((self.target / UNIT_FILE).is_symlink())
+
+    def test_a_different_storage_policy_refuses_before_any_effect(self):
+        other = storage_document((977, 977), dict(BUDGETS, BenchBytes=2 << 30))
+        install(self.target, other)
+        with self.assertRaisesRegex(ValueError, "existing file differs"):
+            self.apply()
+        self.assertFalse((self.target / "usr/local/bin/benchd").exists(), "effects before refusal")
+        self.assertEqual((self.target / STORAGE_FILE).read_bytes(), other[STORAGE_FILE][0])
 
     def test_legacy_or_partial_ledgers_refuse_before_any_effect(self):
         quota = self.target / "var/lib/superbench-quota"

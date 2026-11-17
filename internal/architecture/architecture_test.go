@@ -128,7 +128,7 @@ func TestArchitecture(t *testing.T) {
 				"cmd/bench":                            {"internal/buildinfo", "internal/localprep", "internal/crosshostflow", "internal/crosshost", "internal/handoffjournal", "internal/mirroradmin", "internal/mirrorstage", "internal/workspacetransfer", "internal/workspacerepair", "internal/workspaceprep", "internal/protocolv2", "internal/workspaceops", "internal/workspaceapi", "internal/workspacearchive", "internal/autoarchive", "internal/bench", "internal/client", "internal/protocol", "internal/reap", "internal/retention", "internal/history", "internal/maintenance"},
 				"cmd/benchd":                           {"internal/activation", "internal/buildinfo", "internal/bench", "internal/service"},
 				"internal/activation":                  {}, // Root-owned switch file reader; no other authority.
-				"internal/freshreadiness":              {"internal/hoststorage", "internal/serviceidentity"},
+				"internal/freshreadiness":              {"internal/hoststorage", "internal/quotahelper", "internal/serviceidentity"},
 				"internal/scalarapi":                   {"internal/bench"},
 				"internal/failurelog":                  {"internal/protocol", "internal/protocolv2"},
 				"cmd/bench-payload":                    {"internal/payloadexec"},

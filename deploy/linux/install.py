@@ -184,10 +184,32 @@ def storage_state(root):
     present = names & {"ledger", "ledger.format-v2"}
     if not present:
         return "fresh"
-    if len(present) == 2 and os.path.lexists(policy):
+    if len(present) == 2 and os.path.lexists(policy) and format_ready(parent / "ledger.format-v2"):
         return "initialized"
-    raise ValueError("partial indexed ledger initialization retained in " + str(parent) +
-                     "; it is never adopted or retried. See docs/pilot-installation.md")
+    raise ValueError(PARTIAL_STORAGE % parent)
+
+
+PARTIAL_STORAGE = ("partial indexed ledger initialization retained in %s: initialize-indexed did not "
+                   "write its ready record. It is never adopted or retried; the service stays masked. "
+                   "See \"Recover a partial initialization\" in docs/pilot-installation.md")
+FORMAT_INTENT = {"version", "ledger", "nonce"}
+FORMAT_READY = {"device", "inode", "lock_device", "lock_inode", "database_device", "database_inode",
+                "authority"}
+
+
+def format_ready(path):
+    """Whether initialize-indexed finished: its format file holds the intent line
+    and then the ready line it appends last (internal/quotaoperationjournal)."""
+    try:
+        raw = path.read_bytes()
+        lines = raw.split(b"\n")
+        if len(raw) > 2048 or len(lines) != 3 or lines[2]:
+            return False
+        intent, ready = json.loads(lines[0]), json.loads(lines[1])
+    except (OSError, ValueError):
+        return False
+    return (isinstance(intent, dict) and set(intent) == FORMAT_INTENT and intent["ledger"] == LEDGER and
+            isinstance(ready, dict) and set(ready) == FORMAT_READY)
 
 
 def masked_unit(root):
@@ -244,6 +266,16 @@ def initialize_storage(root, run):
     except subprocess.CalledProcessError:
         raise ValueError("bench-quota initialize-indexed refused or failed; the service stays masked "
                          "without its unit file. See docs/pilot-installation.md") from None
+
+
+def verify_storage(run):
+    """The helper's read-only operation-info opens the indexed journal, which
+    needs its ready record: the real check that initialization finished."""
+    try:
+        run([QUOTA_HELPER, "operation-info"], check=True, stdout=subprocess.DEVNULL)
+    except subprocess.CalledProcessError:
+        raise ValueError("bench-quota operation-info cannot open the indexed journal; the service is not "
+                         "unmasked. See docs/pilot-installation.md") from None
 
 
 class MissingAccount(ValueError):
@@ -461,6 +493,15 @@ def apply(args, run=subprocess.run, lookup=account_ids, mounted=check_data_mount
         deferred = preflight_identity(args.root, args.prepare, lookup)
         if not deferred:
             entries.update(installed_identity(args.cgroup_root, lookup))
+    if storage is not None:
+        # Refuse a different existing storage policy before any effect.
+        policy = checked_path(args.root, STORAGE_FILE)
+        if os.path.lexists(policy):
+            if deferred:
+                raise ValueError("storage policy exists without its accounts: " + str(policy))
+            expected = storage_document(lookup(DAEMON_ACCOUNT), budgets)[STORAGE_FILE][0]
+            if policy.is_symlink() or not policy.is_file() or policy.read_bytes() != expected:
+                raise ValueError("existing file differs; refusing replacement: " + str(policy))
     # Validate the exact sudo policy before installing any live/staged files.
     if args.managed and platform.system() == "Linux":
         source = Path(__file__).resolve().parent / "superbench.sudoers"
@@ -479,6 +520,7 @@ def apply(args, run=subprocess.run, lookup=account_ids, mounted=check_data_mount
         install(args.root, storage_document(lookup(DAEMON_ACCOUNT), budgets))
         if state == "fresh":
             initialize_storage(args.root, run)
+        verify_storage(run)
         if unit is not None:
             mask, masked = masked_unit(args.root)
             if masked:

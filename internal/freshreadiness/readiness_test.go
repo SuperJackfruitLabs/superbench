@@ -12,18 +12,26 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage"
 )
 
-func TestStorageRequiresTheIndexedJournal(t *testing.T) {
-	if err := indexed(hoststorage.Policy{OperationJournal: IndexedJournal}, nil); err != nil {
-		t.Fatal("indexed policy refused", err)
+func TestStorageRequiresAReadyIndexedJournal(t *testing.T) {
+	opened := 0
+	open := func() error { opened++; return nil }
+	if err := ready(hoststorage.Policy{OperationJournal: IndexedJournal}, nil, open); err != nil || opened != 1 {
+		t.Fatal("ready indexed journal refused", err, opened)
 	}
 	// The pilot host's legacy policy: every Fresh create failed at materializing.
-	err := indexed(hoststorage.Policy{}, nil)
-	if err == nil || !strings.Contains(err.Error(), `"OperationJournal": "indexed-v2"`) || !strings.Contains(err.Error(), "--storage") {
+	err := ready(hoststorage.Policy{}, nil, open)
+	if err == nil || !strings.Contains(err.Error(), `"OperationJournal": "indexed-v2"`) || !strings.Contains(err.Error(), "--storage") || opened != 1 {
 		t.Fatal("legacy policy accepted or unclear", err)
 	}
 	missing := errors.New("no such file")
-	if err = indexed(hoststorage.Policy{OperationJournal: IndexedJournal}, missing); !errors.Is(err, missing) || !strings.Contains(err.Error(), StoragePolicy) {
+	if err = ready(hoststorage.Policy{OperationJournal: IndexedJournal}, missing, open); !errors.Is(err, missing) || !strings.Contains(err.Error(), StoragePolicy) {
 		t.Fatal("unreadable policy accepted", err)
+	}
+	// A half-finished initialize-indexed: the policy is indexed but the helper
+	// cannot open a journal without its ready record.
+	partial := errors.New("bench-quota: missing ready record")
+	if err = ready(hoststorage.Policy{OperationJournal: IndexedJournal}, nil, func() error { return partial }); !errors.Is(err, partial) || !strings.Contains(err.Error(), "not ready") {
+		t.Fatal("half-initialized journal accepted", err)
 	}
 }
 
@@ -55,7 +63,7 @@ sys.stdout.buffer.write(install.storage_document((977, 977), budgets)[install.ST
 	if err = p.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	if err = indexed(p, nil); err != nil {
+	if err = ready(p, nil, func() error { return nil }); err != nil {
 		t.Fatal(err)
 	}
 	if p.Root != "/srv/superbench-data" || filepath.Dir(p.Ledger) != "/var/lib/superbench-quota" || p.OwnerUID != 977 || p.OwnerGID != 977 || p.BenchInodes != 100000 {

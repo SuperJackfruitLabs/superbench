@@ -185,3 +185,21 @@ func helperDiagnostic(stderr []byte) string {
 	}
 	return strconv.Quote(string(line))
 }
+
+// OperationInfo asks the installed helper for its read-only operation info. On
+// an indexed policy the helper answers only after opening its journal, which
+// requires the ready record of a completed initialize-indexed.
+func OperationInfo(ctx context.Context, c Config) (Info, error) {
+	var info Info
+	raw, err := helperCommand(ctx, c, os.Geteuid(), false, nil, "operation-info")
+	if err != nil {
+		return info, err
+	}
+	if err = strictReply(raw, &info); err != nil {
+		return info, err
+	}
+	if !validInfo(info) || info.Root != c.Data {
+		return info, errors.New("quota helper returned unexpected operation info")
+	}
+	return info, nil
+}
