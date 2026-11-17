@@ -86,7 +86,7 @@ func validateArchive(b *model.Bench) error {
 	invalid := errors.New("invalid aggregate archive lifecycle")
 	w := b.Workspace
 	a := w.Archive
-	if len(w.Unmerged) > 0 && w.Phase != "ready" && w.Phase != "archived" && w.Phase != "reaping" && w.Phase != "reaped" {
+	if len(w.Unmerged) > 0 && w.Phase != "ready" && w.Phase != "archived" && w.Phase != "reaping" && w.Phase != "reaped" && !Reclaim(w.Phase) {
 		return invalid
 	}
 	if err := archiveEvidence(b, w.Unmerged, false); err != nil {

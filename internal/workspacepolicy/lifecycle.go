@@ -158,7 +158,7 @@ func validateLease(b *model.Bench) error {
 		return invalid
 	}
 	if l == nil {
-		if (w.Phase == "ready" || w.Archive != nil) && w.Pending == nil {
+		if (w.Phase == "ready" || Reclaim(w.Phase) || w.Archive != nil) && w.Pending == nil {
 			return nil
 		}
 		return invalid

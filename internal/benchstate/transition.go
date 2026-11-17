@@ -161,11 +161,11 @@ func phaseTransition(old string, b *model.Bench) bool {
 	case "prepared":
 		return next == "initializing" || next == "ready" && b.Workspace.Checkpoint != nil && b.Workspace.Pending == nil && b.Lease == nil
 	case "ready":
-		return next == "archived" && b.Workspace.Archive != nil && b.Lease == nil
+		return next == "archived" && b.Workspace.Archive != nil && b.Lease == nil || next == "reclaiming"
 	case "archived":
 		return next == "reaping"
-	case "reaping":
-		return next == "reaped"
+	case "reaping", "reclaiming":
+		return old == "reaping" && next == "reaped" || old == "reclaiming" && next == "reclaimed"
 	}
 	return false
 }

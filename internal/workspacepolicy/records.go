@@ -30,7 +30,7 @@ func Validate(b *model.Bench) error {
 		return invalid
 	}
 	w := b.Workspace
-	if !identity.MatchString(w.ID) || !key.MatchString(w.CreationID) || (w.Phase != "materializing" && w.Phase != "initializing" && w.Phase != "prepared" && w.Phase != "ready" && w.Phase != "archived" && w.Phase != "reaping" && w.Phase != "reaped") {
+	if !identity.MatchString(w.ID) || !key.MatchString(w.CreationID) || (w.Phase != "materializing" && w.Phase != "initializing" && w.Phase != "prepared" && w.Phase != "ready" && w.Phase != "archived" && w.Phase != "reaping" && w.Phase != "reaped" && !Reclaim(w.Phase)) {
 		return invalid
 	}
 	if b.Repo != "" || b.Branch != "" || b.Mirror != "" || b.Checkpoint != "" || b.CreatedFrom != "" || b.ArchivedAt != "" || b.ReapAfter != "" || b.ArchiveFreezeDigest != "" || b.ArchiveFrozenAt != "" || b.ArchiveMerge != nil || b.ArchiveUnmerged != nil || b.ReapingDigest != "" || b.ReapedAt != "" {
@@ -55,6 +55,9 @@ func Validate(b *model.Bench) error {
 		return invalid
 	}
 	if err := validateTransfer(b); err != nil {
+		return invalid
+	}
+	if err := validateReclaim(b); err != nil {
 		return invalid
 	}
 	if !filepath.IsAbs(b.Path) || filepath.Clean(b.Path) != b.Path {
