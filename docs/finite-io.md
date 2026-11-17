@@ -75,7 +75,9 @@ request with the gate off and on.
    `exec` returns. A refusal by the helper or by sudo exits nonzero without the
    marker; the payload cannot write before it.
 7. **Capture** (`stageexec`). Stdout is copied into a buffer bounded at the
-   requested limit. A write past the bound fails the pump: the runner fences,
+   requested limit plus the fixed `ExecReached` marker length; the request limit
+   itself is enforced on the payload's bytes after the marker is stripped
+   (step 8). A write past the bound fails the pump: the runner fences,
    revokes the continuation and returns before sealing. The captured bytes are
    returned only after Stop, the transport's own fence and drain, and a successful
    log seal, and only when the leader exited with a known status. A nonzero exit
@@ -100,7 +102,7 @@ request with the gate off and on.
 | Profiled body outside `io` | 64 KiB | `ParseFinite` |
 | Unprofiled request body | 64 KiB | unchanged, with the gate on or off |
 | Decoded input | 1 MiB | `finiteio.Input.Bytes`, `payloadwire.Request.Validate`, `payloadinput.Open` |
-| Stdout | `stdout_limit_bytes` ≤ 1 MiB | `stageexec` result buffer; `finiteio.Observe` |
+| Stdout | `stdout_limit_bytes` ≤ 1 MiB (capture: plus the marker) | `stageexec` result buffer; `finiteio.Observe` after the marker is stripped |
 | Response and retained receipt | `MaxResponseBytes(io)` ≤ 2 MiB | `ResponseLimit`, `ParseResponse`, ledger `Finish` |
 | Unresolved receipt reservations | 64 MiB total | ledger claim, charged before insertion |
 | Profiled lookup | 2 MiB body in a 16 MiB envelope | `receiptlookup`, `ParseFiniteReceiptLookupResponse` |
@@ -163,6 +165,9 @@ omits the field, and a response without an observation omits `io`.
   loading finite bodies up to 2 MiB each in pages of 64, and completed finite
   receipts are never collected. Both grow with finite use and must be bounded
   (streamed validation, collection with replay protection) before production.
+- **`ExecFailed` is untested end to end.** No fixture makes `exec` fail after
+  `ExecReached` was written; that path is covered only by the unit test that
+  such stdout never becomes an observation.
 - **Payload output equal to `ExecFailed`.** A payload whose entire stdout is
   exactly the `ExecFailed` marker gets no observation. This fails closed.
 - **Proposed contract.** The treaty files are proposals. The adapter conformance
