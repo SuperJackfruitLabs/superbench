@@ -74,8 +74,10 @@ func TestAuthorityDiffersForAnotherVolumeOrRoot(t *testing.T) {
 		ledgerFS, mount, header, anchor string
 	}
 	for name, change := range map[string]func(*inputs){
+		"policy":                   func(in *inputs) { in.policy = map[string]string{"Root": "/srv/other"} },
 		"data root inode":          func(in *inputs) { in.data.Inode++ },
 		"data root owner":          func(in *inputs) { in.data.UID = 1 },
+		"data root group":          func(in *inputs) { in.data.GID = 1 },
 		"data root mode":           func(in *inputs) { in.data.Mode = 0x800001ff },
 		"ledger inode":             func(in *inputs) { in.ledger.Inode++ },
 		"ledger owner":             func(in *inputs) { in.ledger.UID = 1 },
@@ -83,6 +85,7 @@ func TestAuthorityDiffersForAnotherVolumeOrRoot(t *testing.T) {
 		"ledger mode":              func(in *inputs) { in.ledger.Mode = 0x800001ff },
 		"ledger on another volume": func(in *inputs) { in.ledgerFS = "state ext4 uuid=11111111-1111-1111-1111-111111111111" },
 		"ledger header":            func(in *inputs) { in.header = "other" },
+		"anchor":                   func(in *inputs) { in.anchor = "other" },
 		// A reboot renumbers both devices; the authority must not change.
 		"same root, renumbered devices": func(in *inputs) { in.data.Device, in.ledger.Device = 0x702, 0x2a },
 		"same root, no field":           func(*inputs) {},
@@ -131,6 +134,12 @@ func TestUnmanagedMountIgnoresNamespaceLocalFields(t *testing.T) {
 	}
 	if _, err := ParseUnmanagedMount([]byte(host), "/srv/data/bench", 0x802); err == nil {
 		t.Error("a mount of another device was used")
+	}
+	// Only three fields may follow the separator: type, source, superblock options.
+	for _, malformed := range []string{"99 1 8:1 /srv/data /srv/data rw shared:22 - ext4 /dev/sda1 rw extra\n", "99 1 8:1 /srv/data /srv/data rw shared:22 - ext4 /dev/sda1\n"} {
+		if c, err := ParseUnmanagedMount([]byte(malformed), "/srv/data/bench", 0x801); err == nil {
+			t.Errorf("a malformed mountinfo line was used: %q", c)
+		}
 	}
 }
 
