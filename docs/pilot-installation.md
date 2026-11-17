@@ -197,11 +197,15 @@ the socket, and refuses a file that breaks one:
 So the registered launch, which needs all five, sets every switch to `true`, and
 `receipt_lookup` or `cancellation` may run alone.
 
-benchd refuses to start unless the file is a single-link regular file of at most
-4 KiB, owned by root and not group- or world-writable, and every directory from
-`/` to `/etc/superbench` is owned by root without group or world write. Symlinks
-are never followed. A missing file, or a missing `/etc/superbench`, keeps every
-switch off and the daemon behaves exactly as without this feature. At start
+When the file exists, benchd refuses to start unless it is a single-link regular
+file of at most 4 KiB, owned by root and not group- or world-writable, and every
+directory from `/` to `/etc/superbench` is owned by root without group or world
+write. Symlinks are never followed. A missing file, or a missing
+`/etc/superbench`, keeps every switch off whatever those directories look like,
+and the daemon behaves exactly as without this feature. benchd runs as the
+`superbench` account, so it must be able to search `/etc/superbench` (the
+installer creates it with mode 0755). If it cannot, benchd cannot tell whether
+the file exists and refuses to start. At start
 benchd logs one line with the effective switches, for example
 `activation: fresh_payload=false finite_io=false receipt_lookup=false cancellation=false registration_observation=false`.
 

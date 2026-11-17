@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 )
@@ -163,4 +164,80 @@ func TestLoadRefusesSymlinksAndNonRegularFiles(t *testing.T) {
 func TestLoadRefusesUnknownKeyFromTrustedFile(t *testing.T) {
 	base, _ := fixture(t, `{"version":"superbench.activation.v1","everything":true}`)
 	refused(t, base, owner(), "unknown key")
+}
+
+// Only a present file needs trusted ancestors: an absent one keeps the exact
+// defaults even under a writable, foreign-owned or private directory.
+func TestLoadAbsentFileIgnoresItsDirectories(t *testing.T) {
+	for _, parent := range []string{"", "etc", "etc/superbench"} {
+		for _, mode := range []os.FileMode{0777, 0775, 0700} {
+			base, file := fixture(t, "")
+			if err := os.Chmod(filepath.Join(base, parent), mode); err != nil {
+				t.Fatal(err)
+			}
+			if got, err := load(base, fixedNames, owner()); err != nil || got != (Switches{}) {
+				t.Fatalf("%s %v: absent file refused: %v %v", parent, mode, got, err)
+			}
+			if got, err := load(base, fixedNames, owner()+1); err != nil || got != (Switches{}) {
+				t.Fatalf("%s %v: absent file under a foreign owner refused: %v %v", parent, mode, got, err)
+			}
+			if mode == 0700 {
+				continue
+			}
+			if err := os.WriteFile(file, []byte(enabled), 0644); err != nil {
+				t.Fatal(err)
+			}
+			refused(t, base, owner(), "present file under writable "+parent)
+		}
+	}
+}
+
+// interleaved loads the file with hook run at one race point, and returns the error.
+func interleaved(t *testing.T, at string, hook func(file string)) error {
+	t.Helper()
+	base, file := fixture(t, enabled)
+	interleave = func(point string) {
+		if point == at {
+			hook(file)
+		}
+	}
+	defer func() { interleave = func(string) {} }()
+	got, err := load(base, fixedNames, owner())
+	if got != (Switches{}) {
+		t.Fatalf("accepted %v", got)
+	}
+	return err
+}
+
+// A same-size change after the read (here a mode change that is still trusted)
+// is caught on the descriptor that was read, before the name is rechecked.
+func TestLoadRefusesAFileChangedWhileItWasRead(t *testing.T) {
+	err := interleaved(t, "read", func(file string) {
+		if err := os.Chmod(file, 0600); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if !errors.Is(err, ErrActivation) || !strings.Contains(err.Error(), "file changed while it was read") {
+		t.Fatal(err)
+	}
+}
+
+// A trusted, valid file renamed over the name after the read is refused: the
+// bytes read are not what the name now holds.
+func TestLoadRefusesAFileReplacedWhileItWasRead(t *testing.T) {
+	err := interleaved(t, "checked", func(file string) {
+		other := file + ".new"
+		if err := os.WriteFile(other, []byte(enabled), 0644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(other, 0644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Rename(other, file); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if !errors.Is(err, ErrActivation) || !strings.Contains(err.Error(), "file was replaced while it was read") {
+		t.Fatal(err)
+	}
 }

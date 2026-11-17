@@ -17,7 +17,8 @@ const (
 var fixedNames = []string{"etc", "superbench", "activation.json"}
 
 // Load reads FixedPath. An absent file, or an absent /etc/superbench, yields the
-// all-false defaults. A present file that fails any check refuses startup.
+// all-false defaults whatever its directories look like. A present file that
+// fails any check refuses startup.
 func Load() (Switches, error) { return load("/", fixedNames, 0) }
 
 type leafIdentity struct {
@@ -27,9 +28,16 @@ type leafIdentity struct {
 	Modified, Changed    syscall.Timespec
 }
 
-// Every ancestor from the base is held open and must be a directory owned by
-// the owner (root in production) without group or world write, like the
-// installed payload policy and service registry. Symlinks are never followed.
+// interleave runs at the two points where a concurrent writer could change the
+// file ("read") or rebind its name ("checked"); only tests replace it.
+var interleave = func(point string) {}
+
+// Every ancestor from the base is held open while the name is resolved, and
+// symlinks are never followed. Only a present file needs trusted ancestors: then
+// each held directory must be owned by the owner (root in production) without
+// group or world write, like the installed payload policy and service registry.
+// The checks read the held descriptors, so they cover the directories actually
+// walked, not a later binding of their names.
 func load(base string, names []string, owner uint32) (Switches, error) {
 	fd, err := syscall.Open(base, directoryFlags, 0)
 	if err != nil {
@@ -41,9 +49,6 @@ func load(base string, names []string, owner uint32) (Switches, error) {
 			_ = f.Close()
 		}
 	}()
-	if err = trustedDirectory(held[0], owner); err != nil {
-		return Switches{}, err
-	}
 	for _, name := range names[:len(names)-1] {
 		fd, err = syscall.Openat(int(held[len(held)-1].Fd()), name, directoryFlags, 0)
 		if errors.Is(err, syscall.ENOENT) {
@@ -53,9 +58,6 @@ func load(base string, names []string, owner uint32) (Switches, error) {
 			return Switches{}, refuse("open directory " + name + ": " + err.Error())
 		}
 		held = append(held, os.NewFile(uintptr(fd), name))
-		if err = trustedDirectory(held[len(held)-1], owner); err != nil {
-			return Switches{}, err
-		}
 	}
 	parent, name := held[len(held)-1], names[len(names)-1]
 	fd, err = syscall.Openat(int(parent.Fd()), name, leafFlags, 0)
@@ -67,6 +69,11 @@ func load(base string, names []string, owner uint32) (Switches, error) {
 	}
 	file := os.NewFile(uintptr(fd), name)
 	defer file.Close()
+	for _, directory := range held {
+		if err = trustedDirectory(directory, owner); err != nil {
+			return Switches{}, err
+		}
+	}
 	before, err := trustedLeaf(file, owner)
 	if err != nil {
 		return Switches{}, err
@@ -75,10 +82,12 @@ func load(base string, names []string, owner uint32) (Switches, error) {
 	if err != nil {
 		return Switches{}, refuse("read: " + err.Error())
 	}
+	interleave("read")
 	after, err := trustedLeaf(file, owner)
 	if err != nil || after != before || int64(len(raw)) != before.Size {
 		return Switches{}, refuse("file changed while it was read")
 	}
+	interleave("checked")
 	// The name must still bind to the file that was read.
 	fd, err = syscall.Openat(int(parent.Fd()), name, leafFlags, 0)
 	if err != nil {
