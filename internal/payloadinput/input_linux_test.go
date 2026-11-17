@@ -1,6 +1,6 @@
 //go:build linux
 
-package payloadexec
+package payloadinput
 
 import (
 	"bytes"
@@ -14,6 +14,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/finiteio"
 )
 
 func inputFDs(t *testing.T) int {
@@ -33,9 +35,8 @@ func inputFDs(t *testing.T) int {
 }
 func TestFiniteInputIsImmutableReadOnlyAnonymousAndClosed(t *testing.T) {
 	before := inputFDs(t)
-	r := launchRequest()
-	r.Input = bytes.Repeat([]byte{0, 255, 1}, 30000)
-	f, err := openPayloadInput(r)
+	input := bytes.Repeat([]byte{0, 255, 1}, 30000)
+	f, err := Open(input)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,10 +66,10 @@ func TestFiniteInputIsImmutableReadOnlyAnonymousAndClosed(t *testing.T) {
 		t.Fatalf("input seals ineffective: %v %v", err, closeErr)
 	}
 	got, err := io.ReadAll(f)
-	if err != nil || !bytes.Equal(got, r.Input) {
+	if err != nil || !bytes.Equal(got, input) {
 		t.Fatalf("opaque bytes/EOF: %v", err)
 	}
-	if err := checkPayloadInput(f); !errors.Is(err, ErrFrame) {
+	if err := Check(f); !errors.Is(err, ErrInput) {
 		t.Fatalf("consumed input accepted: %v", err)
 	}
 	if err := f.Close(); err != nil {
@@ -84,16 +85,14 @@ func TestFiniteInputIsImmutableReadOnlyAnonymousAndClosed(t *testing.T) {
 }
 func TestFiniteInputDefaultAndRefusalsAllocateNothing(t *testing.T) {
 	before := inputFDs(t)
-	f, err := openPayloadInput(launchRequest())
+	f, err := Open(nil)
 	if err != nil || f != nil {
 		t.Fatalf("default EOF changed: %v", err)
 	}
-	r := launchRequest()
-	r.Input = make([]byte, MaxPayloadInput+1)
-	if f, err := openPayloadInput(r); f != nil || !errors.Is(err, ErrRequest) {
+	if f, err := Open(make([]byte, finiteio.MaxBytes+1)); f != nil || !errors.Is(err, ErrInput) {
 		t.Fatalf("oversized input allocated: %v", err)
 	}
-	if err := bindPayloadInput(nil); !errors.Is(err, ErrFrame) {
+	if err := Bind(nil); !errors.Is(err, ErrInput) {
 		t.Fatalf("nil input: %v", err)
 	}
 	pipe, other, err := os.Pipe()
@@ -102,7 +101,7 @@ func TestFiniteInputDefaultAndRefusalsAllocateNothing(t *testing.T) {
 	}
 	defer pipe.Close()
 	defer other.Close()
-	if err := bindPayloadInput(pipe); !errors.Is(err, ErrFrame) {
+	if err := Bind(pipe); !errors.Is(err, ErrInput) {
 		t.Fatalf("unsealed pipe accepted: %v", err)
 	}
 	if got := inputFDs(t); got != before {
@@ -112,7 +111,7 @@ func TestFiniteInputDefaultAndRefusalsAllocateNothing(t *testing.T) {
 func TestFiniteInputExecSurvivesDescriptorClosureAndHasExactEOF(t *testing.T) {
 	if os.Getenv("SB_FINITE_INPUT_CHILD") == "1" {
 		f := os.NewFile(3, "sealed test input")
-		if err := bindPayloadInput(f); err != nil {
+		if err := Bind(f); err != nil {
 			t.Fatal(err)
 		}
 		f.Close()
@@ -125,9 +124,8 @@ func TestFiniteInputExecSurvivesDescriptorClosureAndHasExactEOF(t *testing.T) {
 		}
 		os.Exit(0)
 	}
-	r := launchRequest()
-	r.Input = bytes.Repeat([]byte{0, 255, 'x'}, 30000)
-	f, err := openPayloadInput(r)
+	input := bytes.Repeat([]byte{0, 255, 'x'}, 30000)
+	f, err := Open(input)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,23 +137,10 @@ func TestFiniteInputExecSurvivesDescriptorClosureAndHasExactEOF(t *testing.T) {
 	cmd.ExtraFiles = []*os.File{f}
 	cmd.WaitDelay = time.Second
 	got, err := cmd.Output()
-	if err != nil || !bytes.Equal(got, r.Input) {
+	if err != nil || !bytes.Equal(got, input) {
 		t.Fatalf("exec input/EOF: bytes=%d err=%v", len(got), err)
 	}
 }
-func TestFinitePayloadFrameStillRequiresExactEnvelopeEOF(t *testing.T) {
-	r := launchRequest()
-	r.Input = []byte{0, 255, '\n'}
-	raw := frameBytes(t, r)
-	got, err := readFrame(framePipe(t, raw), time.Second)
-	if err != nil || !bytes.Equal(got.Input, r.Input) {
-		t.Fatalf("finite frame: %v", err)
-	}
-	if _, err := readFrame(framePipe(t, append(raw, 1)), time.Second); !errors.Is(err, ErrFrame) {
-		t.Fatalf("extra streamed byte accepted: %v", err)
-	}
-}
-
 func TestFiniteInputReopenFailureClosesAnonymousStorage(t *testing.T) {
 	if os.Getenv("SB_FINITE_INPUT_FAILURE_CHILD") == "1" {
 		var limit syscall.Rlimit
@@ -184,13 +169,11 @@ func TestFiniteInputReopenFailureClosesAnonymousStorage(t *testing.T) {
 			t.Fatal(err)
 		}
 		files = files[:len(files)-1]
-		r := launchRequest()
-		r.Input = []byte{1}
-		f, err := openPayloadInput(r)
+		f, err := Open([]byte{1})
 		for _, held := range files {
 			held.Close()
 		}
-		if f != nil || !errors.Is(err, ErrFrame) || !errors.Is(err, syscall.EMFILE) {
+		if f != nil || !errors.Is(err, ErrInput) || !errors.Is(err, syscall.EMFILE) {
 			t.Fatalf("expected readonly reopen EMFILE: %v", err)
 		}
 		if got := inputFDs(t); got != 0 {
