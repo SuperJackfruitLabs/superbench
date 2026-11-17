@@ -1,0 +1,59 @@
+---
+title: SuperBench
+description: Pre-release docs for SuperBench, an experimental single-host prototype. One task, one git worktree on a host, kept warm between holders and checkpointed to the remote. Not released yet.
+template: splash
+status: wet paint
+---
+
+import BentoHome from '@superjackfruitlabs/vibekit-docs/components/BentoHome.astro';
+import FlowSteps from '@superjackfruitlabs/vibekit-docs/components/FlowSteps.astro';
+import WetPaint from '@superjackfruitlabs/vibekit-docs/components/WetPaint.astro';
+
+<BentoHome
+  claim="One task, one bench."
+  sub="A bench is one task's git worktree on one host, kept warm between holders. SuperBench creates it, leases it to one holder at a time, and will not let it go until the work is committed, pushed and confirmed on the remote. It is an experimental prototype for trusted repositories, and it is not released yet."
+  actions={[
+    { text: 'What SuperBench is', link: '/start/what-it-is/' },
+    { text: 'Status', link: '/start/status/', variant: 'secondary' },
+  ]}
+  quickstart={{ label: 'Quick start: there is none yet' }}
+  ask={false}
+  agent={{
+    prompt:
+      "I'm reading about SuperBench, which is not released yet. Read https://docs.superbench.dev/llms.txt to see what its pre-release docs cover, and https://docs.superbench.dev/llms-full.txt for every page in one file.\n\nThen explain what a bench is and what its leases do and do not protect against.\n\nName the docs page each answer comes from, and tell me when the docs do not cover something.",
+  }}
+  flowTitle="A bench's life (step through it; it waits for you)"
+>
+  <div slot="quickstart">
+    <p>
+      There is no supported installation yet, and nothing here is meant for use outside
+      development. Start with <a href="/start/status/">Status</a>, which lists what works on
+      <code>main</code>, what is partial and what is not built.
+    </p>
+  </div>
+  <FlowSteps
+    label="Bench step"
+    steps={[
+      { label: 'Create', body: 'bench create registers a git worktree for the task from a shared mirror, on its own task branch (bench/<key> by default), and prepares it. On a managed Linux host it also gets its own byte and inode caps.', items: [{ text: 'fix-login', card: true }] },
+      { label: 'Lease', body: 'bench lease hands the bench to one holder and prints a lease token once. Other bench acquisitions are refused while it is held. The lease is cooperative: it does not stop direct edits or other processes running as the same user, and it never expires on its own.', items: [{ text: 'first-agent', card: true }] },
+      { label: 'Checkpoint', body: 'The holder commits as usual. bench checkpoint pushes the existing HEAD to the task branch without force and confirms the remote has exactly that commit. It never makes a commit; a dirty or untracked tree is refused.', items: [{ text: 'HEAD on remote', win: true }] },
+      { label: 'Release', body: 'bench release needs a clean worktree whose HEAD is checkpointed and still on the remote. Then the next holder can lease the same warm checkout.', items: [{ text: 'second-agent', card: true }] },
+    ]}
+  />
+</BentoHome>
+
+## What these docs are
+
+These are pre-release docs. They describe what the source on the `main` branch does, and they
+are written from the repository's own README, its `docs/` folder, the `bench` and `benchd` help
+and the API code. Where the repository says something is partial or unverified, so do these
+pages. They will be refreshed at the first release.
+
+<WetPaint>
+  SuperBench is an experimental single-host prototype for trusted repositories. Leases are
+  cooperative, nothing in it isolates untrusted code, and there is no supported installation.
+  [Status](/start/status/) lists what is done, what is partial and what is not built.
+</WetPaint>
+
+For agents, the same docs are plain text: [`/llms.txt`](/llms.txt) indexes them, and
+[`/llms-full.txt`](/llms-full.txt) is every page in one file.

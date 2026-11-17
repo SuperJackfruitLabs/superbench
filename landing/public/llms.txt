@@ -15,6 +15,7 @@ SuperBench is a command-line tool (`bench`) and a local daemon that create a git
 
 - [Home](https://superbench.dev)
 - [Source repository](https://github.com/SuperJackfruitLabs/superbench)
+- [Pre-release docs](https://docs.superbench.dev): what main does today, refreshed at the first release; every page in one file at https://docs.superbench.dev/llms-full.txt
 - [README](https://github.com/SuperJackfruitLabs/superbench#readme): what it does today, and what it does not
 - [Release feed](https://github.com/SuperJackfruitLabs/superbench/releases.atom): subscribe to hear about the first release
 

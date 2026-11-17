@@ -1,0 +1,27 @@
+{
+  "name": "@superbench/docs",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev --port 4511",
+    "build": "node scripts/check-claims.mjs && astro check && astro build && node scripts/check-copy.mjs && node scripts/check-links.mjs",
+    "preview": "astro preview --port 4511",
+    "check": "astro check",
+    "check:claims": "node scripts/check-claims.mjs",
+    "check:copy": "node scripts/check-copy.mjs",
+    "check:links": "node scripts/check-links.mjs"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "^0.42.0",
+    "@superjackfruitlabs/vibekit-docs": "^0.0.5",
+    "@superjackfruitlabs/vibekit-frame": "^0.0.17",
+    "@superjackfruitlabs/vibekit-ui": "^0.0.19",
+    "astro": "^7.3.2",
+    "starlight-llms-txt": "^0.12.0"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.12",
+    "typescript": "^5.9.3"
+  }
+}

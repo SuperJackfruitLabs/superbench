@@ -1,0 +1,34 @@
+---
+// The pre-release banner, on every page. It replaces Starlight's Banner, which shows only when a
+// page sets `banner:` in its frontmatter; here no page can leave it out. scripts/check-copy.mjs
+// fails the build when a built page lacks it. At the first release this banner is revised with
+// the rest of the docs, not deleted on its own.
+---
+
+<div class="sl-banner sb-prerelease" role="note" aria-label="Not released yet" data-pagefind-ignore>
+  <strong>Not released yet.</strong> SuperBench is an experimental single-host prototype under
+  active development. Nothing is released or supported for use yet. These docs describe the
+  <code>main</code> branch and will be refreshed at the first release.
+</div>
+
+<style>
+  @layer starlight.core {
+    .sl-banner {
+      --__sl-banner-text: var(--sl-color-white);
+      padding: var(--sl-nav-pad-y) var(--sl-nav-pad-x);
+      background-color: color-mix(in oklab, var(--sjl-status-wet-paint, var(--sl-color-accent)) 26%, var(--sl-color-black));
+      border-block-end: 1px solid color-mix(in oklab, var(--sjl-status-wet-paint, var(--sl-color-accent)) 55%, transparent);
+      color: var(--__sl-banner-text);
+      line-height: var(--sl-line-height-headings);
+      text-align: center;
+      text-wrap: balance;
+      font-size: var(--sl-text-sm);
+    }
+    .sl-banner code {
+      font-size: 0.9em;
+      padding: 0.05em 0.3em;
+      border-radius: 4px;
+      background: color-mix(in oklab, var(--sl-color-white) 10%, transparent);
+    }
+  }
+</style>

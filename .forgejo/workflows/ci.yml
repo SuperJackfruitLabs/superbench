@@ -76,3 +76,36 @@ jobs:
         run: |
           npm ci --no-audit --no-fund
           npm run build
+
+  # docs.superbench.dev (docs-site/): built on pull requests that touch it, or the Go source its
+  # claims check reads. Its own npm tree. It deploys from the GitHub mirror, not from here.
+  docs:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Did this pull request touch docs-site/ or the source it checks?
+        id: changed
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if git diff --quiet "$BASE" HEAD -- docs-site/ cmd/bench/ cmd/benchd/ internal/protocolv2/ internal/setup/ internal/cachepolicy/ .forgejo/workflows/ci.yml; then
+            echo "touched=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "touched=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.changed.outputs.touched == 'true'
+        uses: actions/setup-node@v4
+        with:
+          # Astro 7 needs Node 22.23.4 or newer; a runner's cached 22 can be older.
+          node-version: 24
+      - name: Check the claims, build the docs and check the copy and links
+        if: steps.changed.outputs.touched == 'true'
+        working-directory: docs-site
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
