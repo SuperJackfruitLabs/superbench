@@ -257,8 +257,14 @@ process can ptrace it) and sets `no_new_privs`. It then lists `/proc/self/fd`
 and requires only 0-2, and requires `/proc/self/stat` to show it leading its own
 session with no controlling tty. It proves through the system calls and `/proc/self/status` that
 it holds exactly the daemon's uid and gid in every slot, no groups and empty
-capability sets, and refuses root. Last, it requires its session keyring to be
-live and not the serial root passed, so it never holds root's keyring. It reads one bounded
+capability sets, and refuses root. `/proc/self/status` must also show no
+tracer. A process that attached between the exec and the worker becoming
+non-dumpable stays attached, so this check closes that window; no attach can
+succeed after it. Last, it requires its session keyring to be live and not the
+serial root passed, so it never holds root's keyring. Only then does it write a
+fixed ready line, and root sends the request only after reading that exact line.
+Root removes the worker's cgroup on every return path. If bench-quota itself
+dies, `Pdeathsig` kills the worker, and the next run sweeps the empty cgroup. It reads one bounded
 request frame and writes one bounded reply, which root decodes as data and
 quotes when it reports the worker's diagnostics.
 

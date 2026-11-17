@@ -30,6 +30,10 @@ const (
 // dispatched before any flag or policy parsing.
 const Command = "clean-worker"
 
+// Ready is the worker's first output, written only after every self-check has
+// passed. Root sends the request only after reading exactly this line.
+const Ready = "superbench.clean-worker.ready.v1\n"
+
 // MaxFrame bounds one request or reply: an approved tree plus per-entry owners.
 const MaxFrame = 2 * reap.MaxManifest
 

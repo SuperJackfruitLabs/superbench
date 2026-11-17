@@ -3,6 +3,7 @@
 package freshrecovery
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"syscall"
 	"testing"
 
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/cleanworker"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/payloadpolicy"
 	"golang.org/x/sys/unix"
 )
@@ -145,5 +147,39 @@ func TestFreshKeyringJoinsAnAnonymousKeyringAndReportsTheOld(t *testing.T) {
 		if _, err := freshKeyring(f); err == nil {
 			t.Errorf("%s accepted", name)
 		}
+	}
+}
+
+type recorded struct {
+	bytes.Buffer
+	closed bool
+}
+
+func (r *recorded) Close() error { r.closed = true; return nil }
+
+// The request reaches the worker only after its exact ready line: a worker
+// that refused, died or printed anything else gets nothing.
+func TestExchangeSendsTheRequestOnlyAfterTheReadyLine(t *testing.T) {
+	frame := []byte(`{"request":true}`)
+	in := &recorded{}
+	out, err := exchange(strings.NewReader(cleanworker.Ready+`{"reply":true}`), in, frame)
+	if err != nil || string(out) != `{"reply":true}` || in.String() != string(frame) || !in.closed {
+		t.Fatalf("ready worker: %q %q %v", out, in.String(), err)
+	}
+	for name, stdout := range map[string]string{
+		"refused":      "",
+		"partial":      cleanworker.Ready[:10],
+		"other line":   strings.Repeat("x", len(cleanworker.Ready)) + "{}",
+		"reply first":  `{"Version":"superbench.clean-worker.v1"}` + cleanworker.Ready,
+		"ready, oddly": strings.ToUpper(cleanworker.Ready),
+	} {
+		in := &recorded{}
+		if _, err := exchange(strings.NewReader(stdout), in, frame); !errors.Is(err, ErrRecovery) || in.Len() != 0 || !in.closed {
+			t.Errorf("%s: request sent or stdin left open: %q %v", name, in.String(), err)
+		}
+	}
+	big := cleanworker.Ready + strings.Repeat(" ", cleanworker.MaxFrame+1)
+	if _, err := exchange(strings.NewReader(big), &recorded{}, frame); !errors.Is(err, ErrRecovery) {
+		t.Error("oversize reply accepted", err)
 	}
 }

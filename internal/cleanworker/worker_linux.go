@@ -59,6 +59,9 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	if err = checkKeyring(want.Keyring); err != nil {
 		return err
 	}
+	if _, err = io.WriteString(stdout, Ready); err != nil {
+		return err
+	}
 	raw, err := io.ReadAll(io.LimitReader(stdin, MaxFrame+1))
 	if err != nil {
 		return err

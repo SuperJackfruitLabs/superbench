@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -87,19 +88,65 @@ func spawn(ctx context.Context, p payloadpolicy.Policy, frame []byte, s *scope) 
 	cmd.Args = append([]string{"bench-quota", cleanworker.Command}, cleanworker.Arguments(cleanworker.Identity{UID: p.DaemonUID, GID: p.DaemonGID, Keyring: rootKeyring})...)
 	cmd.Env = []string{}
 	cmd.Dir = "/"
-	cmd.Stdin = bytes.NewReader(frame)
-	out, diagnostic := &capped{max: cleanworker.MaxFrame}, &capped{max: 64 << 10}
-	cmd.Stdout, cmd.Stderr = out, diagnostic
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, err
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	diagnostic := &capped{max: 64 << 10}
+	cmd.Stderr = diagnostic
 	cmd.SysProcAttr = workerAttributes(p, s.fd)
 	cmd.Cancel = s.kill
 	cmd.WaitDelay = 2 * time.Second
-	if err = cmd.Run(); err != nil {
-		return nil, workerError(err, diagnostic.raw)
+	if err = cmd.Start(); err != nil {
+		return nil, err
 	}
-	if out.over || diagnostic.over {
+	// A refusal, a kill or a cancelled context closes the worker's stdout, so
+	// the exchange cannot outlive the worker. Wait follows every read.
+	out, exchangeErr := exchange(stdout, stdin, frame)
+	if exchangeErr != nil {
+		_ = s.kill()
+	}
+	waitErr := cmd.Wait()
+	if waitErr != nil || exchangeErr != nil {
+		return nil, errors.Join(exchangeErr, workerError(errors.Join(waitErr, ErrRecovery), diagnostic.raw))
+	}
+	if diagnostic.over {
 		return nil, ErrRecovery
 	}
-	return out.raw, nil
+	return out, nil
+}
+
+// exchange sends the request only after the worker has reported, with the
+// exact ready line, that every self-check passed: it is non-dumpable and
+// untraced, in its own session, with only stdio, exactly the daemon's
+// credentials and a keyring that is not root's. Nothing reaches a worker
+// that refused or was traced before it became non-dumpable. It then reads
+// the bounded reply to EOF.
+func exchange(stdout io.Reader, stdin io.WriteCloser, frame []byte) ([]byte, error) {
+	ready := make([]byte, len(cleanworker.Ready))
+	if _, err := io.ReadFull(stdout, ready); err != nil || string(ready) != cleanworker.Ready {
+		stdin.Close()
+		return nil, errors.Join(ErrRecovery, err)
+	}
+	_, err := stdin.Write(frame)
+	if closeErr := stdin.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return nil, err
+	}
+	out, err := io.ReadAll(io.LimitReader(stdout, cleanworker.MaxFrame+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(out) > cleanworker.MaxFrame {
+		return nil, ErrRecovery
+	}
+	return out, nil
 }
 
 // workerAttributes are the worker's process attributes: the daemon's
@@ -326,7 +373,7 @@ func (s *scope) fence() error {
 	if err := s.kill(); err != nil {
 		return err
 	}
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(10 * time.Second)
 	for {
 		raw, err := os.ReadFile(filepath.Join(s.path, "cgroup.events"))
 		if err != nil {

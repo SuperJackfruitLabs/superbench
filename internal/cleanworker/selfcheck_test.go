@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-const goodStatus = "Name:\tbench-quota\nUmask:\t0022\nState:\tR (running)\nUid:\t61001\t61001\t61001\t61001\nGid:\t61003\t61003\t61003\t61003\nFDSize:\t64\nGroups:\t\nCapInh:\t0000000000000000\nCapPrm:\t0000000000000000\nCapEff:\t0000000000000000\nCapBnd:\t0000000000000000\nCapAmb:\t0000000000000000\nNoNewPrivs:\t1\nSeccomp:\t0\n"
+const goodStatus = "Name:\tbench-quota\nUmask:\t0022\nState:\tR (running)\nTgid:\t4242\nPid:\t4242\nPPid:\t4100\nTracerPid:\t0\nUid:\t61001\t61001\t61001\t61001\nGid:\t61003\t61003\t61003\t61003\nFDSize:\t64\nGroups:\t\nCapInh:\t0000000000000000\nCapPrm:\t0000000000000000\nCapEff:\t0000000000000000\nCapBnd:\t0000000000000000\nCapAmb:\t0000000000000000\nNoNewPrivs:\t1\nSeccomp:\t0\n"
 
 var daemon = Identity{61001, 61003, 0}
 
@@ -15,20 +15,22 @@ func TestStatusRefusesAnyCredentialTheDropDidNotProduce(t *testing.T) {
 		t.Fatal("dropped status refused", err)
 	}
 	for name, c := range map[string]struct{ from, to, reason string }{
-		"real-uid":      {"Uid:\t61001", "Uid:\t1000", "Uid"},
-		"saved-uid":     {"61001\t61001\nGid", "61001\t0\nGid", "Uid"},
-		"fs-gid":        {"61003\t61003\nFDSize", "61003\t0\nFDSize", "Gid"},
-		"extra-group":   {"Groups:\t\n", "Groups:\t27\n", "Groups"},
-		"root-group":    {"Groups:\t\n", "Groups:\t0\n", "Groups"},
-		"inheritable":   {"CapInh:\t0000000000000000", "CapInh:\t0000000000000001", "CapInh"},
-		"permitted":     {"CapPrm:\t0000000000000000", "CapPrm:\t0000000000000400", "CapPrm"},
-		"effective":     {"CapEff:\t0000000000000000", "CapEff:\t000001ffffffffff", "CapEff"},
-		"bounding":      {"CapBnd:\t0000000000000000", "CapBnd:\t000001ffffffffff", "CapBnd"},
-		"ambient":       {"CapAmb:\t0000000000000000", "CapAmb:\t0000000000000001", "CapAmb"},
-		"privs":         {"NoNewPrivs:\t1", "NoNewPrivs:\t0", "NoNewPrivs"},
-		"missing-privs": {"NoNewPrivs:\t1\n", "", "NoNewPrivs"},
-		"missing-uid":   {"Uid:\t61001\t61001\t61001\t61001\n", "", "Uid"},
-		"duplicate":     {"Groups:\t\n", "Groups:\t\nGroups:\t\n", "duplicate"},
+		"traced":         {"TracerPid:\t0", "TracerPid:\t5150", "TracerPid"},
+		"no-tracer-line": {"TracerPid:\t0\n", "", "TracerPid"},
+		"real-uid":       {"Uid:\t61001", "Uid:\t1000", "Uid"},
+		"saved-uid":      {"61001\t61001\nGid", "61001\t0\nGid", "Uid"},
+		"fs-gid":         {"61003\t61003\nFDSize", "61003\t0\nFDSize", "Gid"},
+		"extra-group":    {"Groups:\t\n", "Groups:\t27\n", "Groups"},
+		"root-group":     {"Groups:\t\n", "Groups:\t0\n", "Groups"},
+		"inheritable":    {"CapInh:\t0000000000000000", "CapInh:\t0000000000000001", "CapInh"},
+		"permitted":      {"CapPrm:\t0000000000000000", "CapPrm:\t0000000000000400", "CapPrm"},
+		"effective":      {"CapEff:\t0000000000000000", "CapEff:\t000001ffffffffff", "CapEff"},
+		"bounding":       {"CapBnd:\t0000000000000000", "CapBnd:\t000001ffffffffff", "CapBnd"},
+		"ambient":        {"CapAmb:\t0000000000000000", "CapAmb:\t0000000000000001", "CapAmb"},
+		"privs":          {"NoNewPrivs:\t1", "NoNewPrivs:\t0", "NoNewPrivs"},
+		"missing-privs":  {"NoNewPrivs:\t1\n", "", "NoNewPrivs"},
+		"missing-uid":    {"Uid:\t61001\t61001\t61001\t61001\n", "", "Uid"},
+		"duplicate":      {"Groups:\t\n", "Groups:\t\nGroups:\t\n", "duplicate"},
 	} {
 		raw := strings.Replace(goodStatus, c.from, c.to, 1)
 		if raw == goodStatus {
