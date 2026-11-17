@@ -241,6 +241,8 @@ def check_data_mount(path=DATA_ROOT, mountinfo="/proc/self/mountinfo", stat=os.s
         raise ValueError(path + " must be the root of a mounted XFS filesystem" + hint)
     if not {"prjquota", "pquota"} & set(found[2]) or "pqnoenforce" in found[2]:
         raise ValueError(path + " must be mounted with enforced project quotas (prjquota)" + hint)
+    if "nouuid" in found[2]:
+        raise ValueError(path + " must not be mounted with nouuid: the ledger identifies the volume by its UUID" + hint)
 
 
 UNIT_INSTALLED = ("the service unit is already installed; the indexed ledger can only be "

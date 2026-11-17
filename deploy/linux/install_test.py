@@ -530,6 +530,7 @@ class IndexedStorage(unittest.TestCase):
                 (good.replace(" / " + DATA_ROOT, " /sub " + DATA_ROOT), "root of a mounted XFS"),
                 (good.replace(",prjquota", ""), "enforced project quotas"),
                 (good.replace("prjquota", "prjquota,pqnoenforce"), "enforced project quotas"),
+                (good.replace("prjquota", "nouuid,prjquota"), "must not be mounted with nouuid"),
                 (good + "40 36 0:5 / " + DATA_ROOT + " rw - tmpfs tmpfs rw\n", "root of a mounted XFS")]:
             info.write_text(bad)
             with self.assertRaisesRegex(ValueError, message, msg=bad):
