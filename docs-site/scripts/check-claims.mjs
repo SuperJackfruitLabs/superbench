@@ -127,7 +127,7 @@ for (const name of wsNamed) if (!wsFlags.some((f) => f.name === name)) fail(`ref
 
 // benchd: every flag, with its default where the source states one plainly.
 const benchd = read('cmd/benchd/main.go');
-const daemonFlags = flagsOf(benchd, 'flag');
+const daemonFlags = flagsOf(benchd, 'flags');
 if (daemonFlags.length < 8) fail(`read only ${daemonFlags.length} flags from cmd/benchd/main.go`);
 const daemonRows = new Map(rows(page('reference/benchd.md')).filter((r) => r[0].startsWith('`--')).map((r) => [codes(r[0])[0].slice(2), r]));
 for (const f of daemonFlags) {
