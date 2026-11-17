@@ -75,6 +75,8 @@ func TestArchitecture(t *testing.T) {
 				"internal/allocationledger":            {"internal/quotapolicy"},
 				"internal/freshcleanup":                {"internal/payloadpolicy", "internal/quotaoperation", "internal/reap"},
 				"internal/freshretirement":             {"internal/allocationledger", "internal/hoststorage", "internal/storagecustody", "internal/storageproof"},
+				"internal/freshrecovery":               {"internal/freshretirement", "internal/hoststorage", "internal/payloadbootstrap", "internal/retainedfile", "internal/storagecustody"},
+				"internal/freshrecovery/fixture":       {"internal/freshrecovery", "internal/freshretirement", "internal/hoststorage", "internal/payloadbootstrap", "internal/payloadexec", "internal/quotahelper", "internal/quotaoperation", "internal/quotaoperationcontrol", "internal/quotaoperationjournal"},
 				"internal/hoststorage":                 {"internal/allocationledger", "internal/quotaoperationjournal", "internal/storagecustody", "internal/quotapolicy", "internal/storageproof", "internal/hostlayout", "internal/hostpolicy", "internal/quotahelper", "internal/model", "internal/output"},
 				"internal/payloadcache":                {"internal/cachepolicy", "internal/payloadpolicy"},
 				"internal/workspacebootstrap":          {"internal/hoststorage", "internal/model", "internal/operationcontrol", "internal/payloadbootstrap", "internal/quotahelper", "internal/serviceidentity", "internal/workspacecopy", "internal/workspacepolicy"},
@@ -122,7 +124,7 @@ func TestArchitecture(t *testing.T) {
 				"cmd/bench":                            {"internal/buildinfo", "internal/localprep", "internal/crosshostflow", "internal/crosshost", "internal/handoffjournal", "internal/mirroradmin", "internal/mirrorstage", "internal/workspacetransfer", "internal/workspacerepair", "internal/workspaceprep", "internal/protocolv2", "internal/workspaceops", "internal/workspaceapi", "internal/workspacearchive", "internal/autoarchive", "internal/bench", "internal/client", "internal/protocol", "internal/reap", "internal/retention", "internal/history", "internal/maintenance"},
 				"cmd/benchd":                           {"internal/buildinfo", "internal/bench", "internal/service"},
 				"cmd/bench-payload":                    {"internal/payloadexec"},
-				"cmd/bench-quota":                      {"internal/payloadbootstrap", "internal/hoststorage", "internal/quotahelper", "internal/quotaoperation", "internal/quotaoperationcontrol"},
+				"cmd/bench-quota":                      {"internal/freshrecovery", "internal/payloadbootstrap", "internal/hoststorage", "internal/quotahelper", "internal/quotaoperation", "internal/quotaoperationcontrol"},
 
 				"internal/quotaoperationjournal": {"internal/quotaoperation"},
 				"internal/quotaoperationcontrol": {"internal/hoststorage", "internal/quotaoperationjournal", "internal/payloadexec", "internal/serviceidentity", "internal/storagebootstrap", "internal/storagecustody"},
@@ -140,7 +142,7 @@ func TestArchitecture(t *testing.T) {
 			if p == "github.com/pelletier/go-toml/v2" && rel == "internal/setup" && filepath.Base(path) == "config.go" {
 				allowed = true
 			}
-			if p == "golang.org/x/sys/unix" && (rel == "internal/service" && filepath.Base(path) == "peer_darwin.go" || rel == "internal/retainedfile" && filepath.Base(path) == "publish_linux.go") {
+			if p == "golang.org/x/sys/unix" && (rel == "internal/service" && filepath.Base(path) == "peer_darwin.go" || rel == "internal/retainedfile" && filepath.Base(path) == "publish_linux.go" || rel == "internal/freshretirement" && filepath.Base(path) == "retire_linux.go" || rel == "internal/freshrecovery" && strings.HasSuffix(path, "_linux.go")) {
 				allowed = true
 			}
 			if !allowed {
