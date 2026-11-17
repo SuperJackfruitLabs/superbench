@@ -69,7 +69,7 @@ func (p Policy) retireApproved(ctx context.Context, a RetirementApproval, verify
 		}
 		expected := a.Storage
 		expected.ConfigSHA256 = "" // independently bound by Worker, not root policy input
-		if current != expected {
+		if expected.Matches(current) != nil {
 			return errors.New("retirement storage authority changed")
 		}
 		return nil

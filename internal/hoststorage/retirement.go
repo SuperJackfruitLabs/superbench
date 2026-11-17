@@ -111,18 +111,21 @@ func CaptureRetirementRoot(s StorageIdentity) (RetirementRoot, error) {
 	}
 	st = leaf.Sys().(*syscall.Stat_t)
 	r.Device, r.Inode, r.Mode = uint64(st.Dev), st.Ino, uint32(leaf.Mode())
-	if r.Device != s.Device {
+	if r.Device != r.ParentDevice {
 		return RetirementRoot{}, errors.New("retirement root is on another filesystem")
 	}
 	return r, nil
 }
 
+// openRetirementParent compares a managed identity's and a retained root's
+// device numbers only with this boot's data root device: a reboot can renumber
+// the data device, and the UUID binds the volume (Identity.Matches).
 func openRetirementParent(s StorageIdentity, expected *RetirementRoot) (*os.Root, error) {
 	device, inode, err := physicalStorageRoot(s.Root)
 	if err != nil {
 		return nil, err
 	}
-	if device != s.Device || inode != s.Inode {
+	if device != s.Device && !s.Managed || inode != s.Inode {
 		return nil, errors.New("retirement data root identity changed")
 	}
 	path := filepath.Join(s.Root, "benches")
@@ -143,11 +146,11 @@ func openRetirementParent(s StorageIdentity, expected *RetirementRoot) (*os.Root
 		return nil, err
 	}
 	st := info.Sys().(*syscall.Stat_t)
-	if !info.IsDir() || uint64(st.Dev) != s.Device {
+	if !info.IsDir() || uint64(st.Dev) != device {
 		parent.Close()
 		return nil, errors.New("retirement parent filesystem changed")
 	}
-	if expected != nil && (uint64(st.Dev) != expected.ParentDevice || st.Ino != expected.ParentInode || uint32(info.Mode()) != expected.ParentMode) {
+	if expected != nil && (uint64(st.Dev) != expected.ParentDevice && !s.Managed || st.Ino != expected.ParentInode || uint32(info.Mode()) != expected.ParentMode) {
 		parent.Close()
 		return nil, errors.New("retirement parent identity changed")
 	}
@@ -167,8 +170,12 @@ func checkRetirementRoot(parent *os.Root, a RetirementApproval, requireAbsent bo
 	if requireAbsent || a.Root.Absent {
 		return false, errors.New("retirement root reappeared; preserve it")
 	}
+	held, err := parent.Lstat(".")
+	if err != nil {
+		return false, err
+	}
 	st := info.Sys().(*syscall.Stat_t)
-	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || uint64(st.Dev) != a.Root.Device || st.Ino != a.Root.Inode || uint32(info.Mode()) != a.Root.Mode {
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || st.Dev != held.Sys().(*syscall.Stat_t).Dev || st.Ino != a.Root.Inode || uint32(info.Mode()) != a.Root.Mode {
 		return false, errors.New("approved retirement root was replaced or changed")
 	}
 	return false, nil

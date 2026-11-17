@@ -69,7 +69,7 @@ func leafAllowed(phase string, recorded [2]uint64, assigned uint32, o owners, de
 	if !private(n) || n.Device != device || o.daemonUID == 0 || o.daemonGID == 0 {
 		return ErrRecovery
 	}
-	atRecorded := recorded != [2]uint64{} && recorded == [2]uint64{n.Device, n.Inode}
+	atRecorded := atRecordedRoot(recorded, n)
 	switch phase {
 	case "reserved":
 		// The crash fell between mkdir and project -s, or before the intent advanced.
@@ -96,6 +96,16 @@ func leafAllowed(phase string, recorded [2]uint64, assigned uint32, o owners, de
 		return nil
 	}
 	return ErrRecovery
+}
+
+// atRecordedRoot reports a node at the intent's recorded root inode. The
+// recorded device is not compared: it was this boot's st_dev when the intent was
+// written, and a loop or block device can be renumbered at boot, exactly when a
+// crash leaves recovery to do. The node's device is compared instead with the
+// benches parent the selection pinned in this boot, and the selection's
+// authority binds the data volume by its UUID.
+func atRecordedRoot(recorded [2]uint64, n Node) bool {
+	return recorded != [2]uint64{} && recorded[1] == n.Inode
 }
 
 // fixedPrefix accepts only a prefix of Begin's fixed directories: each a private

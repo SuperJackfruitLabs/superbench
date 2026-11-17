@@ -67,6 +67,9 @@ func TestLeafPhaseOwnerAndModeRules(t *testing.T) {
 		"staging empty":             {"staging", recorded, Leaf{Node: daemonLeaf, ProjectID: assigned}},
 		"materialized empty":        {"materialized_unfenced", recorded, Leaf{Node: daemonLeaf, ProjectID: assigned}},
 		"staged empty":              {"staged", recorded, Leaf{Node: daemonLeaf, ProjectID: assigned}},
+		// The intent recorded the root before a reboot renumbered the data device.
+		"allocating (a) renumbered": {"allocating", [2]uint64{device + 7, 50}, Leaf{Node: root, ProjectID: assigned}},
+		"staged renumbered":         {"staged", [2]uint64{device + 7, 50}, Leaf{Node: daemonLeaf, ProjectID: assigned}},
 	} {
 		if err := leafAllowed(v.phase, v.recorded, assigned, daemon, device, fixed, v.leaf); err != nil {
 			t.Errorf("%s refused: %v", name, err)

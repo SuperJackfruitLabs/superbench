@@ -136,18 +136,26 @@ func (m Manager) missingCheckout(ctx context.Context, tx *sql.Tx, b *model.Bench
 
 // checkMissingRoot validates the surviving fixed parent even when the reviewed
 // root is absent. Reaping can remove only the exact frozen root, never adopt one.
+// The freeze's device numbers are not compared: a reboot can renumber the data
+// device. Parent and root must be on the data root's device in this boot, and
+// the storage identity binds that volume (by its UUID when managed).
 func checkMissingRoot(p MissingFreeze, reaping bool) error {
 	parent := filepath.Dir(p.Path)
 	physical, e := filepath.EvalSymlinks(parent)
 	if e != nil || physical != parent {
 		return errors.New("missing archive parent changed")
 	}
+	data, e := os.Lstat(filepath.Dir(parent))
+	if e != nil {
+		return e
+	}
+	device := data.Sys().(*syscall.Stat_t).Dev
 	st, e := os.Lstat(parent)
 	if e != nil {
 		return e
 	}
 	id := st.Sys().(*syscall.Stat_t)
-	if !st.IsDir() || uint64(id.Dev) != p.Root.ParentDevice || uint64(id.Ino) != p.Root.ParentInode || uint32(st.Mode()) != p.Root.ParentMode {
+	if !st.IsDir() || id.Dev != device || uint64(id.Ino) != p.Root.ParentInode || uint32(st.Mode()) != p.Root.ParentMode {
 		return errors.New("missing archive parent identity changed")
 	}
 	st, e = os.Lstat(p.Path)
@@ -166,7 +174,7 @@ func checkMissingRoot(p MissingFreeze, reaping bool) error {
 	id = st.Sys().(*syscall.Stat_t)
 	mode := uint32(st.Mode())
 	readonly := p.Root.Mode &^ 0222
-	if !st.IsDir() || st.Mode()&os.ModeSymlink != 0 || uint64(id.Dev) != p.Root.Device || uint64(id.Ino) != p.Root.Inode || mode != p.Root.Mode && mode != readonly && (!reaping || mode != readonly|0200) {
+	if !st.IsDir() || st.Mode()&os.ModeSymlink != 0 || id.Dev != device || uint64(id.Ino) != p.Root.Inode || mode != p.Root.Mode && mode != readonly && (!reaping || mode != readonly|0200) {
 		return errors.New("missing archive root identity changed")
 	}
 	for _, name := range p.Missing {

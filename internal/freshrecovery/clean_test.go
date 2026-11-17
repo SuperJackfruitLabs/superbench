@@ -20,6 +20,11 @@ func TestCleanOwnerFollowsThePhaseAndTheObservedLeaf(t *testing.T) {
 		if err != nil || got != want {
 			t.Errorf("%s: daemon leaf refused: %+v %v", phase, got, err)
 		}
+		// The intent recorded the root before a reboot renumbered the data device.
+		got, err = cleanOwner(phase, [2]uint64{device + 7, 50}, assigned, daemon, device, daemonLeaf, assigned)
+		if err != nil || got != want {
+			t.Errorf("%s: daemon leaf recorded before a renumbering refused: %+v %v", phase, got, err)
+		}
 	}
 	mode := func(n Node, m uint32) Node { n.Mode = m; return n }
 	moved := func(n Node) Node { n.Inode++; return n }

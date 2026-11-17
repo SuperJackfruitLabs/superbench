@@ -58,6 +58,30 @@ func (s Identity) validate(allowAbsent bool) error {
 	return nil
 }
 
+// ErrUnmanagedDevice is retained unmanaged evidence whose data root now has
+// another device number. Without a filesystem UUID SuperBench cannot tell a
+// renumbered device from another filesystem, so the record is refused.
+var ErrUnmanagedDevice = errors.New("the unmanaged data root's device number differs from the retained storage record: another filesystem is mounted there, or a reboot renumbered its device; " +
+	"unmanaged storage has no filesystem UUID to tell these apart, so the record is refused. Remount the original filesystem; records that must survive a reboot need managed storage (see docs/storage.md)")
+
+// Matches compares retained evidence with a current inspection. A managed
+// identity's device number is not compared: a loop, LVM or block device can be
+// renumbered at boot, and the filesystem UUID, mount, policy, ledger and anchor
+// already bind the volume. The current inspection compared its own device
+// within this boot. Retained identities from before this rule carry a device
+// too; it is ignored the same way.
+func (s Identity) Matches(current Identity) error {
+	if s.Managed {
+		current.Device = s.Device
+	} else if current.Device != s.Device {
+		return ErrUnmanagedDevice
+	}
+	if current != s {
+		return errors.New("storage identity changed since inspection")
+	}
+	return nil
+}
+
 func (s Identity) Bytes() ([]byte, error) {
 	if err := s.Validate(); err != nil {
 		return nil, err

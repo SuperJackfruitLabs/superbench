@@ -162,7 +162,7 @@ func (m Manager) resolutionBinding(ctx context.Context, tx *sql.Tx, b *model.Ben
 		return p, storage, e
 	}
 	oldParent := plan.Missing.Root
-	if observedParent.ParentDevice != oldParent.ParentDevice || observedParent.ParentInode != oldParent.ParentInode || observedParent.ParentMode != oldParent.ParentMode {
+	if observedParent.ParentDevice != oldParent.ParentDevice && !storage.Managed || observedParent.ParentInode != oldParent.ParentInode || observedParent.ParentMode != oldParent.ParentMode {
 		return p, storage, errors.New("original fixed retirement parent changed")
 	}
 	p = RootRemovalReview{Version: RootRemovalReviewVersion, Action: "remove-current-empty-directory", ID: id, State: m.State, DataRoot: m.Data, Key: b.Key, Path: b.Path, BenchID: b.Workspace.ID, TransferID: b.Workspace.Transfer.ID, TransferDigest: b.Workspace.Transfer.Digest, FreezeDigest: b.Workspace.Archive.FreezeDigest, ReapDigest: plan.Digest, RemovalDigest: rootReviewSHA(raw), StorageDigest: rootReviewDigest(storage)}
@@ -288,7 +288,7 @@ func (m Manager) ReconcileRootRemoval(ctx context.Context, p RootRemovalReview) 
 				if !observed.Absent {
 					return errors.New("root disposition already started; present path requires fresh review")
 				}
-				if observed.ParentDevice != p.Root.ParentDevice || observed.ParentInode != p.Root.ParentInode || observed.ParentMode != p.Root.ParentMode {
+				if observed.ParentDevice != p.Root.ParentDevice && !storage.Managed || observed.ParentInode != p.Root.ParentInode || observed.ParentMode != p.Root.ParentMode {
 					return errors.New("root disposition parent changed")
 				}
 				return ctx.Err()

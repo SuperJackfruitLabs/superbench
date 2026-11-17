@@ -6,6 +6,15 @@ stamps the section `## vX.Y.Z — YYYY-MM-DD`, and the release notes quote it.
 
 ## Unreleased
 
+- Durable storage records survive a reboot that renumbers a device. The quota ledger's ready
+  record and authority identify the state filesystem by its UUID (plus the subvolume on btrfs)
+  instead of its device number, and initialization refuses a state filesystem without one.
+  Transfer approvals, missing-source freezes, storage retirements and Fresh recovery compare the
+  data volume's device only within one boot; the volume itself is bound by its UUID, so a loop
+  image reattached at another minor no longer makes recovery refuse. A ledger initialized by
+  the previous revision is refused with a pointer to "Reinitialize the indexed ledger".
+  Unmanaged storage, which has no UUID, still refuses a renumbered device, now with a message
+  that says so.
 - The quota helper's storage authority no longer hashes the data mount's mount ID or device
   number. A ledger that `install.py --storage` initializes in the host's mount namespace now
   opens in the service unit's private namespace and after a reboot; before, every start with

@@ -338,3 +338,22 @@ func TestRetirementAuthorityReadOnlyAllowsPresentLeafButNeverGrantsRetirement(t 
 		t.Fatal("authority probe waived strict retirement absence")
 	}
 }
+
+// A retirement approved before a reboot renumbered the data device still opens
+// its managed parent and root; unmanaged evidence has no UUID and refuses.
+func TestRetirementApprovedBeforeARenumberedDevice(t *testing.T) {
+	_, a := retirementFixture(t, false)
+	a.Storage.Device, a.Root.Device, a.Root.ParentDevice = a.Storage.Device+7, a.Root.Device+7, a.Root.ParentDevice+7
+	parent, err := openRetirementParent(a.Storage, &a.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer parent.Close()
+	if absent, err := checkRetirementRoot(parent, a, false); err != nil || absent {
+		t.Fatalf("renumbered approved root: %v %v", absent, err)
+	}
+	a.Storage.Managed = false
+	if _, err = openRetirementParent(a.Storage, &a.Root); err == nil {
+		t.Fatal("unmanaged evidence with another device opened")
+	}
+}
