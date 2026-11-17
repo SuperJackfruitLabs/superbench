@@ -12,12 +12,11 @@ import (
 	"testing"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/cleanworker"
-	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/payloadpolicy"
 	"golang.org/x/sys/unix"
 )
 
 func TestWorkerRunsAsTheDaemonInItsOwnSessionAndCgroup(t *testing.T) {
-	a := workerAttributes(payloadpolicy.Policy{DaemonUID: 61001, DaemonGID: 61003}, 9)
+	a := workerAttributes(61001, 61003, 9)
 	if a.Credential == nil || a.Credential.Uid != 61001 || a.Credential.Gid != 61003 || a.Credential.Groups == nil || len(a.Credential.Groups) != 0 || a.Credential.NoSetGroups {
 		t.Fatalf("credentials: %+v", a.Credential)
 	}

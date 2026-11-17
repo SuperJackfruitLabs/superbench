@@ -3,7 +3,10 @@
 // directories Begin creates) and setting the never-set quota limits of a reserved
 // project. Each step is plan, review, then effect under a retained approval.
 // Root never deletes a file, never deletes recursively and never adopts storage.
-// Only cmd/bench-quota may import this package.
+// Reclaim is the one step the daemon starts: it reaches it through the fixed
+// helper's sudo route, bound to its own reserved reclaim operation, for a
+// released bench the daemon has durably recorded as reclaiming, and the
+// payload account deletes that tree. Only cmd/bench-quota may import this package.
 package freshrecovery
 
 import (

@@ -28,17 +28,23 @@ const workerTimeout = 20 * time.Minute
 
 const cgroup2Magic = 0x63677270
 
-// runWorker runs the daemon-uid clean worker once: bench-quota re-executes its
-// own running image, /proc/self/exe, as "bench-quota clean-worker UID GID". The
-// child gets the daemon credentials with no supplementary groups, SIGKILL when
+// runWorker runs the clean worker once: bench-quota re-executes its own running
+// image, /proc/self/exe, as "bench-quota clean-worker UID GID". The child gets
+// the credentials of the account its mode names (workerAccount: the daemon to
+// observe or delete a leak, the payload to purge a reclaimed tree), with no
+// supplementary groups, SIGKILL when
 // the forking thread dies, its own transient cgroup, an empty environment,
 // Dir=/ and only descriptors 0-2. Root writes one bounded frame and reads one
 // bounded reply, which it returns only after decoding it as data. Before it
 // returns, the cgroup is killed, found empty and removed.
 func runWorker(ctx context.Context, p payloadpolicy.Policy, request cleanworker.Request) (cleanworker.Reply, error) {
 	frame, err := cleanworker.EncodeRequest(request)
-	if err != nil || p.DaemonUID == 0 || p.DaemonGID == 0 {
+	if err != nil {
 		return cleanworker.Reply{}, errors.Join(ErrRecovery, err)
+	}
+	uid, gid, err := workerAccount(p, request.Mode)
+	if err != nil {
+		return cleanworker.Reply{}, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, workerTimeout)
 	defer cancel()
@@ -57,7 +63,7 @@ func runWorker(ctx context.Context, p payloadpolicy.Policy, request cleanworker.
 		// goroutine exits. It stays alive until the worker is reaped, because
 		// Pdeathsig fires when the forking thread, not the process, exits.
 		runtime.LockOSThread()
-		out, err := spawn(ctx, p, frame, s)
+		out, err := spawn(ctx, uid, gid, frame, s)
 		done <- result{out, err}
 	}()
 	res := <-done
@@ -73,7 +79,7 @@ func runWorker(ctx context.Context, p payloadpolicy.Policy, request cleanworker.
 }
 
 // spawn runs on a locked thread that it restricts first.
-func spawn(ctx context.Context, p payloadpolicy.Policy, frame []byte, s *scope) ([]byte, error) {
+func spawn(ctx context.Context, uid, gid uint32, frame []byte, s *scope) ([]byte, error) {
 	rootKeyring, err := restrictThread()
 	if err != nil {
 		return nil, err
@@ -84,7 +90,7 @@ func spawn(ctx context.Context, p payloadpolicy.Policy, frame []byte, s *scope) 
 		return nil, fmt.Errorf("close_range: %w", err)
 	}
 	cmd := exec.CommandContext(ctx, "/proc/self/exe")
-	cmd.Args = append([]string{"bench-quota", cleanworker.Command}, cleanworker.Arguments(cleanworker.Identity{UID: p.DaemonUID, GID: p.DaemonGID, Keyring: rootKeyring})...)
+	cmd.Args = append([]string{"bench-quota", cleanworker.Command}, cleanworker.Arguments(cleanworker.Identity{UID: uid, GID: gid, Keyring: rootKeyring})...)
 	cmd.Env = []string{}
 	cmd.Dir = "/"
 	stdin, err := cmd.StdinPipe()
@@ -97,7 +103,7 @@ func spawn(ctx context.Context, p payloadpolicy.Policy, frame []byte, s *scope) 
 	}
 	diagnostic := &capped{max: 64 << 10}
 	cmd.Stderr = diagnostic
-	cmd.SysProcAttr = workerAttributes(p, s.fd)
+	cmd.SysProcAttr = workerAttributes(uid, gid, s.fd)
 	cmd.Cancel = s.kill
 	cmd.WaitDelay = 2 * time.Second
 	if err = cmd.Start(); err != nil {
@@ -148,13 +154,13 @@ func exchange(stdout io.Reader, stdin io.WriteCloser, frame []byte) ([]byte, err
 	return out, nil
 }
 
-// workerAttributes are the worker's process attributes: the daemon's
+// workerAttributes are the worker's process attributes: the account's
 // credentials with no groups, a session of its own (no controlling tty and out
 // of the operator's foreground process group), SIGKILL when the forking thread
 // dies, and its own cgroup.
-func workerAttributes(p payloadpolicy.Policy, cgroup int) *syscall.SysProcAttr {
+func workerAttributes(uid, gid uint32, cgroup int) *syscall.SysProcAttr {
 	return &syscall.SysProcAttr{
-		Credential:  &syscall.Credential{Uid: p.DaemonUID, Gid: p.DaemonGID, Groups: []uint32{}},
+		Credential:  &syscall.Credential{Uid: uid, Gid: gid, Groups: []uint32{}},
 		Setsid:      true,
 		Pdeathsig:   syscall.SIGKILL,
 		UseCgroupFD: true,
