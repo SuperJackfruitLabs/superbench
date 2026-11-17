@@ -43,6 +43,10 @@ Its inspection assertion is
 `LOWER_RETAINED_BOOTSTRAP_INSPECTION_WITHOUT_REVIVAL_PASS`. It exercises the
 Manager API against actual fixed policies, indexed history and an XFS allocation;
 it does not prove the production command, booted systemd gate or pilot lifecycle.
+Its `LOWER_READY_RECORD_VERIFIES_IN_PRIVATE_MOUNT_NAMESPACE_PASS` assertion opens
+the indexed journal again from a new private mount namespace with its own `/tmp`,
+where the data mount has another mount ID, as in a systemd unit with
+`PrivateTmp` or `ProtectSystem`; the line logs both mount IDs.
 
 ## Absent-allocation maintenance
 
