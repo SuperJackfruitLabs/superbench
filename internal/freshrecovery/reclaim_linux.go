@@ -46,44 +46,59 @@ func Reclaim(ctx context.Context, m *payloadbootstrap.Manager, s payloadbootstra
 		return result, ErrRecovery
 	}
 	err := m.Reclaim(ctx, s, func(r payloadbootstrap.Reclamation) error {
-		// A retry of a retained reclaim may follow effects, whatever fails.
-		if i, err := r.Inspection(); err == nil && (i.Phase == "reclaiming" || i.Phase == "reclaimed") {
-			retained = true
-		}
-		c, err := bindReclaim(ctx, r, s)
-		if err != nil {
-			return err
-		}
-		var tombstone hoststorage.Assignment
-		var ran bool
-		ran, err = reclaimSteps{
-			phase:  func() (string, error) { return c.i.Phase, nil },
-			leaf:   c.leafPresent,
-			fenced: func() error { return controlsFenced(r.Storage.Ledger, s.Key, c.i) },
-			idle:   c.live.Idle,
-			retain: func() error { return r.Advance("reclaiming") },
-			purge:  func() error { return c.purge(ctx) },
-			remove: func() error { return c.active(c.remove(ctx)) },
-			retire: func() (err error) { tombstone, err = c.retire(ctx); return c.active(err) },
-			finish: func() error { return r.Advance("reclaimed") },
-		}.run()
-		retained = retained || ran
-		if err != nil {
-			return err
-		}
-		result = quotahelper.ReclaimResult{Version: quotahelper.ReclaimVersion, Key: s.Key, Allocation: tombstone}
-		if err = result.Validate(r.Storage.Root, s.Key, c.assignment.ProjectID); err != nil {
-			return errors.Join(ErrRecovery, err)
-		}
-		return r.Check()
+		var err error
+		result, err = reclaimAction(ctx, r, s, &retained)
+		return err
 	})
 	if err != nil {
-		if retained {
-			err = fmt.Errorf("effects may have occurred; retry the same reclaim: %w", err)
-		}
-		return quotahelper.ReclaimResult{}, err
+		return quotahelper.ReclaimResult{}, effects(err, retained)
 	}
 	return result, nil
+}
+
+// effects says that a failed reclaim may have had effects once its intent was
+// retained, so the operator retries the same reclaim.
+func effects(err error, retained bool) error {
+	if err != nil && retained {
+		return fmt.Errorf("effects may have occurred; retry the same reclaim: %w", err)
+	}
+	return err
+}
+
+// reclaimAction is one reclaim under its reservation. retained is set once
+// the intent is, or already was, reclaiming.
+func reclaimAction(ctx context.Context, r payloadbootstrap.Reclamation, s payloadbootstrap.Spec, retained *bool) (quotahelper.ReclaimResult, error) {
+	var result quotahelper.ReclaimResult
+	// A retry of a retained reclaim may follow effects, whatever fails.
+	if i, err := r.Inspection(); err == nil && (i.Phase == "reclaiming" || i.Phase == "reclaimed") {
+		*retained = true
+	}
+	c, err := bindReclaim(ctx, r, s)
+	if err != nil {
+		return result, err
+	}
+	var tombstone hoststorage.Assignment
+	var ran bool
+	ran, err = reclaimSteps{
+		phase:  func() (string, error) { return c.i.Phase, nil },
+		leaf:   c.leafPresent,
+		fenced: func() error { return controlsFenced(r.Storage.Ledger, s.Key, c.i) },
+		idle:   c.live.Idle,
+		retain: func() error { return r.Advance("reclaiming") },
+		purge:  func() error { return c.purge(ctx) },
+		remove: func() error { return c.active(c.remove(ctx)) },
+		retire: func() (err error) { tombstone, err = c.retire(ctx); return c.active(err) },
+		finish: func() error { return r.Advance("reclaimed") },
+	}.run()
+	*retained = *retained || ran
+	if err != nil {
+		return result, err
+	}
+	result = quotahelper.ReclaimResult{Version: quotahelper.ReclaimVersion, Key: s.Key, Allocation: tombstone}
+	if err = result.Validate(r.Storage.Root, s.Key, c.assignment.ProjectID); err != nil {
+		return quotahelper.ReclaimResult{}, errors.Join(ErrRecovery, err)
+	}
+	return result, r.Check()
 }
 
 // bindReclaim checks the retained intent against the spec and the installed
