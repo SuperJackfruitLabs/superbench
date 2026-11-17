@@ -14,7 +14,9 @@ const ManagedMountColumns = "ID,UUID,FSTYPE,FSROOT,TARGET,MAJ:MIN,FS-OPTIONS"
 // AuthorityDomain names the helper authority digest. Version 1 hashed the mount
 // ID and the data volume's device number, so a ready record written in one mount
 // namespace (the installer's) never verified in another (the service unit's).
-const AuthorityDomain = "superbench.quota-operation-authority.v2"
+// Version 2 still hashed the ledger directory's device number, which btrfs and
+// LVM can change at boot.
+const AuthorityDomain = "superbench.quota-operation-authority.v3"
 
 // DeviceNumber formats st_dev as the kernel's major:minor.
 func DeviceNumber(device uint64) string {
@@ -99,14 +101,17 @@ type Root struct {
 
 // AuthorityDigest hashes the immutable helper authority over a managed volume.
 // Every input is the same in every mount namespace and after a reboot that
-// mounts the same filesystem. The data root's device number is left out because
-// a loop or block device can be renumbered at boot; the filesystem is bound by
-// its UUID in mount, in the ledger header and by the anchor on the volume. The
-// ledger lives on the host's state filesystem, whose device the journal's ready
-// record pins as well.
-func AuthorityDigest(policy any, data, ledger Root, mount, uuid, header, anchor string) (string, error) {
+// mounts the same filesystems. No device number is hashed, because a loop, LVM
+// or block device and a btrfs subvolume can be renumbered at boot: the data
+// volume is bound by its UUID in mount, in the ledger header and by the anchor on
+// the volume, and the ledger directory by ledgerFilesystem, the
+// ParseStateFilesystem identity of the state filesystem that holds it.
+func AuthorityDigest(policy any, data, ledger Root, ledgerFilesystem, mount, uuid, header, anchor string) (string, error) {
 	if !strings.HasPrefix(mount, "xfs uuid="+uuid+" ") || !volumePattern.MatchString(uuid) {
 		return "", errors.New("authority requires a managed mount identity")
+	}
+	if !strings.HasPrefix(ledgerFilesystem, "state ") {
+		return "", errors.New("authority requires a stable state filesystem identity")
 	}
 	type stableRoot struct {
 		Inode          uint64
@@ -115,10 +120,10 @@ func AuthorityDigest(policy any, data, ledger Root, mount, uuid, header, anchor 
 	raw, err := json.Marshal(struct {
 		Domain                      string
 		Policy                      any
-		Data                        stableRoot
-		Ledger                      Root
+		Data, Ledger                stableRoot
+		LedgerFilesystem            string
 		Mount, UUID, Header, Anchor string
-	}{AuthorityDomain, policy, stableRoot{data.Inode, data.Mode, data.UID, data.GID}, ledger, mount, uuid, header, anchor})
+	}{AuthorityDomain, policy, stableRoot{data.Inode, data.Mode, data.UID, data.GID}, stableRoot{ledger.Inode, ledger.Mode, ledger.UID, ledger.GID}, ledgerFilesystem, mount, uuid, header, anchor})
 	if err != nil {
 		return "", err
 	}

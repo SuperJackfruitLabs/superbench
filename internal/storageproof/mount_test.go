@@ -6,6 +6,7 @@ import (
 )
 
 const testUUID = "7eb11321-0f04-4bec-91bb-3dff4119768c"
+const testStateFS = "state ext4 uuid=0d4f6c2e-5b8a-4c1e-9a7d-2f3b4c5d6e7f"
 
 // findmnt --raw --output ManagedMountColumns for one data volume, as the host
 // namespace, a systemd unit's private namespace and the next boot report it.
@@ -25,7 +26,7 @@ func managedDigest(t *testing.T, line string, device uint64) string {
 	if err != nil {
 		t.Fatalf("%s: %v", line, err)
 	}
-	digest, err := AuthorityDigest(map[string]string{"Root": "/srv/superbench-data"}, Root{Device: device, Inode: 128, Mode: 0x800001ed}, Root{Device: 0x801, Inode: 4242, Mode: 0x800001c0}, mount, uuid, "header", "anchor")
+	digest, err := AuthorityDigest(map[string]string{"Root": "/srv/superbench-data"}, Root{Device: device, Inode: 128, Mode: 0x800001ed}, Root{Device: 0x801, Inode: 4242, Mode: 0x800001c0}, testStateFS, mount, uuid, "header", "anchor")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,29 +68,44 @@ func TestAuthorityDiffersForAnotherVolumeOrRoot(t *testing.T) {
 		t.Error("a volume with another UUID kept the authority")
 	}
 	mount, uuid, _ := ParseManagedMount([]byte(sameMount[0].line), "/srv/superbench-data", 0x701)
-	data, ledger := Root{Device: 0x701, Inode: 128, Mode: 0x800001ed}, Root{Device: 0x801, Inode: 4242, Mode: 0x800001c0}
-	policy := map[string]string{"Root": "/srv/superbench-data"}
-	for name, change := range map[string]func(*Root, *Root, *string){
-		"data root inode":     func(d, _ *Root, _ *string) { d.Inode++ },
-		"data root owner":     func(d, _ *Root, _ *string) { d.UID = 1 },
-		"data root mode":      func(d, _ *Root, _ *string) { d.Mode = 0x800001ff },
-		"ledger device":       func(_, l *Root, _ *string) { l.Device++ },
-		"ledger inode":        func(_, l *Root, _ *string) { l.Inode++ },
-		"ledger header":       func(_, _ *Root, h *string) { *h = "other" },
-		"same root, no field": func(*Root, *Root, *string) {},
+	type inputs struct {
+		policy                          map[string]string
+		data, ledger                    Root
+		ledgerFS, mount, header, anchor string
+	}
+	for name, change := range map[string]func(*inputs){
+		"policy":                   func(in *inputs) { in.policy = map[string]string{"Root": "/srv/other"} },
+		"data root inode":          func(in *inputs) { in.data.Inode++ },
+		"data root owner":          func(in *inputs) { in.data.UID = 1 },
+		"data root group":          func(in *inputs) { in.data.GID = 1 },
+		"data root mode":           func(in *inputs) { in.data.Mode = 0x800001ff },
+		"ledger inode":             func(in *inputs) { in.ledger.Inode++ },
+		"ledger owner":             func(in *inputs) { in.ledger.UID = 1 },
+		"ledger group":             func(in *inputs) { in.ledger.GID = 1 },
+		"ledger mode":              func(in *inputs) { in.ledger.Mode = 0x800001ff },
+		"ledger on another volume": func(in *inputs) { in.ledgerFS = "state ext4 uuid=11111111-1111-1111-1111-111111111111" },
+		"ledger header":            func(in *inputs) { in.header = "other" },
+		"anchor":                   func(in *inputs) { in.anchor = "other" },
+		// A reboot renumbers both devices; the authority must not change.
+		"same root, renumbered devices": func(in *inputs) { in.data.Device, in.ledger.Device = 0x702, 0x2a },
+		"same root, no field":           func(*inputs) {},
 	} {
-		d, l, header := data, ledger, "header"
-		change(&d, &l, &header)
-		got, err := AuthorityDigest(policy, d, l, mount, uuid, header, "anchor")
+		in := inputs{map[string]string{"Root": "/srv/superbench-data"}, Root{Device: 0x701, Inode: 128, Mode: 0x800001ed}, Root{Device: 0x801, Inode: 4242, Mode: 0x800001c0}, testStateFS, mount, "header", "anchor"}
+		change(&in)
+		got, err := AuthorityDigest(in.policy, in.data, in.ledger, in.ledgerFS, in.mount, uuid, in.header, in.anchor)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if (got == base) != (name == "same root, no field") {
+		if (got == base) != strings.HasPrefix(name, "same root") {
 			t.Errorf("%s: authority equality %v", name, got == base)
 		}
 	}
-	if _, err := AuthorityDigest(policy, data, ledger, "99 "+testUUID+" / /srv/superbench-data 7:1", uuid, "header", "anchor"); err == nil {
+	data, ledger := Root{Device: 0x701, Inode: 128, Mode: 0x800001ed}, Root{Device: 0x801, Inode: 4242, Mode: 0x800001c0}
+	if _, err := AuthorityDigest(nil, data, ledger, testStateFS, "99 "+testUUID+" / /srv/superbench-data 7:1", uuid, "header", "anchor"); err == nil {
 		t.Error("an unparsed mount line was hashed")
+	}
+	if _, err := AuthorityDigest(nil, data, ledger, "8:1", mount, uuid, "header", "anchor"); err == nil {
+		t.Error("a ledger without a stable filesystem identity was hashed")
 	}
 }
 
@@ -118,6 +134,12 @@ func TestUnmanagedMountIgnoresNamespaceLocalFields(t *testing.T) {
 	}
 	if _, err := ParseUnmanagedMount([]byte(host), "/srv/data/bench", 0x802); err == nil {
 		t.Error("a mount of another device was used")
+	}
+	// Only three fields may follow the separator: type, source, superblock options.
+	for _, malformed := range []string{"99 1 8:1 /srv/data /srv/data rw shared:22 - ext4 /dev/sda1 rw extra\n", "99 1 8:1 /srv/data /srv/data rw shared:22 - ext4 /dev/sda1\n"} {
+		if c, err := ParseUnmanagedMount([]byte(malformed), "/srv/data/bench", 0x801); err == nil {
+			t.Errorf("a malformed mountinfo line was used: %q", c)
+		}
 	}
 }
 

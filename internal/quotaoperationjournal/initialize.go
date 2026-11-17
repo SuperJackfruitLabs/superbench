@@ -123,7 +123,12 @@ func (s *freshSession) finish(ctx context.Context) error {
 	ledger := s.ledger.Sys().(*syscall.Stat_t)
 	lock := li.Sys().(*syscall.Stat_t)
 	db := di.Sys().(*syscall.Stat_t)
-	ready, err := json.Marshal(formatReady{uint64(ledger.Dev), uint64(ledger.Ino), uint64(lock.Dev), uint64(lock.Ino), uint64(db.Dev), uint64(db.Ino), s.authority})
+	record := formatReady{uint64(ledger.Ino), uint64(lock.Ino), uint64(db.Ino), s.authority}
+	// The same check OpenExisting runs: lock and database on the ledger's device.
+	if err = checkFormatObjects(s.config.Directory, s.owner, record, uint64(ledger.Dev)); err != nil {
+		return err
+	}
+	ready, err := json.Marshal(record)
 	if err != nil {
 		return err
 	}

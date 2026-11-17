@@ -177,10 +177,7 @@ func (w Worker) VerifyStorage(ctx context.Context, s StorageIdentity) error {
 	if err != nil {
 		return err
 	}
-	if current != s {
-		return errors.New("storage identity changed since inspection")
-	}
-	return nil
+	return s.Matches(current)
 }
 
 func storageCommand(ctx context.Context, binary string, args ...string) ([]byte, error) {

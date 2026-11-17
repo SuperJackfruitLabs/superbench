@@ -44,12 +44,12 @@ func (m Manager) rootRemovalStarted(b *model.Bench) (bool, error) {
 	}
 	return true, nil
 }
-func (m Manager) removeMissingRoot(ctx context.Context, b *model.Bench, p Plan) error {
+func (m Manager) removeMissingRoot(ctx context.Context, b *model.Bench, p Plan, managed bool) error {
 	started, e := m.rootRemovalStarted(b)
 	if e != nil || started {
 		return e
 	}
-	if e = checkMissingRoot(*p.Missing, true); e != nil {
+	if e = checkMissingRoot(*p.Missing, managed, true); e != nil {
 		return e
 	}
 	if !p.Missing.Root.Absent {
@@ -67,7 +67,7 @@ func (m Manager) removeMissingRoot(ctx context.Context, b *model.Bench, p Plan) 
 	if e = ctx.Err(); e != nil {
 		return e
 	}
-	if e = checkMissingRoot(*p.Missing, true); e != nil {
+	if e = checkMissingRoot(*p.Missing, managed, true); e != nil {
 		return e
 	}
 	if !p.Missing.Root.Absent {

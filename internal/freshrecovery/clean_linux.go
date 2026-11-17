@@ -102,8 +102,10 @@ func (c *cleaning) bind(s payloadbootstrap.Spec) error {
 	if err != nil || digest(raw) != i.PolicyDigest || p.DataRoot != c.r.Storage.Root || p.DaemonUID != uint32(c.r.Storage.OwnerUID) || p.DaemonGID != uint32(c.r.Storage.OwnerGID) {
 		return errors.Join(ErrRecovery, err)
 	}
+	// The root's device is this boot's pinned benches parent device, never the
+	// intent's recorded one: a reboot can renumber the data device (atRecordedRoot).
 	c.binding = freshcleanup.Binding{Key: s.Key, ID: s.ID, PolicySHA256: i.PolicyDigest, SpecSHA256: i.SpecSHA256, IntentSHA256: i.IntentSHA256,
-		Operation: i.Operation, RootDevice: i.RecordedRoot.Device, RootInode: i.RecordedRoot.Inode}
+		Operation: i.Operation, RootDevice: a.Parent.Device, RootInode: i.RecordedRoot.Inode}
 	c.owners = owners{p.DaemonUID, p.DaemonGID}
 	c.assignment = freshcleanup.Assignment{ProjectID: a.Assignment.ProjectID, Bytes: a.Assignment.Bytes, Inodes: a.Assignment.Inodes}
 	return nil
@@ -112,14 +114,21 @@ func (c *cleaning) bind(s payloadbootstrap.Spec) error {
 // controlsFenced requires KEY.controls to be the recorded root-owned private
 // directory and its git-controls journal to be absent, empty or fenced, by
 // gitcontrol.Recover's rules, without changing it: the intents stay as evidence.
+// The recorded device is not compared: btrfs and LVM can renumber the state
+// filesystem at boot. The directory must instead be on the ledger's device in
+// this boot; the operation authority binds the ledger by its filesystem UUID.
 func controlsFenced(ledger, key string, i payloadbootstrap.Inspection) error {
 	state := filepath.Join(ledger, "payload-bootstrap", key+".controls")
+	parent, err := os.Lstat(ledger)
+	if err != nil {
+		return errors.Join(ErrRecovery, err)
+	}
 	info, err := os.Lstat(state)
 	if err != nil {
 		return errors.Join(ErrRecovery, err)
 	}
 	st := info.Sys().(*syscall.Stat_t)
-	if !info.IsDir() || st.Uid != 0 || info.Mode().Perm() != 0700 || info.Mode()&(os.ModeSetuid|os.ModeSetgid|os.ModeSticky) != 0 || uint64(st.Dev) != i.RecordedControls.Device || st.Ino != i.RecordedControls.Inode {
+	if !info.IsDir() || st.Uid != 0 || info.Mode().Perm() != 0700 || info.Mode()&(os.ModeSetuid|os.ModeSetgid|os.ModeSticky) != 0 || st.Dev != parent.Sys().(*syscall.Stat_t).Dev || st.Ino != i.RecordedControls.Inode || i.RecordedControls.Inode == 0 {
 		return ErrRecovery
 	}
 	if err = gitcontrol.Fenced(state); err != nil {
@@ -255,8 +264,14 @@ func Clean(ctx context.Context, m *payloadbootstrap.Manager, s payloadbootstrap.
 		if err != nil {
 			return err
 		}
+		// A plan or retained approval observed before a reboot carries that boot's
+		// device number; bind() pinned this boot's, under the same authority.
+		current, err := freshcleanup.Rebase(raw, c.binding.RootDevice)
+		if err != nil {
+			return errors.Join(ErrRecovery, err)
+		}
 		daemon := freshcleanup.Owner{UID: c.owners.daemonUID, GID: c.owners.daemonGID}
-		approval, err := freshcleanup.Parse(raw, c.r.Payload, c.binding, daemon, c.assignment)
+		approval, err := freshcleanup.Parse(current, c.r.Payload, c.binding, daemon, c.assignment)
 		if err != nil || approval.Observation.Parent != c.parent() {
 			return errors.Join(ErrRecovery, err)
 		}

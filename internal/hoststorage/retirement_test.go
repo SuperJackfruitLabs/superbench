@@ -50,7 +50,7 @@ func TestRetirementAbsenceRejectsEvenEmptyReappearanceAndSpecialFiles(t *testing
 	for _, kind := range []string{"empty", "file", "symlink"} {
 		t.Run(kind, func(t *testing.T) {
 			_, a := retirementFixture(t, true)
-			parent, err := openRetirementParent(a.Storage, &a.Root)
+			parent, err := openRetirementParent(a.Storage, &a.Root, 0)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -96,7 +96,7 @@ func TestRetirementPinsOriginalRootAndParentTypeIdentityAndModes(t *testing.T) {
 		t.Run(kind, func(t *testing.T) {
 			_, a := retirementFixture(t, false)
 			parentPath := filepath.Dir(a.Storage.Assignment.Path)
-			parent, err := openRetirementParent(a.Storage, &a.Root)
+			parent, err := openRetirementParent(a.Storage, &a.Root, 0)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -128,7 +128,7 @@ func TestRetirementPinsOriginalRootAndParentTypeIdentityAndModes(t *testing.T) {
 				t.Fatal(err)
 			}
 			if strings.HasPrefix(kind, "parent-") {
-				current, e := openRetirementParent(a.Storage, &a.Root)
+				current, e := openRetirementParent(a.Storage, &a.Root, 0)
 				if e == nil {
 					current.Close()
 					t.Fatal("changed/missing parent became leaf absence")
@@ -336,5 +336,30 @@ func TestRetirementAuthorityReadOnlyAllowsPresentLeafButNeverGrantsRetirement(t 
 	run := func(context.Context, []byte, string, ...string) ([]byte, error) { called = true; return nil, nil }
 	if err := w.retirement(context.Background(), a, false, run); err == nil || called {
 		t.Fatal("authority probe waived strict retirement absence")
+	}
+}
+
+// A retirement approved before a reboot renumbered the data device still opens
+// its managed parent and root; unmanaged evidence has no UUID and refuses.
+func TestRetirementApprovedBeforeARenumberedDevice(t *testing.T) {
+	_, a := retirementFixture(t, false)
+	a.Storage.Device, a.Root.Device, a.Root.ParentDevice = a.Storage.Device+7, a.Root.Device+7, a.Root.ParentDevice+7
+	parent, err := openRetirementParent(a.Storage, &a.Root, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer parent.Close()
+	if absent, err := checkRetirementRoot(parent, a, false); err != nil || absent {
+		t.Fatalf("renumbered approved root: %v %v", absent, err)
+	}
+	if _, err = checkRetirementRoot(retirementParent{parent.Root, parent.device + 1}, a, false); err == nil {
+		t.Fatal("a root on another device than its parent accepted")
+	}
+	if _, err = openRetirementParent(a.Storage, &a.Root, parent.device+1); err == nil {
+		t.Fatal("a parent on another device than the verified storage opened")
+	}
+	a.Storage.Managed = false
+	if _, err = openRetirementParent(a.Storage, &a.Root, 0); err == nil {
+		t.Fatal("unmanaged evidence with another device opened")
 	}
 }

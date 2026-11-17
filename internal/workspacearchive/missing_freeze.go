@@ -58,6 +58,9 @@ type archiveFreeze struct {
 	Digest   string
 	ordinary *reap.FreezePlan
 	missing  *MissingFreeze
+	// managed is known only for a freeze captured in this process; a freeze
+	// read back from its file compares its recorded devices.
+	managed bool
 }
 
 func (f archiveFreeze) Bytes() ([]byte, error) {
@@ -68,13 +71,13 @@ func (f archiveFreeze) Bytes() ([]byte, error) {
 }
 func (f archiveFreeze) preflight(path string) error {
 	if f.missing != nil && f.missing.Root.Absent {
-		return checkMissingRoot(*f.missing, false)
+		return checkMissingRoot(*f.missing, f.managed, false)
 	}
 	return reap.FreezePreflight(path, f.Tree)
 }
 func (f archiveFreeze) apply(path string) error {
 	if f.missing != nil && f.missing.Root.Absent {
-		return checkMissingRoot(*f.missing, false)
+		return checkMissingRoot(*f.missing, f.managed, false)
 	}
 	return reap.Freeze(path, f.Tree)
 }
@@ -121,7 +124,7 @@ func (m Manager) newArchiveFreeze(ctx context.Context, tx *sql.Tx, b *model.Benc
 		}
 	}
 	p.Digest, e = p.digest()
-	return archiveFreeze{Tree: p.Tree, Digest: p.Digest, missing: p}, e
+	return archiveFreeze{Tree: p.Tree, Digest: p.Digest, missing: p, managed: j.Storage.Managed}, e
 }
 func (m Manager) readArchiveFreeze(b *model.Bench) (archiveFreeze, error) {
 	if !missingSource(b) {

@@ -387,8 +387,7 @@ class IndexedStorage(unittest.TestCase):
                 raise subprocess.CalledProcessError(1, command)
             (quota / "ledger" / "assignments.json").write_bytes(b"{}")
             with (quota / "ledger.format-v2").open("a") as anchor:
-                anchor.write(json.dumps({"device": 1, "inode": 2, "lock_device": 1, "lock_inode": 3,
-                                         "database_device": 1, "database_inode": 4,
+                anchor.write(json.dumps({"inode": 2, "lock_inode": 3, "database_inode": 4,
                                          "authority": "a" * 64}) + "\n")
 
     def mounted(self, path):
@@ -483,6 +482,12 @@ class IndexedStorage(unittest.TestCase):
             ("ledger without policy", lambda: [(quota / "ledger").mkdir(), (quota / "ledger.format-v2").write_bytes(b"x")],
              "partial indexed ledger"),
             ("installed unit", lambda: install(self.target, {UNIT_FILE: (b"unit", 0o644)}), "already installed"),
+            ("device-pinning ledger", lambda: [install(self.target, {STORAGE_FILE: storage_document((977, 977), BUDGETS)[STORAGE_FILE]}),
+                                               (quota / "ledger").mkdir(), (quota / "ledger.format-v2").write_text(
+                json.dumps({"version": "v2", "ledger": "/var/lib/superbench-quota/ledger", "nonce": "0" * 64}) + "\n" +
+                json.dumps({"device": 1, "inode": 2, "lock_device": 1, "lock_inode": 3, "database_device": 1,
+                            "database_inode": 4, "authority": "a" * 64}) + "\n")],
+             "earlier SuperBench revision.*Reinitialize the indexed ledger"),
         ]:
             with self.subTest(name):
                 setup()

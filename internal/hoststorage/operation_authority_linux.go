@@ -42,6 +42,10 @@ func (p Policy) OperationAuthority(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	ledgerFS, err := storageproof.StateFilesystem(ctx, p.Ledger, ledgerRoot.Device)
+	if err != nil {
+		return "", err
+	}
 	var fs syscall.Statfs_t
 	if err = syscall.Statfs(p.Root, &fs); err != nil {
 		return "", err
@@ -94,10 +98,14 @@ func (p Policy) OperationAuthority(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if data != endData || ledgerRoot != endLedger || mount != endMount || uuid != endUUID {
+	endLedgerFS, err := storageproof.StateFilesystem(ctx, p.Ledger, endLedger.Device)
+	if err != nil {
+		return "", err
+	}
+	if data != endData || ledgerRoot != endLedger || ledgerFS != endLedgerFS || mount != endMount || uuid != endUUID {
 		return "", errors.New("operation storage authority changed during inspection")
 	}
-	digest, err := storageproof.AuthorityDigest(p, storageproof.Root(data), storageproof.Root(ledgerRoot), mount, uuid, header, storageDigest(anchor))
+	digest, err := storageproof.AuthorityDigest(p, storageproof.Root(data), storageproof.Root(ledgerRoot), ledgerFS, mount, uuid, header, storageDigest(anchor))
 	if err != nil {
 		return "", err
 	}

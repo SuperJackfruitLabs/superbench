@@ -157,7 +157,6 @@ func TestFreshIndexedMaterializerLowerFixture(t *testing.T) {
 	if err != nil || actual.Root != p.Root {
 		t.Fatalf("actual fixed existing Open: %+v %v", actual, err)
 	}
-
 	t.Log("LOWER_REAL_HEADER_ANCHOR_AND_FIXED_OPEN_PASS")
 	authority, err := p.OperationAuthority(t.Context())
 	if err != nil {
@@ -180,7 +179,8 @@ func TestFreshIndexedMaterializerLowerFixture(t *testing.T) {
 	if err != nil || outerErr != nil || innerID == outerID {
 		t.Fatalf("ready record in a private mount namespace: %v %v mount ID %s, private %s", err, outerErr, outerID, innerID)
 	}
-	t.Logf("LOWER_READY_RECORD_VERIFIES_IN_PRIVATE_MOUNT_NAMESPACE_PASS mount ID %s, private %s", outerID, innerID)
+	t.Logf("ready record mount ID %s, private %s", outerID, innerID)
+	t.Log("LOWER_READY_RECORD_VERIFIES_IN_PRIVATE_MOUNT_NAMESPACE_PASS")
 	identityFor := func(label string) quotaoperation.Identity {
 		return quotaoperation.Identity{OperationID: lowerHash("operation:" + label + string(marker)), Epoch: lowerHash("epoch:" + label + string(marker))[:32], StateIdentity: lowerHash("synthetic-lower-state:" + label + string(marker)), Authority: authority, BinarySHA256: expectedSHA}
 	}

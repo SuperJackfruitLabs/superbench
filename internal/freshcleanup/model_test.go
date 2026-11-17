@@ -314,3 +314,54 @@ func TestApprovalRefusesEntriesTheDaemonWorkerCannotTraverseOrRead(t *testing.T)
 		}
 	}
 }
+
+// A retained approval observed before a reboot renumbered the data device parses
+// against this boot's binding once rebased, and only then.
+func TestRetainedApprovalRebasesOntoARenumberedDevice(t *testing.T) {
+	p, b, o := fixture()
+	a, err := New(p, b, testOwner, testAssignment, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := a.Bytes(p, b, testOwner, testAssignment)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rebooted := b
+	rebooted.RootDevice = 44
+	if _, err = Parse(raw, p, rebooted, testOwner, testAssignment); !errors.Is(err, ErrApproval) {
+		t.Fatalf("an earlier boot's devices parsed against this boot: %v", err)
+	}
+	rebased, err := Rebase(raw, 44)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := Parse(rebased, p, rebooted, testOwner, testAssignment)
+	if err != nil {
+		t.Fatalf("rebased approval refused: %v", err)
+	}
+	if got.Observation.Tree.Root.Device != 44 || got.Observation.Parent.Device != 44 || got.Observation.Owners[3].Device != 44 || got.Observation.Tree.Entries[2].Inode != 13 {
+		t.Fatalf("rebase changed more or less than the device: %+v", got.Observation)
+	}
+	if _, err = Parse(rebased, p, b, testOwner, testAssignment); !errors.Is(err, ErrApproval) {
+		t.Fatalf("rebased approval still parsed against the old device: %v", err)
+	}
+	same, err := Rebase(raw, 8)
+	if err != nil || !bytes.Equal(same, raw) {
+		t.Fatalf("rebase onto the same device changed the approval: %v", err)
+	}
+	for name, bad := range map[string][]byte{
+		"unknown field":   bytes.Replace(raw, []byte(`{"Version"`), []byte(`{"Extra":1,"Version"`), 1),
+		"tampered inode":  bytes.Replace(raw, []byte(`"Inode":13`), []byte(`"Inode":14`), 1),
+		"truncated":       raw[:len(raw)-1],
+		"no device given": nil,
+	} {
+		device := uint64(44)
+		if bad == nil {
+			bad, device = raw, 0
+		}
+		if _, err = Rebase(bad, device); !errors.Is(err, ErrApproval) {
+			t.Errorf("%s rebased: %v", name, err)
+		}
+	}
+}

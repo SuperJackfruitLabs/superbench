@@ -184,8 +184,12 @@ def storage_state(root):
     present = names & {"ledger", "ledger.format-v2"}
     if not present:
         return "fresh"
-    if len(present) == 2 and os.path.lexists(policy) and format_ready(parent / "ledger.format-v2"):
-        return "initialized"
+    if len(present) == 2 and os.path.lexists(policy):
+        ready = format_ready(parent / "ledger.format-v2")
+        if ready == FORMAT_READY:
+            return "initialized"
+        if ready == DEVICE_FORMAT_READY:
+            raise ValueError(DEVICE_STORAGE % parent)
     raise ValueError(PARTIAL_STORAGE % parent)
 
 
@@ -193,23 +197,29 @@ PARTIAL_STORAGE = ("partial indexed ledger initialization retained in %s: initia
                    "write its ready record. It is never adopted or retried; the service stays masked. "
                    "See \"Recover a partial initialization\" in docs/pilot-installation.md")
 FORMAT_INTENT = {"version", "ledger", "nonce"}
-FORMAT_READY = {"device", "inode", "lock_device", "lock_inode", "database_device", "database_inode",
-                "authority"}
+DEVICE_STORAGE = ("indexed ledger in %s was initialized by an earlier SuperBench revision that pinned the "
+                  "state filesystem's device number, which can change at boot; the helper refuses it. "
+                  "See \"Reinitialize the indexed ledger\" in docs/pilot-installation.md")
+FORMAT_READY = {"inode", "lock_inode", "database_inode", "authority"}
+DEVICE_FORMAT_READY = {"device", "inode", "lock_device", "lock_inode", "database_device", "database_inode",
+                       "authority"}
 
 
 def format_ready(path):
-    """Whether initialize-indexed finished: its format file holds the intent line
-    and then the ready line it appends last (internal/quotaoperationjournal)."""
+    """The ready line's keys when initialize-indexed finished: its format file holds
+    the intent line and then the ready line it appends last
+    (internal/quotaoperationjournal). None otherwise."""
     try:
         raw = path.read_bytes()
         lines = raw.split(b"\n")
         if len(raw) > 2048 or len(lines) != 3 or lines[2]:
-            return False
+            return None
         intent, ready = json.loads(lines[0]), json.loads(lines[1])
     except (OSError, ValueError):
-        return False
-    return (isinstance(intent, dict) and set(intent) == FORMAT_INTENT and intent["ledger"] == LEDGER and
-            isinstance(ready, dict) and set(ready) == FORMAT_READY)
+        return None
+    if isinstance(intent, dict) and set(intent) == FORMAT_INTENT and intent["ledger"] == LEDGER and isinstance(ready, dict):
+        return set(ready)
+    return None
 
 
 def masked_unit(root):
