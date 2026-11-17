@@ -73,3 +73,22 @@ func TestRetirementSyncsDataBeforeTrustingAbsenceForTheTombstone(t *testing.T) {
 		t.Fatalf("tombstone reachable after a failed sync: %s", got)
 	}
 }
+
+// Only the reclaim entry points admit the fixed helper's sudo caller; absent
+// retirement and recovery selection stay direct root.
+func TestOnlyReclaimAdmitsTheSudoCaller(t *testing.T) {
+	for _, c := range []struct {
+		uid, euid int
+		sudo      string
+		helper    bool
+		want      bool
+	}{
+		{0, 0, "", false, true}, {0, 0, "", true, true},
+		{0, 0, "1000", false, false}, {0, 0, "1000", true, true},
+		{1000, 0, "", true, false}, {0, 1000, "", true, false}, {1000, 1000, "1000", true, false},
+	} {
+		if got := admitted(c.uid, c.euid, c.sudo, c.helper); got != c.want {
+			t.Errorf("admitted(%d, %d, %q, %v) = %v", c.uid, c.euid, c.sudo, c.helper, got)
+		}
+	}
+}
