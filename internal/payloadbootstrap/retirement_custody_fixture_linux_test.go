@@ -23,7 +23,7 @@ func TestRetirementApprovalCustodyFixture(t *testing.T) {
 		t.Fatal(err)
 	}
 	raw := []byte(`{"approved":"exact retained input"}`)
-	if err := retainRetirementFile(ledger, "card", raw); err != nil {
+	if err := retainRetirementFile(ledger, "card", 0, raw); err != nil {
 		t.Fatal(err)
 	}
 	path := filepath.Join(ledger, "payload-retirements", "card.json")
@@ -32,7 +32,7 @@ func TestRetirementApprovalCustodyFixture(t *testing.T) {
 		t.Fatal(err)
 	}
 	for n := 0; n < 2; n++ {
-		if err := retainRetirementFile(ledger, "card", raw); err != nil {
+		if err := retainRetirementFile(ledger, "card", 0, raw); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -40,7 +40,7 @@ func TestRetirementApprovalCustodyFixture(t *testing.T) {
 	if err != nil || !os.SameFile(before, after) || before.ModTime() != after.ModTime() {
 		t.Fatal("retry rewrote approval", err)
 	}
-	if err := retainRetirementFile(ledger, "card", []byte("different")); !errors.Is(err, ErrBootstrap) {
+	if err := retainRetirementFile(ledger, "card", 0, []byte("different")); !errors.Is(err, ErrBootstrap) {
 		t.Fatal("different approval accepted", err)
 	}
 	got, err := os.ReadFile(path)
@@ -64,7 +64,7 @@ func TestRetirementApprovalCustodyFixture(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := retainRetirementFile(ledger, kind, raw); err == nil {
+		if err := retainRetirementFile(ledger, kind, 0, raw); err == nil {
 			t.Fatal("unsafe approval accepted", kind)
 		}
 		if kind == "hardlink" {

@@ -171,44 +171,66 @@ func MoveLayoutAside(state string, b *model.Bench) error {
 	return d.Sync()
 }
 
-// NewRetired supplies the workspace manager's proof that an unfinished
-// create's allocation was retired (Retired).
+// NewRetired supplies the workspace manager's proof that an unfinished or
+// stalled create's allocation is retired (Retired).
 func NewRetired(state, data string) func(context.Context, *model.Bench) error {
 	return func(ctx context.Context, b *model.Bench) error { return Retired(ctx, state, data, b) }
 }
 
-// Retired asks the fixed helper, read-only, whether root retired the
-// allocation of b, a create that never completed (workspacepolicy.Unfinished),
-// sending the same canonical Spec its create sent. Only the helper's checked
-// reply, never b itself, lets a new create on the key replace b.
+// Retired asks the fixed helper whether root retired the allocation of b,
+// with the same canonical Spec b's create sent. For an unfinished create
+// (workspacepolicy.Unfinished) it asks the read-only inspection; for a
+// stalled one (workspacepolicy.Stalled) it runs root's reclaim of the
+// completed bootstrap, which checks liveness, containment and the leaf
+// itself. Only the helper's checked reply, never b itself, lets a new create
+// on the key replace b.
 func Retired(ctx context.Context, state, data string, b *model.Bench) error {
-	return retired(data, b, func(spec payloadbootstrap.Spec, input []byte) (quotahelper.RetiredResult, error) {
-		var zero quotahelper.RetiredResult
+	config := func() (quotahelper.Config, func() error, error) {
 		authority, err := serviceidentity.ResolveService()
 		if err != nil {
-			return zero, errors.Join(ErrBootstrap, err)
+			return quotahelper.Config{}, nil, errors.Join(ErrBootstrap, err)
 		}
 		p, err := authority.Policy()
 		if err != nil || p.StateRoot != state || p.DataRoot != data {
-			return zero, ErrBootstrap
+			return quotahelper.Config{}, nil, ErrBootstrap
 		}
-		config, err := (hoststorage.Worker{State: state, Data: data}).Config()
-		if err != nil || config == nil || config.PolicyOverride != "" {
-			return zero, ErrBootstrap
+		installed, err := (hoststorage.Worker{State: state, Data: data}).Config()
+		if err != nil || installed == nil || installed.PolicyOverride != "" {
+			return quotahelper.Config{}, nil, ErrBootstrap
 		}
-		result, err := quotahelper.Retired(ctx, quotahelper.Config{State: state, Data: data, Command: config.QuotaHelper}, spec.Key, spec.ID, spec.Generation, input)
-		if err == nil {
-			err = authority.Recheck()
+		return quotahelper.Config{State: state, Data: data, Command: installed.QuotaHelper}, authority.Recheck, nil
+	}
+	return retired(data, b, func(spec payloadbootstrap.Spec, input []byte) (quotahelper.Assignment, error) {
+		c, recheck, err := config()
+		if err != nil {
+			return quotahelper.Assignment{}, err
 		}
-		return result, err
+		result, err := quotahelper.Retired(ctx, c, spec.Key, spec.ID, spec.Generation, input)
+		return result.Allocation, errors.Join(err, recheck())
+	}, func(spec payloadbootstrap.Spec, input []byte) (quotahelper.Assignment, error) {
+		c, recheck, err := config()
+		if err != nil {
+			return quotahelper.Assignment{}, err
+		}
+		// The reclaim runs under its own reclaim identity, never the create's:
+		// its transport refuses the create's operation scope.
+		unscoped, cancel := context.WithCancel(context.Background())
+		defer context.AfterFunc(ctx, cancel)()
+		defer cancel()
+		result, err := quotahelper.Reclaim(unscoped, c, spec.Key, spec.ID, b.ProjectID, input)
+		return result.Allocation, errors.Join(err, recheck())
 	})
 }
 
-// retired asks root about unfinished b with its canonical Spec. The reply
-// already names b's key, workspace and generation; an allocated b's project
-// must be the retired one.
-func retired(data string, b *model.Bench, ask func(payloadbootstrap.Spec, []byte) (quotahelper.RetiredResult, error)) error {
-	if !workspacepolicy.Unfinished(b) {
+// retired asks root about unfinished or stalled b with its canonical Spec:
+// inspect for an unfinished one, reclaim for a stalled one. The reply already
+// names b's key (and for an inspection its workspace and generation); it
+// must retire b's own project when b has one.
+func retired(data string, b *model.Bench, inspect, reclaim func(payloadbootstrap.Spec, []byte) (quotahelper.Assignment, error)) error {
+	ask := inspect
+	if workspacepolicy.Stalled(b) {
+		ask = reclaim
+	} else if !workspacepolicy.Unfinished(b) {
 		return ErrBootstrap
 	}
 	spec, err := specification(data, b)
@@ -219,11 +241,11 @@ func retired(data string, b *model.Bench, ask func(payloadbootstrap.Spec, []byte
 	if err != nil {
 		return err
 	}
-	result, err := ask(spec, input)
+	tombstone, err := ask(spec, input)
 	if err != nil {
 		return err
 	}
-	if b.ProjectID != 0 && result.Allocation.ProjectID != b.ProjectID {
+	if b.ProjectID != 0 && tombstone.ProjectID != b.ProjectID {
 		return ErrBootstrap
 	}
 	return nil

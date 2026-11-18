@@ -66,28 +66,42 @@ func follow(candidate, previous *model.Bench) error {
 	return Validate(candidate)
 }
 
-// Unfinished reports a create that never finished: a valid materializing or
-// initializing record with no run, no checkpoint, and no transfer or repair.
-// (Validate already requires its initialization owner and, with a run, its
-// stage.) A new create on its key follows it only once root proves its
-// allocation retired (Prove).
+// Unfinished reports a create whose bootstrap never completed: a valid
+// materializing record with no project, which root can only have retired
+// by its direct recovery (Prove asks root whether it did).
 func Unfinished(b *model.Bench) bool {
 	if b == nil || b.Workspace == nil || Validate(b) != nil {
 		return false
 	}
 	w := b.Workspace
-	return (w.Phase == "materializing" || w.Phase == "initializing") && b.Lease.Execution == nil && w.Pending == nil && w.Checkpoint == nil && w.TransferredFrom == nil && w.InitializationRepair == nil
+	return w.Phase == "materializing" && b.ProjectID == 0 && w.TransferredFrom == nil && w.InitializationRepair == nil
+}
+
+// Stalled reports a create whose bootstrap completed but whose initialization
+// never did, with nothing to keep: an initializing or materializing record
+// with its project, whose initialization owner the daemon has stopped
+// (stop or stop_admin), with no live run and no checkpoint, and no
+// transfer or repair. Root reclaims its tree on a new create (Prove).
+func Stalled(b *model.Bench) bool {
+	if b == nil || b.Workspace == nil || Validate(b) != nil {
+		return false
+	}
+	w, l := b.Workspace, b.Lease
+	// Without a continuation the stop is recorded: Validate then requires
+	// StopRequested of any phase but ready.
+	return (w.Phase == "initializing" || w.Phase == "materializing") && b.ProjectID != 0 && l.Continuation == "" &&
+		(l.Execution == nil || l.Execution.Phase == "stopped") && w.Pending == nil && w.Checkpoint == nil && w.TransferredFrom == nil && w.InitializationRepair == nil
 }
 
 // Predecessor reports a record a new create on its key may follow: reclaimed,
-// or unfinished, which Next follows only with root's proof.
+// or unfinished or stalled, which Prove follows only on root's proof.
 func Predecessor(b *model.Bench) bool {
-	return b != nil && b.Workspace != nil && b.Workspace.Phase == "reclaimed" || Unfinished(b)
+	return b != nil && b.Workspace != nil && b.Workspace.Phase == "reclaimed" || Unfinished(b) || Stalled(b)
 }
 
 // ErrUnretired refuses a create on a key whose unfinished create root has not
 // proven retired. The record stays as it is.
-var ErrUnretired = errors.New("workspace creation conflicts with an existing bench: its create never completed and root has not retired its allocation")
+var ErrUnretired = errors.New("workspace creation conflicts with an existing bench: its create never completed and root has not retired or reclaimed its allocation")
 
 // Proof is a key's record that a new create may follow, as Prove found it.
 // Only Prove makes one; the zero value follows nothing.
@@ -95,8 +109,9 @@ type Proof struct{ previous *model.Bench }
 
 // Prove decides, before any plan, whether a new create may follow previous,
 // its key's record: none needs nothing; a reclaimed record needs a Fresh
-// daemon; an unfinished create also needs retired, root's read-only proof
-// that its allocation was retired, never the daemon's own record alone.
+// daemon; an unfinished or stalled create also needs retired: root's proof,
+// read-only for an unfinished one and root's own reclaim for a stalled one,
+// that its allocation is retired, never the daemon's own record alone.
 func Prove(ctx context.Context, previous *model.Bench, fresh bool, retired func(context.Context, *model.Bench) error) (Proof, error) {
 	if err := ctx.Err(); err != nil || previous == nil {
 		return Proof{}, err
@@ -105,7 +120,7 @@ func Prove(ctx context.Context, previous *model.Bench, fresh bool, retired func(
 		return Proof{}, errors.New("a key is created again only as a Fresh bench of its next generation")
 	}
 	if previous.Workspace == nil || previous.Workspace.Phase != "reclaimed" {
-		if !Unfinished(previous) || retired == nil {
+		if !Unfinished(previous) && !Stalled(previous) || retired == nil {
 			return Proof{}, ErrUnretired
 		}
 		if err := retired(ctx, previous); err != nil {

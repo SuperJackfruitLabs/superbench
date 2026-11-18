@@ -95,15 +95,32 @@ func TestCreateOnAnUnfinishedCreateStaysAConflict(t *testing.T) {
 	if err != nil || staged.Workspace.Phase != "initializing" || staged.Lease == nil {
 		t.Fatalf("unfinished create: %+v %v", staged, err)
 	}
-	before := snapshot(t, m)
 	next := r
 	next.RequestID = "creation-2"
-	// Staging, not the duplicate-key check, refuses it: this daemon has no
-	// Fresh payload, so it has no route to root's proof.
-	if _, err := m.Execute(context.Background(), next, 42); !errors.Is(err, ErrConflict) || !strings.Contains(err.Error(), "Fresh bench of its next generation") {
-		t.Fatalf("a new create on an unfinished key: %v", err)
+	// A live initialization owner: staging refuses it as a conflict.
+	before := snapshot(t, m)
+	if _, err := m.Execute(context.Background(), next, 42); !errors.Is(err, ErrConflict) || strings.Contains(err.Error(), "Fresh bench of its next generation") {
+		t.Fatalf("a new create over a live owner: %v", err)
 	}
 	if !reflect.DeepEqual(before, snapshot(t, m)) {
-		t.Fatal("a refused create changed the unfinished record")
+		t.Fatal("a refused create changed the live record")
+	}
+	// The daemon stopped the owner: staging, not the duplicate-key check,
+	// refuses it, since this daemon has no Fresh payload and so no route to root.
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(m.Store.State, "bench.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err = db.Exec(`UPDATE benches SET record=json_set(record, '$.Lease.StopRequested', json('true'), '$.Lease.Continuation', '', '$.ProjectID', 10007, '$.QuotaBytes', 1073741824, '$.QuotaInodes', 1000) WHERE key='card'`); err != nil {
+		t.Fatal(err)
+	}
+	before = snapshot(t, m)
+	next.RequestID = "creation-3"
+	if _, err := m.Execute(context.Background(), next, 42); !errors.Is(err, ErrConflict) || !strings.Contains(err.Error(), "Fresh bench of its next generation") {
+		t.Fatalf("a new create on a stalled key: %v", err)
+	}
+	if !reflect.DeepEqual(before, snapshot(t, m)) {
+		t.Fatal("a refused create changed the stalled record")
 	}
 }

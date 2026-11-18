@@ -234,10 +234,10 @@ func PlanClean(ctx context.Context, m *payloadbootstrap.Manager, s payloadbootst
 			if err != nil {
 				return err
 			}
-			if err = replacePlan(dir, s.Key, raw, 0, freshcleanup.MaxApproval); err != nil {
+			if err = replacePlan(dir, payloadbootstrap.Stem(s), raw, 0, freshcleanup.MaxApproval); err != nil {
 				return err
 			}
-			plan = PlanFile{filepath.Join(dir, planName(s.Key)), digest(raw)}
+			plan = PlanFile{filepath.Join(dir, planName(payloadbootstrap.Stem(s))), digest(raw)}
 			return nil
 		})
 	})
@@ -261,7 +261,7 @@ func Clean(ctx context.Context, m *payloadbootstrap.Manager, s payloadbootstrap.
 	retained := false
 	err := cleanStep(ctx, m, s, func(c *cleaning, reselect func(func(func() error) error) error) error {
 		dir := filepath.Join(c.r.Storage.Ledger, "payload-cleanups")
-		raw, already, err := reviewed(dir, s.Key, planSHA, 0, freshcleanup.MaxApproval)
+		raw, already, err := reviewed(dir, payloadbootstrap.Stem(s), planSHA, 0, freshcleanup.MaxApproval)
 		if err != nil {
 			return err
 		}
@@ -284,7 +284,7 @@ func Clean(ctx context.Context, m *payloadbootstrap.Manager, s payloadbootstrap.
 				return ErrRecovery
 			}
 			if err = reselect(func(func() error) error {
-				return retainFile(c.r.Storage.Ledger, approvalName(s.Key), raw, true, freshcleanup.MaxApproval)
+				return retainFile(c.r.Storage.Ledger, approvalName(payloadbootstrap.Stem(s)), raw, true, freshcleanup.MaxApproval)
 			}); err != nil {
 				return err
 			}
@@ -314,7 +314,7 @@ func Clean(ctx context.Context, m *payloadbootstrap.Manager, s payloadbootstrap.
 			return err
 		}
 		if err = reselect(func(func() error) error {
-			return retainFile(c.r.Storage.Ledger, approvalName(s.Key), raw, false, freshcleanup.MaxApproval)
+			return retainFile(c.r.Storage.Ledger, approvalName(payloadbootstrap.Stem(s)), raw, false, freshcleanup.MaxApproval)
 		}); err != nil {
 			return err
 		}

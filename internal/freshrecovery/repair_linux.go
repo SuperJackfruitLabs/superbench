@@ -119,7 +119,7 @@ func Repair(ctx context.Context, m *payloadbootstrap.Manager, s payloadbootstrap
 		if err != nil {
 			return err
 		}
-		if err = retain(r.Storage.Ledger, s.Key, "repair", raw, false); err != nil {
+		if err = retain(r.Storage.Ledger, payloadbootstrap.Stem(s), "repair", raw, false); err != nil {
 			return err
 		}
 		retained = true

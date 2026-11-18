@@ -209,11 +209,11 @@ func projectID(f *os.File) (uint32, error) {
 	return a.Projid, nil
 }
 
-// retain publishes the reviewed plan as LEDGER/payload-cleanups/KEY.STEP.json
-// before the first effect. When existing is set the step is a retry after the
+// retain publishes the reviewed plan as LEDGER/payload-cleanups/STEM.STEP.json,
+// STEM the generation's (KEY, or KEY@N after the first), before the first effect. When existing is set the step is a retry after the
 // effect, so the approval must already exist; it is never created afresh then.
-func retain(ledger, key, step string, raw []byte, existing bool) error {
-	return retainFile(ledger, key+"."+step+".json", raw, existing, MaxPlan)
+func retain(ledger, stem, step string, raw []byte, existing bool) error {
+	return retainFile(ledger, stem+"."+step+".json", raw, existing, MaxPlan)
 }
 
 // retainFile publishes raw exactly once as LEDGER/payload-cleanups/name, up to
