@@ -107,8 +107,14 @@ func assertLowerRetainedInspection(t *testing.T, control *quotaoperationjournal.
 	assertLowerBytes(t, filepath.Join(p.Ledger, "assignments.json"), assignments)
 	child := exec.CommandContext(t.Context(), helper, "-test.v", "-test.run=^Test(Retirement(ApprovalCustody|Ordering)|FreshRecovery)Fixture$", "-test.timeout=0")
 	log, err := child.CombinedOutput()
-	if err != nil || (!bytes.Contains(log, []byte("RETIREMENT_APPROVAL_CUSTODY_PASS")) || !bytes.Contains(log, []byte("RETIREMENT_ORDERING_AND_BINDING_PASS"))) || fixture.Logged(log) != nil || bytes.Contains(log, []byte("SKIP")) {
-		t.Fatalf("actual root approval custody failed: %v\n%s", err, log)
+	missing := fixture.Missing(log)
+	for _, marker := range []string{"RETIREMENT_APPROVAL_CUSTODY_PASS", "RETIREMENT_ORDERING_AND_BINDING_PASS"} {
+		if !bytes.Contains(log, []byte(marker)) {
+			missing = append(missing, marker+" (logged 0 times)")
+		}
+	}
+	if err != nil || len(missing) != 0 || bytes.Contains(log, []byte("SKIP")) {
+		t.Fatalf("actual root approval custody failed: child exit %v, SKIP logged %t, child markers not logged exactly once: %s\n%s", err, bytes.Contains(log, []byte("SKIP")), strings.Join(missing, ", "), log)
 	}
 	fixture.Relay(t, log)
 	t.Log("LOWER_RETAINED_BOOTSTRAP_INSPECTION_WITHOUT_REVIVAL_PASS")

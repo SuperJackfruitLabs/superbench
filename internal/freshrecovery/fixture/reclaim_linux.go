@@ -266,7 +266,7 @@ func (e *env) reclaims() {
 		t.Fatalf("the unconfined owner's chproj did not apply: %+v", got)
 	}
 	e.refusedEscaped(a, escaped)
-	fmt.Println("FRESH_RECLAIM_ESCAPED_FILE_REFUSED_PASS")
+	t.Log("FRESH_RECLAIM_ESCAPED_FILE_REFUSED_PASS")
 	e.xfsIO(escaped, fmt.Sprintf("chproj %d", a.allocation.ProjectID))
 	api := filepath.Join(a.allocation.Path, "api")
 	e.payloadShell(a.allocation.Path, `/usr/sbin/xfs_io -r -c 'chattr -P' api`)
@@ -274,7 +274,7 @@ func (e *env) reclaims() {
 		t.Fatalf("the unconfined owner's chattr -P did not apply: %+v", got)
 	}
 	e.refusedEscaped(a, escaped)
-	fmt.Println("FRESH_RECLAIM_DIRECTORY_WITHOUT_INHERIT_REFUSED_PASS")
+	t.Log("FRESH_RECLAIM_DIRECTORY_WITHOUT_INHERIT_REFUSED_PASS")
 	restored := e.attr(api)
 	restored.Xflags |= projInherit
 	e.setAttr(api, restored)
@@ -396,7 +396,7 @@ func (e *env) reclaims() {
 				<-done
 				t.Fatal(confinedErr)
 			}
-			fmt.Println("FRESH_RECLAIM_PURGE_WORKER_CONFINED_PASS")
+			t.Log("FRESH_RECLAIM_PURGE_WORKER_CONFINED_PASS")
 			cancel()
 			err = <-done
 			break

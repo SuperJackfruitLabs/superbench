@@ -124,3 +124,37 @@ func (e *env) secondSuccessorRefused(first, second bench, layouts string) {
 	}
 	t.Log("LOWER_RECREATE_SECOND_SUCCESSOR_REFUSED_PASS")
 }
+
+// liveBenches is the ledger's capacity footprint: every bench row that still
+// reserves bytes, by name. A tombstone or an earlier generation reserves none.
+func (e *env) liveBenches() map[string]hoststorage.Assignment {
+	live := map[string]hoststorage.Assignment{}
+	for name, a := range e.ledger().Assignments {
+		if strings.HasPrefix(name, "bench:") && a.Bytes != 0 {
+			live[name] = a
+		}
+	}
+	return live
+}
+
+// assertFootprint requires a group of cases to leave the ledger's reservations
+// as it found them, so that every later case, here and in the parent, has the
+// fixture volume's whole capacity. It names any reservation left behind.
+func (e *env) assertFootprint(before map[string]hoststorage.Assignment, cases string) {
+	e.t.Helper()
+	after := e.liveBenches()
+	var changed []string
+	for name, a := range after {
+		if before[name] != a {
+			changed = append(changed, name+" left reserved")
+		}
+	}
+	for name := range before {
+		if _, ok := after[name]; !ok {
+			changed = append(changed, name+" released")
+		}
+	}
+	if len(changed) != 0 {
+		e.t.Fatalf("%s changed the volume's reservations: %s", cases, strings.Join(changed, ", "))
+	}
+}
