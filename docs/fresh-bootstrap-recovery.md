@@ -414,10 +414,16 @@ or cleanup approvals, so the approval file names do not collide.
 The lower fixture proves this on real XFS after the reclaim cases. Its markers,
 each logged alone on its line, are
 `LOWER_RECREATE_REFUSED_WHILE_OLD_LAYOUT_PUBLISHED_PASS`,
+`LOWER_RECREATE_FORGED_PREVIOUS_REFUSED_PASS`,
+`LOWER_RECREATE_SKIPPED_GENERATION_REFUSED_PASS`,
+`LOWER_RECREATE_PREDECESSOR_BINDING_REFUSED_PASS`,
 `LOWER_RECREATE_NEW_PROJECT_PASS`, `LOWER_RECREATE_FRESH_TREE_PASS`,
 `LOWER_RECREATE_OLD_EVIDENCE_RETAINED_PASS`,
+`LOWER_RECREATE_SECOND_SUCCESSOR_REFUSED_PASS`,
 `LOWER_RECREATE_OLD_PROJECT_NOT_REVIVED_PASS` and
-`LOWER_RECREATE_SECOND_GENERATION_RECLAIMED_PASS`.
+`LOWER_RECREATE_SECOND_GENERATION_RECLAIMED_PASS`. With the old layout already
+moved aside, the forged, generation-gap, binding and second-successor cases are
+refused by the deeper guards: the predecessor's intent, and the ledger.
 
 ### The source commit
 
