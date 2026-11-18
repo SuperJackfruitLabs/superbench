@@ -11,6 +11,7 @@ import (
 	"errors"
 	"path/filepath"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/archivepolicy"
@@ -21,6 +22,7 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/payloadstage"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/protocolv2"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspace"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspaceidle"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspaceprep"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspacereclaim"
 )
@@ -268,4 +270,21 @@ func (m Manager) reclaim(ctx context.Context, key string, eligible func(*model.B
 		err = errors.Join(ErrConflict, err)
 	}
 	return result(b, "", false), err
+}
+
+// IdleSweep is the daemon's idle reclaim over this store: selection under its
+// host lock, and each reclaim through ReclaimIdle, the operator's route.
+func (m Manager) IdleSweep(grace time.Duration) workspaceidle.Sweep {
+	return workspaceidle.Sweep{State: m.Store.State, Grace: grace,
+		Within: func(ctx context.Context, fn func(workspace.Update) error) error {
+			admin, _, err := m.Store.WorkspaceArchiveAdministration(ctx)
+			if err != nil {
+				return err
+			}
+			return admin.Within(fn)
+		},
+		Reclaim: func(ctx context.Context, key string, eligible func(*model.Bench) error) error {
+			_, err := m.ReclaimIdle(ctx, key, eligible)
+			return err
+		}}
 }

@@ -126,7 +126,8 @@ func TestArchitecture(t *testing.T) {
 				"internal/retention":                   {"internal/history", "internal/reap"},
 				"internal/maintenance":                 {"internal/retention", "internal/reap"},
 				"internal/workspacereclaim":            {"internal/benchstate", "internal/freshtree", "internal/hoststorage", "internal/model", "internal/operationcontrol", "internal/payloadbootstrap", "internal/quotahelper", "internal/serviceidentity", "internal/workspace", "internal/workspacepolicy"},
-				"internal/workspaceops":                {"internal/workspacereclaim", "internal/finiteio", "internal/payloadstage", "internal/workspaceprep", "internal/bench", "internal/execution", "internal/model", "internal/protocolv2", "internal/workspace", "internal/archivepolicy"},
+				"internal/workspaceidle":               {"internal/benchstate", "internal/freshtree", "internal/model", "internal/workspace", "internal/workspacepolicy"},
+				"internal/workspaceops":                {"internal/workspaceidle", "internal/workspacereclaim", "internal/finiteio", "internal/payloadstage", "internal/workspaceprep", "internal/bench", "internal/execution", "internal/model", "internal/protocolv2", "internal/workspace", "internal/archivepolicy"},
 				"internal/workspaceapi":                {"internal/bench", "internal/model", "internal/protocolv2", "internal/workspaceops"},
 				"internal/operationreceipts":           {"internal/operationcontrol", "internal/finiteio"},
 				"internal/operationbody":               {"internal/protocolv2"},                                                         // Body bound and profile classification only.
