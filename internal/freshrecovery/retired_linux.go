@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/freshgeneration"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/freshretirement"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/payloadbootstrap"
@@ -38,12 +37,11 @@ func InspectRetired(ctx context.Context, s payloadbootstrap.Spec) (quotahelper.R
 	}
 	// The retirement must be of exactly the intent s left (freshgeneration.Retired).
 	prior, plan, err := payloadbootstrap.ReadPrior(storage.Ledger, s.Key, s.Generation)
-	raw, specErr := s.Bytes()
-	if err == nil && (specErr != nil || plan == nil || prior.ID != s.ID || prior.SpecSHA256 != digest(raw)) {
+	if err == nil && plan == nil {
 		err = ErrRecovery
 	}
 	if err == nil {
-		err = freshgeneration.Retired(prior, authority, filepath.Join(storage.Root, "benches", s.Key))
+		err = retiredSpec(prior, s, authority, filepath.Join(storage.Root, "benches", s.Key))
 	}
 	if err == nil {
 		err = freshretirement.Retired(ctx, storage, plan.Storage)
