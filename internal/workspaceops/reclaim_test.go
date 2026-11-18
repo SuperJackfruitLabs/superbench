@@ -2,9 +2,13 @@ package workspaceops
 
 import (
 	"context"
+	"database/sql"
 	"errors"
+	"path/filepath"
 	"reflect"
 	"testing"
+
+	_ "modernc.org/sqlite"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/freshtree"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/freshtree/freshtreetest"
@@ -45,5 +49,34 @@ func TestReclaimIdleRequiresItsCondition(t *testing.T) {
 	create(t, m, r)
 	if _, err := m.ReclaimIdle(context.Background(), "card", nil); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("an unconditioned idle reclaim: %v", err)
+	}
+}
+
+// Through the service's create: replaying a reclaimed bench's own create
+// returns it, still reclaimed, and a new create on the key reaches staging
+// (which, without Fresh payload, refuses it) instead of the duplicate-key
+// conflict. Neither changes the reclaimed record.
+func TestCreateOnAReclaimedKey(t *testing.T) {
+	m, r := fixture(t)
+	create(t, m, r)
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(m.Store.State, "bench.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err = db.Exec(`UPDATE benches SET record=json_set(record, '$.Workspace.Phase', 'reclaimed', '$.ProjectID', 10007, '$.QuotaBytes', 1073741824, '$.QuotaInodes', 1000) WHERE key='card'`); err != nil {
+		t.Fatal(err)
+	}
+	before := snapshot(t, m)
+	if out, err := m.Execute(context.Background(), r, 42); err != nil || out.Workspace.Workspace.Phase != "reclaimed" || out.RootPath || out.GrantToken != "" {
+		t.Fatalf("replay of the reclaimed create: %+v %v", out, err)
+	}
+	next := r
+	next.RequestID = "creation-2"
+	if _, err := m.Execute(context.Background(), next, 42); err == nil || errors.Is(err, ErrConflict) {
+		t.Fatalf("a new create on the reclaimed key: %v", err)
+	}
+	if !reflect.DeepEqual(before, snapshot(t, m)) {
+		t.Fatal("a create changed the reclaimed record")
 	}
 }

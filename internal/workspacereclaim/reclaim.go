@@ -207,6 +207,9 @@ func Specification(b *model.Bench) (payloadbootstrap.Spec, error) {
 	}
 	w := b.Workspace
 	s := payloadbootstrap.Spec{Version: payloadbootstrap.Version, Key: b.Key, ID: w.ID, CheckpointRepository: w.CheckpointRepository, QuotaBytes: b.RequestedQuotaBytes}
+	if w.Generation != 0 {
+		s.Version, s.Generation, s.Previous = payloadbootstrap.GenerationVersion, w.Generation, w.Previous
+	}
 	for _, member := range w.Members {
 		s.Members = append(s.Members, payloadbootstrap.Member{Name: member.Name, Repository: member.Repository, Branch: member.Branch, Source: member.Source, ObjectFormat: member.ObjectFormat})
 	}

@@ -98,3 +98,23 @@ func TestGenerationFieldsAreAbsentOrNameAnotherReclaimedBench(t *testing.T) {
 		t.Fatal("the last generation refused", err)
 	}
 }
+
+// Only a reclaimed record under the same key is followed.
+func TestFollowTakesOnlyAReclaimedRecordUnderItsKey(t *testing.T) {
+	old := reclaimed(t)
+	next := successor(old)
+	next.Workspace.Generation, next.Workspace.Previous = 0, ""
+	if err := workspacepolicy.Follow(next, old); err != nil || next.Workspace.Generation != 2 || next.Workspace.Previous != old.Workspace.ID {
+		t.Fatalf("follow: %v %+v", err, next.Workspace)
+	}
+	for name, change := range map[string]func(*model.Bench){
+		"ready":     func(b *model.Bench) { b.Workspace.Phase = "ready" },
+		"other key": func(b *model.Bench) { b.Key = "other" },
+	} {
+		prior, candidate := reclaimed(t), successor(old)
+		change(prior)
+		if workspacepolicy.Follow(candidate, prior) == nil {
+			t.Errorf("%s followed", name)
+		}
+	}
+}

@@ -46,3 +46,13 @@ func Succeeds(previous string, generation uint32, b *model.Bench) bool {
 	next := NextGeneration(&model.Bench{Workspace: &model.Workspace{Generation: generation}})
 	return w.Phase == "materializing" && w.Generation == next && w.Previous == previous && b.ProjectID == 0
 }
+
+// Follow makes candidate, a new create's first record under reclaimed's key,
+// the next generation after reclaimed.
+func Follow(candidate, reclaimed *model.Bench) error {
+	if candidate == nil || candidate.Workspace == nil || reclaimed == nil || reclaimed.Workspace == nil || reclaimed.Workspace.Phase != "reclaimed" || candidate.Key != reclaimed.Key {
+		return errors.New("a workspace follows only a reclaimed record under its own key")
+	}
+	candidate.Workspace.Generation, candidate.Workspace.Previous = NextGeneration(reclaimed), reclaimed.Workspace.ID
+	return Validate(candidate)
+}

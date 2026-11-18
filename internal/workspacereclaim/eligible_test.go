@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/payloadbootstrap"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspace"
 )
 
@@ -32,5 +33,16 @@ func TestEligibleGatesOnlyANewReclaim(t *testing.T) {
 	h.m.Eligible, seen, h.calls = func(b *model.Bench) error { seen = append(seen, b.Workspace.Phase); return stale }, nil, nil
 	if got, err := h.m.Reclaim(context.Background(), "card"); err != nil || got.Workspace.Phase != "reclaimed" || len(seen) != 0 || !reflect.DeepEqual(h.calls, []string{"helper:reclaiming"}) {
 		t.Fatalf("resume: %v %v %v", err, seen, h.calls)
+	}
+}
+
+// A later generation's reclaim names its generation, so root binds it to that
+// generation's own intent and controls.
+func TestReclaimSpecificationCarriesTheGeneration(t *testing.T) {
+	b := released(t)
+	b.Workspace.Phase, b.Workspace.Generation, b.Workspace.Previous = "reclaiming", 2, "e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0"
+	s, err := Specification(b)
+	if err != nil || s.Version != payloadbootstrap.GenerationVersion || s.Generation != 2 || s.Previous != b.Workspace.Previous {
+		t.Fatalf("%+v %v", s, err)
 	}
 }
