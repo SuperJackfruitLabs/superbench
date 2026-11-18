@@ -88,6 +88,7 @@ func TestArchitecture(t *testing.T) {
 				"internal/hoststorage":                 {"internal/quotaleaf", "internal/allocationledger", "internal/quotaoperationjournal", "internal/storagecustody", "internal/quotapolicy", "internal/storageproof", "internal/hostlayout", "internal/hostpolicy", "internal/quotahelper", "internal/model", "internal/output"},
 				"internal/payloadcache":                {"internal/cachepolicy", "internal/payloadpolicy"},
 				"internal/workspacebootstrap":          {"internal/hoststorage", "internal/model", "internal/operationcontrol", "internal/payloadbootstrap", "internal/quotahelper", "internal/serviceidentity", "internal/workspacecopy", "internal/workspacepolicy"},
+				"internal/childlog":                    {}, // Reads a child test log; no authority.
 				"internal/freshgeneration":             {}, // Names a key's generations; no authority.
 				"internal/payloadbootstrap":            {"internal/freshgeneration", "internal/freshretirement", "internal/quotaoperationcontrol", "internal/execution", "internal/gitcontrol", "internal/hoststorage", "internal/payloadexec", "internal/quotahelper", "internal/quotaoperation", "internal/quotaoperationjournal", "internal/retainedfile", "internal/serviceidentity", "internal/storagecustody", "internal/repository", "internal/workspaceplan"},
 				"internal/retainedfile":                {"internal/storagecustody"},

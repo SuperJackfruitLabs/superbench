@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/childlog"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/freshrecovery/fixture"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/payloadbootstrap"
@@ -113,8 +114,8 @@ func assertLowerRetainedInspection(t *testing.T, control *quotaoperationjournal.
 			missing = append(missing, marker+" (logged 0 times)")
 		}
 	}
-	if err != nil || len(missing) != 0 || bytes.Contains(log, []byte("SKIP")) {
-		t.Fatalf("actual root approval custody failed: child exit %v, SKIP logged %t, child markers not logged exactly once: %s\n%s", err, bytes.Contains(log, []byte("SKIP")), strings.Join(missing, ", "), log)
+	if err != nil || len(missing) != 0 || childlog.Skipped(log) {
+		t.Fatalf("actual root approval custody failed: child exit %v, a child test skipped %t, child markers not logged exactly once: %s\n%s", err, childlog.Skipped(log), strings.Join(missing, ", "), log)
 	}
 	fixture.Relay(t, log)
 	t.Log("LOWER_RETAINED_BOOTSTRAP_INSPECTION_WITHOUT_REVIVAL_PASS")

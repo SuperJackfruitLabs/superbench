@@ -48,7 +48,7 @@ func (e *env) guardsBeforeTheNextGeneration(first bench, firstIntent []byte) {
 	skipped := successor(first, "skipped")
 	skipped.Generation = 3
 	e.refusedNext(skipped, "recreate-skipped", os.ErrNotExist, nil)
-	t.Log("LOWER_RECREATE_SKIPPED_GENERATION_REFUSED_PASS")
+	t.Log("LOWER_RECREATE_GENERATION_GAP_REFUSED_PASS")
 
 	// Synthetic predecessors, each the reclaimed intent's exact bytes under
 	// another key with one binding changed. The control changes none: it passes
