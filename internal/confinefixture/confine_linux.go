@@ -24,6 +24,7 @@ import (
 
 const (
 	childEnv        = "SUPERBENCH_CONFINE_CHILD_POLICY"
+	controlEnv      = "SUPERBENCH_CONFINE_CONTROL_IDENTITY"
 	fsIocFsgetxattr = 0x801c581f
 	fsIocFssetxattr = 0x401c5820
 	fsIocGetflags   = 0x80086601
@@ -58,9 +59,18 @@ func marker(m string) { fmt.Println(m) }
 // production drop, which installs the filter, then tries every route the
 // owner has to change a project ID or the inherit flag.
 func init() {
+	if id := os.Getenv(controlEnv); id != "" {
+		control(id)
+	}
 	raw := os.Getenv(childEnv)
 	if raw == "" {
 		return
+	}
+	// Enter the member directory while root, as Exec enters the bench cwd:
+	// every path the payload then uses is relative and its own to open.
+	if err := syscall.Fchdir(4); err != nil {
+		fmt.Println("CHILD_FCHDIR_FAILED", err)
+		os.Exit(3)
 	}
 	p, err := payloadexec.ParsePolicy([]byte(raw))
 	if err == nil {
@@ -103,8 +113,33 @@ func init() {
 	_, _, e = syscall.Syscall(ioUringSetup, 1, uintptr(unsafe.Pointer(&params[0])), 0)
 	expect("CHILD_IO_URING_SETUP", e)
 	// The filter survives exec and fork: the real tool fails in a grandchild.
-	err = syscall.Exec("/bin/sh", []string{"sh", "-c", "/usr/sbin/xfs_io -r -c 'chproj 0' /proc/self/fd/3 2>&1; /usr/sbin/xfs_io -r -c 'chattr -P' /proc/self/fd/4 2>&1; echo CHILD_SHELL_DONE"}, []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL=C"})
+	err = syscall.Exec("/bin/sh", []string{"sh", "-c", "/usr/sbin/xfs_io -r -c 'chproj 0' payload.txt 2>&1; /usr/sbin/xfs_io -r -c 'chattr -P' . 2>&1; echo CHILD_SHELL_DONE"}, []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL=C"})
 	fmt.Println("CHILD_EXEC_FAILED", err)
+	os.Exit(3)
+}
+
+// control is the unconfined owner: root enters the member directory (fd 3),
+// becomes only the payload uid and gid, with no filter, and runs xfs_io on
+// the scratch file by its own relative name.
+func control(id string) {
+	var uid, gid int
+	if _, err := fmt.Sscanf(id, "%d:%d", &uid, &gid); err != nil || uid == 0 || gid == 0 {
+		fmt.Println("CONTROL_IDENTITY_INVALID", id)
+		os.Exit(3)
+	}
+	for _, step := range []func() error{
+		func() error { return syscall.Fchdir(3) },
+		func() error { return syscall.Setgroups([]int{}) },
+		func() error { return syscall.Setresgid(gid, gid, gid) },
+		func() error { return syscall.Setresuid(uid, uid, uid) },
+	} {
+		if err := step(); err != nil {
+			fmt.Println("CONTROL_SETUP_FAILED", err)
+			os.Exit(3)
+		}
+	}
+	err := syscall.Exec("/usr/sbin/xfs_io", []string{"xfs_io", "-r", "-c", "chproj 0", ".confine-control"}, []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL=C"})
+	fmt.Println("CONTROL_EXEC_FAILED", err)
 	os.Exit(3)
 }
 
@@ -149,11 +184,10 @@ func Prove(t *testing.T, private payloadexec.Policy, storage hoststorage.Policy,
 	if err := control.Chown(int(private.PayloadUID), int(private.PayloadGID)); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command("/usr/sbin/xfs_io", "-r", "-c", "chproj 0", "/proc/self/fd/3")
-	cmd.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL=C"}
-	cmd.ExtraFiles = []*os.File{control}
-	cmd.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: private.PayloadUID, Gid: private.PayloadGID, Groups: []uint32{}}}
-	if out, err := cmd.CombinedOutput(); err != nil || attr(t, control).Projid != 0 {
+	cmd := exec.Command("/proc/self/exe", "-test.run=^$")
+	cmd.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL=C", fmt.Sprintf("%s=%d:%d", controlEnv, private.PayloadUID, private.PayloadGID)}
+	cmd.ExtraFiles = []*os.File{dir}
+	if out, err := cmd.CombinedOutput(); err != nil || attr(t, control).Projid != 0 || strings.Contains(string(out), "denied") {
 		t.Fatalf("unconfined owner chproj control did not escape: %v %s", err, out)
 	}
 	marker("LOWER_CONFINE_UNCONFINED_OWNER_CHPROJ_ESCAPES_CONTROL_PASS")
@@ -211,7 +245,7 @@ func Prove(t *testing.T, private payloadexec.Policy, storage hoststorage.Policy,
 	}
 	// The attribute re-read above is the guard; the tool's own refusals, in the
 	// C locale, show the refusal came from the filter and not a failed open.
-	if !strings.HasSuffix(text, "CHILD_SHELL_DONE\n") || strings.Count(text, "Operation not permitted") < 2 {
+	if !strings.HasSuffix(text, "CHILD_SHELL_DONE\n") || strings.Count(text, "Operation not permitted") < 2 || strings.Contains(text, "Permission denied") {
 		t.Fatalf("xfs_io after exec was not refused twice: %s", text)
 	}
 	marker("LOWER_CONFINE_PAYLOAD_XFS_IO_CHPROJ_AND_CHATTR_REFUSED_AFTER_EXEC_PASS")
