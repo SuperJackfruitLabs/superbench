@@ -18,6 +18,7 @@ import (
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/payloadexec"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/projectscan"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotaleaf"
 )
 
@@ -102,7 +103,7 @@ func init() {
 	_, _, e = syscall.Syscall(ioUringSetup, 1, uintptr(unsafe.Pointer(&params[0])), 0)
 	expect("CHILD_IO_URING_SETUP", e)
 	// The filter survives exec and fork: the real tool fails in a grandchild.
-	err = syscall.Exec("/bin/sh", []string{"sh", "-c", "/usr/sbin/xfs_io -r -c 'chproj 0' /proc/self/fd/3 2>&1; /usr/sbin/xfs_io -r -c 'chattr -P' /proc/self/fd/4 2>&1; echo CHILD_SHELL_DONE"}, []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin"})
+	err = syscall.Exec("/bin/sh", []string{"sh", "-c", "/usr/sbin/xfs_io -r -c 'chproj 0' /proc/self/fd/3 2>&1; /usr/sbin/xfs_io -r -c 'chattr -P' /proc/self/fd/4 2>&1; echo CHILD_SHELL_DONE"}, []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL=C"})
 	fmt.Println("CHILD_EXEC_FAILED", err)
 	os.Exit(3)
 }
@@ -149,7 +150,7 @@ func Prove(t *testing.T, private payloadexec.Policy, storage hoststorage.Policy,
 		t.Fatal(err)
 	}
 	cmd := exec.Command("/usr/sbin/xfs_io", "-r", "-c", "chproj 0", "/proc/self/fd/3")
-	cmd.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin"}
+	cmd.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL=C"}
 	cmd.ExtraFiles = []*os.File{control}
 	cmd.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: private.PayloadUID, Gid: private.PayloadGID, Groups: []uint32{}}}
 	if out, err := cmd.CombinedOutput(); err != nil || attr(t, control).Projid != 0 {
@@ -160,6 +161,12 @@ func Prove(t *testing.T, private payloadexec.Policy, storage hoststorage.Policy,
 		t.Fatalf("tree check accepted a file outside its project: %v", err)
 	}
 	marker("LOWER_CONFINE_TREE_CHECK_REFUSES_ESCAPED_FILE_PASS")
+	// The operator's scan finds the nested escape the leaf check cannot.
+	results, err := projectscan.Scan(storage.Root, storage.Ledger)
+	if !errors.Is(err, projectscan.ErrOutside) || status(results, key) != "outside" {
+		t.Fatalf("project scan missed a nested escape: %+v %v", results, err)
+	}
+	marker("LOWER_PROJECT_SCAN_REPORTS_NESTED_ESCAPE_PASS")
 	_ = control.Close()
 	if err := syscall.Unlinkat(int(dir.Fd()), ".confine-control"); err != nil {
 		t.Fatal(err)
@@ -167,6 +174,12 @@ func Prove(t *testing.T, private payloadexec.Policy, storage hoststorage.Policy,
 	if err := quotaleaf.Tree(leaf, project, limit); err != nil {
 		t.Fatalf("tree after control removal: %v", err)
 	}
+	results, err = projectscan.Scan(storage.Root, storage.Ledger)
+	t.Logf("project scan after restore: %+v %v", results, err)
+	if status(results, key) != "contained" {
+		t.Fatalf("project scan after restore: %+v %v", results, err)
+	}
+	marker("LOWER_PROJECT_SCAN_ACCEPTS_RESTORED_BENCH_PASS")
 
 	// The confined child: the production drop, then every escape route.
 	policy, err := private.Bytes()
@@ -174,7 +187,7 @@ func Prove(t *testing.T, private payloadexec.Policy, storage hoststorage.Policy,
 		t.Fatal(err)
 	}
 	child := exec.Command("/proc/self/exe", "-test.run=^$")
-	child.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", childEnv + "=" + string(policy)}
+	child.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL=C", childEnv + "=" + string(policy)}
 	child.ExtraFiles = []*os.File{file, dir}
 	out, err := child.CombinedOutput()
 	text := string(out)
@@ -196,6 +209,8 @@ func Prove(t *testing.T, private payloadexec.Policy, storage hoststorage.Policy,
 		}
 		marker(c.marker)
 	}
+	// The attribute re-read above is the guard; the tool's own refusals, in the
+	// C locale, show the refusal came from the filter and not a failed open.
 	if !strings.HasSuffix(text, "CHILD_SHELL_DONE\n") || strings.Count(text, "Operation not permitted") < 2 {
 		t.Fatalf("xfs_io after exec was not refused twice: %s", text)
 	}
@@ -226,4 +241,13 @@ func Prove(t *testing.T, private payloadexec.Policy, storage hoststorage.Policy,
 		t.Fatalf("verify refused the restored leaf: %v", err)
 	}
 	marker("LOWER_VERIFY_ACCEPTS_RESTORED_LEAF_PASS")
+}
+
+func status(results []projectscan.Result, key string) string {
+	for _, r := range results {
+		if r.Key == key {
+			return r.Status
+		}
+	}
+	return ""
 }

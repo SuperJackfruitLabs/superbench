@@ -257,6 +257,27 @@ func (e *env) reclaims() {
 	assertBytes(t, filepath.Join(a.allocation.Path, "api", "payload.txt"), []byte("source-api\n"))
 	t.Log("FRESH_RECLAIM_REFUSED_WHILE_IN_USE_PASS")
 
+	// An owner's own chproj, made here outside the payload filter, is refused
+	// by root's tree walk before retention; nothing changes, and root restores it.
+	escaped := filepath.Join(a.allocation.Path, "api", "payload.txt")
+	e.payloadShell(a.allocation.Path, `/usr/sbin/xfs_io -r -c 'chproj 0' api/payload.txt`)
+	if got := e.attr(escaped); got.Projid != 0 {
+		t.Fatalf("the unconfined owner's chproj did not apply: %+v", got)
+	}
+	e.refusedEscaped(a, escaped)
+	fmt.Println("FRESH_RECLAIM_ESCAPED_FILE_REFUSED_PASS")
+	e.xfsIO(escaped, fmt.Sprintf("chproj %d", a.allocation.ProjectID))
+	api := filepath.Join(a.allocation.Path, "api")
+	e.payloadShell(a.allocation.Path, `/usr/sbin/xfs_io -r -c 'chattr -P' api`)
+	if got := e.attr(api); got.Xflags&projInherit != 0 {
+		t.Fatalf("the unconfined owner's chattr -P did not apply: %+v", got)
+	}
+	e.refusedEscaped(a, escaped)
+	fmt.Println("FRESH_RECLAIM_DIRECTORY_WITHOUT_INHERIT_REFUSED_PASS")
+	restored := e.attr(api)
+	restored.Xflags |= projInherit
+	e.setAttr(api, restored)
+
 	// The daemon's route is sudo: the reclaim admits it, as no recovery step does.
 	e.hostileWrite(a, 50)
 	// A hard link to a file outside the leaf: XFS refuses one across projects
@@ -368,6 +389,13 @@ func (e *env) reclaims() {
 	deadline := time.Now().Add(2 * time.Minute)
 	for {
 		if entries, statErr := os.ReadDir(out); statErr == nil && len(entries) < files {
+			// The purge worker, mid-purge, is under the payload filter.
+			if confinedErr := e.confinedPurge(); confinedErr != nil {
+				cancel()
+				<-done
+				t.Fatal(confinedErr)
+			}
+			fmt.Println("FRESH_RECLAIM_PURGE_WORKER_CONFINED_PASS")
 			cancel()
 			err = <-done
 			break
