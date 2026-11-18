@@ -16,9 +16,14 @@ func (m Manager) create(ctx context.Context, r protocolv2.Request, uid uint32) (
 		return nil, err
 	}
 	spec := creationSpec(r)
+	retired := false // a different create on a create that never completed
 	if rows, readErr := m.Store.Snapshot(r.Key); readErr == nil {
-		// A reclaimed record gives way to a different create: its next generation.
-		if rows[0].Workspace == nil || rows[0].Workspace.CreationID != id && rows[0].Workspace.Phase != "reclaimed" || rows[0].Workspace.InitializationRepair != nil || rows[0].Workspace.Transfer != nil || rows[0].Workspace.TransferredFrom != nil {
+		// A reclaimed record gives way to a different create: its next
+		// generation. So does an unfinished create once root proves its
+		// allocation retired; staging asks root, and refuses otherwise.
+		w := rows[0].Workspace
+		retired = w != nil && w.CreationID != id && (w.Phase == "materializing" || w.Phase == "initializing")
+		if w == nil || w.CreationID != id && w.Phase != "reclaimed" && !retired || w.InitializationRepair != nil || w.Transfer != nil || w.TransferredFrom != nil {
 			return nil, ErrConflict
 		}
 	} else if !errors.Is(readErr, bench.ErrNotFound) {
@@ -34,6 +39,9 @@ func (m Manager) create(ctx context.Context, r protocolv2.Request, uid uint32) (
 		b, err = m.Store.RecoverWorkspaceContext(ctx, id, recoverySpec(r, spec))
 	}
 	if b == nil {
+		if retired { // Root did not prove it: the key's record stands.
+			err = errors.Join(ErrConflict, err)
+		}
 		return nil, err
 	}
 	if b.Workspace == nil || b.Workspace.CreationID != id || b.Workspace.InitializationRepair != nil || b.Workspace.Transfer != nil || b.Workspace.TransferredFrom != nil {

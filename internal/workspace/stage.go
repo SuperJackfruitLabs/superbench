@@ -35,6 +35,7 @@ type Manager struct {
 	Admit       func() error
 	Allocate    func(*model.Bench) error
 	Fresh       func(context.Context, *model.Bench) error
+	Retired     func(context.Context, *model.Bench) error // root's proof an unfinished create's allocation is retired
 }
 
 // ValidateStage checks request shape without filesystem or repository effects.
@@ -57,7 +58,6 @@ func ValidateStage(creationID string, spec Spec) error {
 }
 
 var ErrTransfer = errors.New("workspace ownership has a durable transfer; use its transfer commands")
-
 var ErrInitializationRepair = errors.New("workspace initialization has an explicit repair epoch; use its repair commands")
 
 func privateRecord(b *model.Bench) *model.Bench { return workspacecopy.Copy(b) }
@@ -121,8 +121,7 @@ func (m Manager) Stage(ctx context.Context, creationID string, spec Spec) (*mode
 	})
 }
 
-// Both fresh creation and recovery enter the same durable ownership/allocation
-// sequence; only source selection and exact retry identity differ.
+// Fresh creation and recovery share one durable ownership/allocation sequence; only source selection and retry identity differ.
 type stagingRequest struct {
 	validate        func(benchstate.Database, *sql.Tx) error
 	key, creationID string
@@ -133,7 +132,7 @@ type stagingRequest struct {
 	explicitQuota   uint64
 	recoveredFrom   *model.WorkspaceRecovery
 	matches         func(*model.Bench) bool
-	successor       bool // a plain create, which may follow a reclaimed record
+	successor       bool // a plain create, which may follow a reclaimed or retired record
 	selectPlan      func(context.Context, time.Duration) (Plan, error)
 }
 
@@ -177,8 +176,8 @@ func (m Manager) stage(ctx context.Context, request stagingRequest) (*model.Benc
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-			if b := rows[request.key]; request.successor && b != nil && b.Workspace != nil && b.Workspace.Phase == "reclaimed" && !request.matches(b) {
-				predecessor = privateRecord(b) // A create on a reclaimed key starts its next generation.
+			if b := rows[request.key]; request.successor && workspacepolicy.Predecessor(b) && !request.matches(b) {
+				predecessor = privateRecord(b) // A create on a reclaimed key, or one root retired, starts its next generation.
 			} else if b, ok := rows[request.key]; ok {
 				if b.Workspace != nil && (b.Workspace.Transfer != nil || b.Workspace.TransferredFrom != nil && request.transferID != b.Workspace.TransferredFrom.ID) {
 					return ErrTransfer
@@ -212,7 +211,8 @@ func (m Manager) stage(ctx context.Context, request stagingRequest) (*model.Benc
 		if found != nil && found.Workspace.Phase != "materializing" {
 			return nil
 		}
-		if err := ctx.Err(); err != nil {
+		proof, err := workspacepolicy.Prove(ctx, predecessor, m.Fresh != nil, m.Retired)
+		if err != nil {
 			return err
 		}
 		if committed == nil {
@@ -243,8 +243,8 @@ func (m Manager) stage(ctx context.Context, request stagingRequest) (*model.Benc
 			if err != nil {
 				return err
 			}
-			if predecessor != nil && (m.Fresh == nil || workspacepolicy.Follow(candidate, predecessor) != nil) {
-				return errors.New("a reclaimed key is created again only as a Fresh bench of its next generation")
+			if err := proof.Follow(candidate); err != nil {
+				return err
 			}
 			if request.transferredFrom != nil {
 				origin := *request.transferredFrom

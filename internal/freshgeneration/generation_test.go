@@ -93,3 +93,100 @@ func TestALaterGenerationWaitsForTheLayoutToMoveAside(t *testing.T) {
 		t.Fatal("moved-aside layout refused", err)
 	}
 }
+
+// retired is a generation that never completed, whose allocation root retired:
+// its intent and root's retirement of exactly that intent.
+func retired() (Prior, string, string) {
+	root, authority := "/srv/data/benches/card", strings.Repeat("a", 64)
+	p := Prior{Key: "card", ID: strings.Repeat("1", 32), Phase: "staging", Authority: authority, Path: root, ProjectID: 10004, Bytes: 3 << 30, Inodes: 4096,
+		Operation: `{"OperationID":"o"}`, PolicyDigest: strings.Repeat("b", 64), IntentSHA256: strings.Repeat("c", 64), SpecSHA256: strings.Repeat("d", 64)}
+	recorded := Allocation{p.Path, p.ProjectID, p.Bytes, p.Inodes}
+	p.Retirement = &Retirement{Key: p.Key, ID: p.ID, Phase: p.Phase, IntentSHA256: p.IntentSHA256, SpecSHA256: p.SpecSHA256, Operation: p.Operation, PolicyDigest: p.PolicyDigest,
+		OperationDenied: true, Recorded: recorded, ApprovalKey: p.Key, Authority: authority, Approved: recorded}
+	return p, authority, root
+}
+
+// reserve makes p a reserved intent's reading: it records no allocation.
+func reserve(p *Prior) {
+	p.Phase, p.Retirement.Phase = "reserved", "reserved"
+	p.Path, p.ProjectID, p.Bytes, p.Inodes, p.Retirement.Recorded = "", 0, 0, 0, Allocation{}
+}
+
+// A create that never completed is followed once root retired its allocation:
+// root's retirement must name that very intent, made under its denied
+// operation, of the allocation it recorded, under the same authority and leaf.
+func TestALaterGenerationFollowsARetiredUnfinishedCreate(t *testing.T) {
+	prior, authority, root := retired()
+	for _, phase := range []string{"reserved", "allocating", "begun", "staging", "materialized_unfenced", "staged", "transferring"} {
+		p, _, _ := retired()
+		p.Phase, p.Retirement.Phase = phase, phase
+		if phase == "reserved" {
+			reserve(&p)
+		}
+		if err := Follows(p, "card", p.ID, 2, authority, root); err != nil {
+			t.Errorf("retired %s generation refused: %v", phase, err)
+		}
+		if a := p.Allocation(); a != (Allocation{Path: root, ProjectID: 10004}) {
+			t.Errorf("%s allocation %+v", phase, a)
+		}
+	}
+	second := prior
+	second.Generation = 2
+	if err := Follows(second, "card", second.ID, 3, authority, root); err != nil {
+		t.Fatal("a retired second generation", err)
+	}
+	t.Log("FAILED_CREATE_RETIRED_PREDECESSOR_FOLLOWED_PASS")
+	other := func(a *Allocation) { a.ProjectID = 10005 }
+	for name, c := range map[string]struct {
+		change     func(*Prior)
+		generation uint32
+	}{
+		"not retired":            {func(p *Prior) { p.Retirement = nil }, 2},
+		"completed":              {func(p *Prior) { p.Phase, p.Retirement.Phase = "completed", "completed" }, 2},
+		"reclaiming":             {func(p *Prior) { p.Phase, p.Retirement.Phase = "reclaiming", "reclaiming" }, 2},
+		"unknown phase":          {func(p *Prior) { p.Phase, p.Retirement.Phase = "ready", "ready" }, 2},
+		"retired another phase":  {func(p *Prior) { p.Retirement.Phase = "begun" }, 2},
+		"retired another intent": {func(p *Prior) { p.Retirement.IntentSHA256 = strings.Repeat("e", 64) }, 2},
+		"retired another spec":   {func(p *Prior) { p.Retirement.SpecSHA256 = strings.Repeat("e", 64) }, 2},
+		"no intent digest":       {func(p *Prior) { p.IntentSHA256, p.Retirement.IntentSHA256 = "", "" }, 2},
+		"no spec digest":         {func(p *Prior) { p.SpecSHA256, p.Retirement.SpecSHA256 = "", "" }, 2},
+		"another operation":      {func(p *Prior) { p.Retirement.Operation = `{"OperationID":"x"}` }, 2},
+		"no operation":           {func(p *Prior) { p.Operation, p.Retirement.Operation = "", "" }, 2},
+		"another policy":         {func(p *Prior) { p.Retirement.PolicyDigest = strings.Repeat("e", 64) }, 2},
+		"no policy":              {func(p *Prior) { p.PolicyDigest, p.Retirement.PolicyDigest = "", "" }, 2},
+		"retired another bench":  {func(p *Prior) { p.Retirement.ID = strings.Repeat("9", 32) }, 2},
+		"retired another key":    {func(p *Prior) { p.Retirement.Key = "other" }, 2},
+		"approved another key":   {func(p *Prior) { p.Retirement.ApprovalKey = "other" }, 2},
+		"operation not denied":   {func(p *Prior) { p.Retirement.OperationDenied = false }, 2},
+		"retired under another":  {func(p *Prior) { p.Retirement.Authority = strings.Repeat("b", 64) }, 2},
+		"created under another":  {func(p *Prior) { p.Authority = strings.Repeat("b", 64) }, 2},
+		"inspected another":      {func(p *Prior) { other(&p.Retirement.Recorded) }, 2},
+		"approved another":       {func(p *Prior) { other(&p.Retirement.Approved) }, 2},
+		"approved other caps":    {func(p *Prior) { p.Retirement.Approved.Bytes *= 2 }, 2},
+		"recorded another":       {func(p *Prior) { p.ProjectID = 10005 }, 2},
+		"recorded another leaf":  {func(p *Prior) { p.Path += "x" }, 2},
+		"another bench's leaf":   {func(p *Prior) { p.Path += "x"; p.Retirement.Recorded.Path, p.Retirement.Approved.Path = p.Path, p.Path }, 2},
+		"a shared project": {func(p *Prior) {
+			p.ProjectID, p.Retirement.Recorded.ProjectID, p.Retirement.Approved.ProjectID = 101, 101, 101
+		}, 2},
+		"reserved with a project":  {func(p *Prior) { reserve(p); p.ProjectID, p.Retirement.Recorded.ProjectID = 10004, 10004 }, 2},
+		"reserved, inspected one":  {func(p *Prior) { reserve(p); p.Retirement.Recorded.ProjectID = 10004 }, 2},
+		"reserved, shared project": {func(p *Prior) { reserve(p); p.Retirement.Approved.ProjectID = 101 }, 2},
+		"another workspace":        {func(p *Prior) { p.ID, p.Retirement.ID = strings.Repeat("9", 32), strings.Repeat("9", 32) }, 2},
+		"another key":              {func(p *Prior) { p.Key, p.Retirement.Key, p.Retirement.ApprovalKey = "other", "other", "other" }, 2},
+		"skips one":                {func(*Prior) {}, 3},
+		"first generation":         {func(*Prior) {}, 0},
+	} {
+		p, _, _ := retired()
+		c.change(&p)
+		if err := Follows(p, "card", prior.ID, c.generation, authority, root); !errors.Is(err, ErrGeneration) {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	// The reclaimed path is unchanged and needs no retirement.
+	reclaimed := Prior{Key: "card", ID: prior.ID, Phase: "reclaimed", Authority: authority, Path: root, ProjectID: 10000}
+	if err := Retired(reclaimed, authority, root); !errors.Is(err, ErrGeneration) {
+		t.Fatalf("a reclaimed generation counted as retired: %v", err)
+	}
+	t.Log("FAILED_CREATE_UNRETIRED_PREDECESSOR_REFUSED_PASS")
+}

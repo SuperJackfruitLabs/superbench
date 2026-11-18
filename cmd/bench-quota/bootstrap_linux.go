@@ -26,6 +26,9 @@ func runBootstrapCommand(args []string, override bool, input *os.File, output io
 	if isRecoveryCommand(args[0]) {
 		return runRecoveryCommand(ctx, args, override, input, output)
 	}
+	if args[0] == "inspect-retired-payload" {
+		return runRetiredInspection(ctx, args, input, output)
+	}
 	if args[0] == "initialize-indexed" {
 		if len(args) != 1 || os.Getuid() != 0 || os.Geteuid() != 0 || os.Getenv("SUDO_UID") != "" {
 			return errBootstrapCommand

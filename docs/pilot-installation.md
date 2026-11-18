@@ -107,14 +107,22 @@ end-to-end card result:
   is an exact retry, a retry of the old bench's own create returns it unchanged
   (`reclaimed`), and the create needs `fresh_payload`: without it, it is refused
   and the reclaimed record stays. See [Generations of a key](fresh-bootstrap-recovery.md#generations-of-a-key).
-- **A refused or failed Fresh create keeps its record.** A Fresh create that fails
-  after its intent is recorded, including a `capacity_exhausted` refusal, leaves the
+- **A refused or failed Fresh create keeps its record until root retires it.** A
+  Fresh create that fails, including a `capacity_exhausted` refusal, leaves the
   workspace at `materializing` or `initializing` with its `initialization`
-  lease, and no supported command removes that record yet. Reclaim refuses it:
-  it covers only a released, `ready` bench, and covering a bench whose
-  initialization failed is a planned follow-up. Reinitializing the storage
-  (below) does not remove it either: the records live in `/var/lib/superbench`,
-  which that procedure backs up but keeps.
+  lease. Reclaim refuses it: it covers only a released, `ready` bench. Recover it with the direct-root steps in
+  [Retained Fresh bootstrap evidence](fresh-bootstrap-recovery.md): deny the
+  original operation (`bench-quota cancel-operation` with the five values from
+  the retained intent), clean, remove the empty leaf and retire. After that, a
+  `create` on the key with a new request ID asks root, read-only, whether the
+  allocation is retired, and on root's proof makes the key's next generation
+  in place of the failed record; until then it is refused as a conflict. See
+  [After a failed create is retired](fresh-bootstrap-recovery.md#after-a-failed-create-is-retired).
+  A create the helper refused before it recorded an intent, such as a
+  `capacity_exhausted` refusal, leaves nothing for root to retire, and its
+  record still has no supported removal. Reinitializing the storage (below)
+  does not remove a record: the records live in `/var/lib/superbench`, which
+  that procedure backs up but keeps.
 - **Harness configuration in the payload home.** The payload helper sets `HOME`
   from each bench's Fresh layout. Nothing yet places a harness's provider
   configuration there, and the harness adapter refuses to provision credentials.

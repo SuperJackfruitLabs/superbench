@@ -22,6 +22,7 @@ type identityRecord struct {
 	project             uint32
 	bytes, inodes       uint64
 	phase               string
+	unfinished          bool // a create that never completed (workspacepolicy.Unfinished)
 	lease               *model.Lease
 	pending, checkpoint *model.WorkspaceCheckpoint
 	preparation         []model.WorkspacePreparation
@@ -111,7 +112,7 @@ func Capture(records Database) IdentitySnapshot {
 			entry.project = b.ProjectID
 			entry.bytes = b.QuotaBytes
 			entry.inodes = b.QuotaInodes
-			entry.lease = copyLease(b.Lease)
+			entry.lease, entry.unfinished = copyLease(b.Lease), workspacepolicy.Unfinished(b)
 		}
 		out[key] = entry
 	}
@@ -315,8 +316,8 @@ func ValidateTransition(before IdentitySnapshot, after Database) error {
 		if !exists || b == nil || b.Workspace == nil {
 			return invalid
 		}
-		if old.phase == "reclaimed" && workspacepolicy.Succeeds(old.workspace.ID, old.workspace.Generation, b) {
-			continue // A create on a reclaimed key starts its next generation.
+		if (old.phase == "reclaimed" || old.unfinished) && workspacepolicy.Succeeds(old.workspace.ID, old.workspace.Generation, b) {
+			continue // A create on a reclaimed key, or one root retired, starts its next generation.
 		}
 		w := *b.Workspace
 		w.Phase, w.IdleSince = "", ""

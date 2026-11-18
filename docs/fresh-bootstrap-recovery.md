@@ -48,11 +48,32 @@ the indexed journal again from a new private mount namespace with its own `/tmp`
 where the data mount has another mount ID, as in a systemd unit with
 `PrivateTmp` or `ProtectSystem`; the line logs both mount IDs.
 
+## Denying the original operation
+
+Every step below (plan-clean, clean, leaf removal, quota repair, retirement)
+requires the create's original operation to be permanently denied first, so
+the create can never resume. Deny it with the helper's own cancellation, as
+direct root, with the original operation's five identity values:
+
+```sh
+/usr/local/libexec/bench-quota cancel-operation \
+  OPERATION_ID EPOCH STATE_IDENTITY AUTHORITY BINARY_SHA256
+```
+
+Take the five values from the `Operation` field of the retained intent,
+`LEDGER/payload-bootstrap/KEY.json` (`KEY@N.json` for generation N), and never
+choose new ones. The reply is the operation's proof with `"Cancelled":true`;
+`inspect-bootstrap-payload` then reports `OperationDenied: true`. Denial is
+permanent: a cancelled operation is never revived. Like every other step, it refuses when the
+installed helper binary or storage authority differs from the one the identity
+names; do not reinstall an old binary to get past that.
+
 ## Absent-allocation maintenance
 
 Direct-root `bench-quota plan-retire-bootstrap KEY OPERATION_ID EPOCH STATE_ID AUTHORITY BINARY_SHA256`
 reads the original canonical Spec on stdin and returns a `RetirementPlan`. The
-original operation must already be permanently denied. The fixed installed
+original operation must already be permanently denied
+([above](#denying-the-original-operation)). The fixed installed
 service must actually be stopped and persistently masked, with no daemon,
 payload or helper controllers in the original-host process inventory. These
 commands check those conditions; they do not stop, mask or configure anything.
@@ -288,8 +309,10 @@ quotes when it reports the worker's diagnostics.
 | `completed` | a registered layout | not a leak; reclaim it once released |
 | `reclaiming`, `reclaimed` | a reclaim's retained intent | reclaim only: rerun the same reclaim; after `reclaimed`, a create makes the [next generation](#generations-of-a-key) |
 
-`KEY.controls`, its `git-controls` journal and every retained approval stay as
-evidence.
+Every step in the table needs the original operation
+[denied](#denying-the-original-operation) first. After absent retirement the key is free again: the next `create` on it makes
+the key's [next generation](#after-a-failed-create-is-retired). `KEY.controls`,
+its `git-controls` journal and every retained approval stay as evidence.
 
 The privileged child selector `TestFreshRecoveryFixture` runs inside the lower
 fixture (build tag `freshstoragefixture`) and recovers real leaks in each of
@@ -408,8 +431,12 @@ one, and a repeat of the first generation's bootstrap all refuse with no
 effect. A retry of the earlier generation's own reclaim after the next one
 exists refuses too: its ledger row is the next generation's now. A later
 generation that is interrupted is recovered with the steps above, using its
-own spec; the earlier generations reached `reclaimed` and hold no retirement
-or cleanup approvals, so the approval file names do not collide.
+own spec. The cleanup and retirement approvals are named by the key alone
+(`payload-cleanups/KEY.*`, `payload-retirements/KEY.json`), so a key's
+direct-root recovery runs once: if a generation of a key whose earlier
+generation was already recovered that way fails too, the steps refuse on the
+existing approval. Keep everything as evidence and stop; that case needs
+per-generation approval names, which do not exist yet.
 
 The lower fixture proves this on real XFS after the reclaim cases. Its markers,
 each logged alone on its line, are
@@ -451,3 +478,50 @@ branch at exactly `SOURCE`.
 The lower fixture proves a Fresh create and a reclaimed key's next generation
 from such a branch, with the markers `LOWER_FRESH_CREATE_FROM_MOVED_BRANCH_PASS`
 and `LOWER_RECREATE_FROM_MOVED_BRANCH_PASS`.
+
+### After a failed create is retired
+
+A create that never completed (its intent stops before `completed`, and the
+daemon's record stays `materializing` or `initializing`) also gives way to the
+key's next generation, once root has retired its allocation with the steps
+above: [deny](#denying-the-original-operation), clean, remove the empty leaf,
+retire. The intent is never rewritten; it stays in the phase it stopped in.
+
+The daemon never decides this from its own record. A `create` on the key with a
+new request ID asks the fixed helper, before any plan or effect, with the
+record's own canonical Spec on stdin:
+
+```sh
+/usr/local/libexec/bench-quota inspect-retired-payload KEY < failed-spec.json
+```
+
+The daemon runs it through its sudo route; direct root can run it the same way
+to check a recovery. It is read-only and takes no identity, path or policy
+override. Root answers only from its own retained files: the
+intent of that Spec (`KEY.json` or `KEY@N.json`) is canonical, in a phase
+before `completed`, under the current storage authority;
+`payload-retirements/KEY.json` reviewed exactly that intent (its digest, spec,
+phase, workspace, operation, policy and recorded allocation) under its denied
+operation; and, under the allocation lock, the ledger row is that project's
+tombstone with its Fresh marker and the leaf is absent. Its reply names the
+key, `bench_id`, generation and the zero tombstone; the daemon checks all four.
+
+On that reply, and only then, the create records the next generation in place
+of the failed record (a new `bench_id`, `Generation` one more, `Previous` the
+failed `bench_id`) and runs the bootstrap above. Root's checks before the next
+generation's first effect accept the retired predecessor as they accept a
+`reclaimed` one, with the same evidence again: no skipped generation, no
+second successor, the tombstone moved to `Retired`, a new project, the leaf
+absent. Until root's reply proves the retirement, the create is refused as a
+conflict, as before, and the failed record is unchanged. No new phase appears:
+a status read shows the failed record as it was until the next generation
+replaces it.
+
+The lower fixture proves this on real XFS: a create that fails while
+materializing, root's recovery, root's inspection, the next generation and its
+reclaim. Its markers, each logged alone on its line, are
+`LOWER_FAILED_CREATE_REFUSED_BEFORE_RETIREMENT_PASS`,
+`LOWER_FAILED_CREATE_ROOT_PROVES_RETIRED_PASS`,
+`LOWER_FAILED_CREATE_NEXT_GENERATION_NEW_PROJECT_PASS`,
+`LOWER_FAILED_CREATE_OLD_PROJECT_NOT_REVIVED_PASS` and
+`LOWER_FAILED_CREATE_NEXT_GENERATION_RECLAIMED_PASS`.

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	_ "modernc.org/sqlite"
@@ -78,5 +79,31 @@ func TestCreateOnAReclaimedKey(t *testing.T) {
 	}
 	if !reflect.DeepEqual(before, snapshot(t, m)) {
 		t.Fatal("a create changed the reclaimed record")
+	}
+}
+
+// A different create on a create that never completed reaches staging, which
+// asks root; until root proves it retired, it is the same conflict as before
+// and the record stands.
+func TestCreateOnAnUnfinishedCreateStaysAConflict(t *testing.T) {
+	m, r := fixture(t)
+	id, err := CreationID(r, 42)
+	if err != nil {
+		t.Fatal(err)
+	}
+	staged, err := m.Store.StageWorkspaceContext(context.Background(), id, creationSpec(r))
+	if err != nil || staged.Workspace.Phase != "initializing" || staged.Lease == nil {
+		t.Fatalf("unfinished create: %+v %v", staged, err)
+	}
+	before := snapshot(t, m)
+	next := r
+	next.RequestID = "creation-2"
+	// Staging, not the duplicate-key check, refuses it: this daemon has no
+	// Fresh payload, so it has no route to root's proof.
+	if _, err := m.Execute(context.Background(), next, 42); !errors.Is(err, ErrConflict) || !strings.Contains(err.Error(), "Fresh bench of its next generation") {
+		t.Fatalf("a new create on an unfinished key: %v", err)
+	}
+	if !reflect.DeepEqual(before, snapshot(t, m)) {
+		t.Fatal("a refused create changed the unfinished record")
 	}
 }
