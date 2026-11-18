@@ -36,11 +36,12 @@ const (
 	RetErrnoEPERM  = 0x00050000 | 1
 	RetAllow       = 0x7fff0000
 
-	offNr    = 0
-	offArch  = 4
-	offArg1  = 24 // low 32 bits of args[1] on little-endian amd64 and arm64
-	x32Bit   = 0x40000000
-	maxDepth = 255
+	offNr     = 0
+	offArch   = 4
+	offArg1   = 24 // low 32 bits of args[1] on little-endian amd64 and arm64
+	x32Bit    = 0x40000000
+	skippedNr = 0xffffffff
+	maxDepth  = 255
 )
 
 // Denied syscalls share their numbers on amd64 and arm64.
@@ -86,6 +87,9 @@ func Program(a Arch) []Instruction {
 	branch(jeqK, a.Audit, "", "kill")
 	emit(ldAbs, offNr)
 	if a.X32 {
+		// A tracer skips a syscall by setting its number to -1; that is not
+		// x32 and must stay allowed, or strace fault injection kills the tracee.
+		branch(jeqK, skippedNr, "allow", "")
 		branch(jgeK, x32Bit, "kill", "")
 	}
 	for _, nr := range DeniedSyscalls {
