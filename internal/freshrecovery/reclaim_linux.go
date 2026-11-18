@@ -81,20 +81,16 @@ func reclaimAction(ctx context.Context, r payloadbootstrap.Reclamation, s payloa
 	var tombstone hoststorage.Assignment
 	var ran bool
 	ran, err = reclaimSteps{
-		phase:  func() (string, error) { return c.i.Phase, nil },
-		leaf:   c.leafPresent,
-		fenced: func() error { return controlsFenced(r.Storage.Ledger, s.Key, c.i) },
-		idle: func() error {
-			if err := c.live.Idle(); err != nil {
-				return err
-			}
-			return c.contained()
-		},
-		retain: func() error { return r.Advance("reclaiming") },
-		purge:  func() error { return c.purge(ctx) },
-		remove: func() error { return c.active(c.remove(ctx)) },
-		retire: func() (err error) { tombstone, err = c.retire(ctx); return c.active(err) },
-		finish: func() error { return r.Advance("reclaimed") },
+		phase:     func() (string, error) { return c.i.Phase, nil },
+		leaf:      c.leafPresent,
+		fenced:    func() error { return controlsFenced(r.Storage.Ledger, s.Key, c.i) },
+		idle:      c.live.Idle,
+		contained: c.contained,
+		retain:    func() error { return r.Advance("reclaiming") },
+		purge:     func() error { return c.purge(ctx) },
+		remove:    func() error { return c.active(c.remove(ctx)) },
+		retire:    func() (err error) { tombstone, err = c.retire(ctx); return c.active(err) },
+		finish:    func() error { return r.Advance("reclaimed") },
 	}.run()
 	*retained = *retained || ran
 	if err != nil {

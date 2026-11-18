@@ -95,7 +95,7 @@ func TestPayloadConfinementAndLeafChecksStayWired(t *testing.T) {
 	// Reclaim walks the tree as root before retention and the purge (idle),
 	// and checks the emptied leaf before removing it.
 	reclaim := read("internal/freshrecovery/reclaim_linux.go")
-	if !strings.Contains(reclaim, "return c.contained()") || !strings.Contains(reclaim, "if err = c.treeContained(leaf); err != nil") || !strings.Contains(reclaim, "quotaleaf.Tree(leaf, c.assignment.ProjectID, int(c.assignment.Inodes))") {
+	if !strings.Contains(reclaim, "contained: c.contained,") || !strings.Contains(reclaim, "if err = c.treeContained(leaf); err != nil") || !strings.Contains(reclaim, "quotaleaf.Tree(leaf, c.assignment.ProjectID, int(c.assignment.Inodes))") {
 		t.Fatal("reclaim must check the whole tree's project before the purge and the removal")
 	}
 	removal := reclaim[strings.Index(reclaim, "func (c *reclaiming) remove("):]
