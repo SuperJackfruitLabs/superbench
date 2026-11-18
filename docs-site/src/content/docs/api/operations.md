@@ -24,7 +24,7 @@ Besides `version` and `operation`:
 
 | Operation | Required | Optional | What it does |
 | --- | --- | --- | --- |
-| `create` | `key`, `repositories`, `checkpoint_repository`, `initialize`, `request_id` | `quota_bytes` | Create a workspace from its member vector, prepare every member and confirm its genesis checkpoint. On a key whose workspace is `reclaimed`, a new `request_id` creates a new workspace there, with a new `bench_id`. |
+| `create` | `key`, `repositories`, `checkpoint_repository`, `initialize`, `request_id` | `quota_bytes` | Create a workspace from its member vector, prepare every member and confirm its genesis checkpoint. On a key whose workspace is `reclaimed`, a new `request_id` creates a new workspace there, with a new `bench_id`. So it does on a key whose create failed (`materializing` or `initializing`) once the host operator has retired that create's storage; until then it is a conflict. |
 | `recover` | `key`, `repositories`, `source`, `initialize`, `request_id` | `quota_bytes` | Rebuild a fresh workspace with distinct task refs from an exact historical seal. |
 | `status` | (none) | `key` | Read one workspace, or the whole inventory. Read-only. |
 | `host_status` | (none) | (none) | Read the host's storage and admission state. Read-only. |

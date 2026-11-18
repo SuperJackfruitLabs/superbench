@@ -13,6 +13,12 @@ stamps the section `## vX.Y.Z — YYYY-MM-DD`, and the release notes quote it.
   commit from the daemon's mirror before the checkout; nothing is fetched from the network, no
   other branch is copied into the bench and the mirror is not written. A bench already stuck at
   `materializing` from this still needs the recovery steps in `docs/fresh-bootstrap-recovery.md`.
+- A Fresh create that failed no longer holds its key for good. Once root has recovered it
+  (denied its operation with `bench-quota cancel-operation`, cleaned, removed the empty leaf and
+  retired the allocation), a `create` on the key with a new request ID asks the helper's
+  read-only `inspect-retired-payload` and, on root's proof, makes the key's next generation with
+  a new `bench_id` and a new quota project. Without that proof it is a conflict, as before. The
+  recovery docs now say how to deny the original operation.
 - benchd reclaims a released Fresh bench by itself once it has been idle longer than
   `fresh_reclaim_idle_hours` in `/etc/superbench/activation.json` (default 24 hours while
   `fresh_payload` is on; `0` turns it off). Its sweep runs the same reclaim as
