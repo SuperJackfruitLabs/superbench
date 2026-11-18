@@ -4,8 +4,10 @@ package payloadconfine
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -23,8 +25,21 @@ func TestMain(m *testing.M) {
 			os.Stdout.WriteString("INHERITED\n")
 			os.Exit(0)
 		}
-		if err := Install(); !errors.Is(err, ErrConfine) || Verify() == nil {
-			fail("installed without no_new_privs", err)
+		// Install requires no_new_privs itself, even with CAP_SYS_ADMIN, where
+		// the kernel would accept the filter: the payload drop always sets it.
+		// A CI container may already run this process under its own filter,
+		// so the proof is that the filter count does not grow.
+		before := status("Seccomp_filters:")
+		mode := status("Seccomp:")
+		admin := capSysAdmin()
+		if err := Install(); !errors.Is(err, ErrConfine) {
+			fail(fmt.Sprintf("installed without no_new_privs (CAP_SYS_ADMIN %v, Seccomp %q)", admin, mode), err)
+		}
+		if after := status("Seccomp_filters:"); after != before {
+			fail(fmt.Sprintf("filter count changed from %q to %q without no_new_privs (CAP_SYS_ADMIN %v)", before, after, admin), nil)
+		}
+		if mode != "2" && Verify() == nil {
+			fail(fmt.Sprintf("filter mode entered without no_new_privs (CAP_SYS_ADMIN %v)", admin), nil)
 		}
 		os.Stdout.WriteString("REFUSED\n")
 	case "install":
@@ -51,6 +66,30 @@ func TestMain(m *testing.M) {
 		probe("after-exec")
 	}
 	os.Exit(0)
+}
+
+// status returns one /proc/self/status value, or "" when the kernel has no
+// such line (Seccomp_filters arrived in Linux 5.9).
+func status(key string) string {
+	raw, err := os.ReadFile("/proc/self/status")
+	if err != nil {
+		fail("status", err)
+	}
+	for _, line := range strings.Split(string(raw), "\n") {
+		if value, ok := strings.CutPrefix(line, key); ok {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
+// capSysAdmin reports CAP_SYS_ADMIN (bit 21) in CapEff.
+func capSysAdmin() bool {
+	effective, err := strconv.ParseUint(status("CapEff:"), 16, 64)
+	if err != nil {
+		fail("CapEff", err)
+	}
+	return effective&(1<<21) != 0
 }
 
 func fail(what string, err error) {
@@ -106,9 +145,12 @@ func child(t *testing.T, mode string) string {
 		t.Logf("io_uring_disabled=%s on this host: the io_uring refusal is not proven here, only the attribute ioctls and file_setattr", strings.TrimSpace(string(raw)))
 		cmd.Env = append(cmd.Env, "SB_CONFINE_IO_URING_DISABLED=1")
 	}
+	// The child writes its reason for exit status 3 to stderr: keep it.
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
-		t.Fatalf("%s child: %v %s", mode, err, out)
+		t.Fatalf("%s child: %v; stdout %q; stderr %q", mode, err, out, stderr.String())
 	}
 	return string(out)
 }
