@@ -159,3 +159,29 @@ func TestACreateOnAReclaimedKeyStartsItsNextGeneration(t *testing.T) {
 		t.Fatal("a refused create changed the second generation")
 	}
 }
+
+// Only a plain create follows a reclaimed record. A recovery onto the key is
+// refused as a conflict with the existing bench before its source is read,
+// and a transfer onto it is refused before that, by its journal; neither
+// changes the reclaimed record or calls the helper.
+func TestOnlyAPlainCreateFollowsAReclaimedRecord(t *testing.T) {
+	f := newFixture(t)
+	if _, err := f.m.Stage(context.Background(), "request1", f.spec); err != nil {
+		t.Fatal(err)
+	}
+	old := f.reclaim(t)
+	remote := f.spec.Repositories[0].Repository
+	recovery := workspace.RecoverySpec{Key: "card", Repositories: []workspace.Repository{{Name: "a", Repository: remote, Branch: "bench/recovered"}},
+		Source: workspace.RecoverySource{Repository: remote, BenchID: old.Workspace.ID, Commit: old.Workspace.Checkpoint.Seal, ManifestSHA256: old.Workspace.Checkpoint.Digest}}
+	if _, err := f.m.StageRecovery(context.Background(), "recover1", recovery); err == nil || !strings.Contains(err.Error(), "conflicts with an existing bench") {
+		t.Fatalf("a recovery onto a reclaimed key: %v", err)
+	}
+	transfer := f.spec
+	transfer.TransferID = "transfer1"
+	if _, err := f.m.Stage(context.Background(), "transfer1", transfer); err == nil {
+		t.Fatal("a transfer onto a reclaimed key was accepted")
+	}
+	if !reflect.DeepEqual(f.read(t), old) || len(f.fresh) != 1 {
+		t.Fatalf("a refused recovery or transfer changed the record or called the helper (%d calls)", len(f.fresh))
+	}
+}
