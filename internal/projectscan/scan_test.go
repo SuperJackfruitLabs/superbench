@@ -1,6 +1,13 @@
 package projectscan
 
-import "testing"
+import (
+	"errors"
+	"fmt"
+	"syscall"
+	"testing"
+
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotaleaf"
+)
 
 func TestBenchesListsOnlyManagedBenchesAndMarksTombstones(t *testing.T) {
 	raw := []byte(`{"Root":"/srv/d","Next":10003,"Fresh":{"bench:b":10001},"Assignments":{
@@ -22,6 +29,25 @@ func TestBenchesListsOnlyManagedBenchesAndMarksTombstones(t *testing.T) {
 	} {
 		if _, err := benches("/srv/d", []byte(bad)); err == nil {
 			t.Errorf("%s accepted", name)
+		}
+	}
+}
+
+// Only the walk's own escape errors are "outside"; a tree that changed under
+// the walk, or the name bound, is "unverified".
+func TestClassifyKeepsOutsideForRealEscapes(t *testing.T) {
+	for err, want := range map[error]string{
+		nil:                      "contained",
+		quotaleaf.ErrLeafProject: "outside",
+		fmt.Errorf("x: %w", quotaleaf.ErrTreeProject): "outside",
+		quotaleaf.ErrTreeLimit:                        "outside",
+		quotaleaf.ErrTreeNames:                        "unverified",
+		syscall.ENOENT:                                "unverified",
+		syscall.EACCES:                                "unverified",
+		errors.New("io"):                              "unverified",
+	} {
+		if got := classify(err); got != want {
+			t.Errorf("%v: %s, want %s", err, got, want)
 		}
 	}
 }

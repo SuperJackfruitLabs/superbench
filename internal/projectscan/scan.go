@@ -12,13 +12,19 @@ import (
 	"strings"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/allocationledger"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotaleaf"
 )
 
 // ErrOutside reports a scan that found at least one bench outside its project.
 var ErrOutside = errors.New("bench trees outside their quota projects; restore them and scan again")
 
-// Result is one bench: Status is "contained", "absent" or "outside", with
-// Reason set for "outside".
+// ErrUnverified reports a scan that could not finish some bench's walk, for
+// example because the tree changed under it; nothing is known to be outside.
+var ErrUnverified = errors.New("some bench trees could not be verified; stop their runs and scan again")
+
+// Result is one bench: Status is "contained", "absent", "outside" (a real
+// project, inherit-flag or inode-cap escape) or "unverified" (the walk could
+// not finish), with Reason set for the last two.
 type Result struct {
 	Key       string `json:"key"`
 	ProjectID uint32 `json:"project_id"`
@@ -55,4 +61,17 @@ func benches(root string, raw []byte) ([]bench, error) {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].key < out[j].key })
 	return out, nil
+}
+
+// classify names a walk's error: only the walk's own escape errors are
+// "outside"; anything else, such as a name that vanished or became
+// unreadable during the walk, or the name bound, is "unverified".
+func classify(err error) string {
+	switch {
+	case err == nil:
+		return "contained"
+	case errors.Is(err, quotaleaf.ErrLeafProject), errors.Is(err, quotaleaf.ErrTreeProject), errors.Is(err, quotaleaf.ErrTreeLimit):
+		return "outside"
+	}
+	return "unverified"
 }

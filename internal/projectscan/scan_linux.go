@@ -38,29 +38,37 @@ func Scan(root, ledger string) ([]Result, error) {
 	}
 	defer parent.Close()
 	var results []Result
-	outside := false
+	counts := map[string]int{}
 	for _, b := range list {
 		if b.retired {
 			continue
 		}
-		r := Result{Key: b.key, ProjectID: b.project, Fresh: b.fresh, Status: "contained"}
-		if err := scanOne(parent, b); errors.Is(err, os.ErrNotExist) {
+		r := Result{Key: b.key, ProjectID: b.project, Fresh: b.fresh}
+		err := scanOne(parent, b)
+		if r.Status = classify(err); errors.Is(err, errAbsent) {
 			r.Status = "absent"
 		} else if err != nil {
-			r.Status, r.Reason, outside = "outside", err.Error(), true
+			r.Reason = err.Error()
 		}
+		counts[r.Status]++
 		results = append(results, r)
 	}
-	if outside {
+	switch {
+	case counts["outside"] != 0:
 		return results, ErrOutside
+	case counts["unverified"] != 0:
+		return results, ErrUnverified
 	}
 	return results, nil
 }
 
+// errAbsent is a bench whose leaf does not exist: nothing to walk.
+var errAbsent = errors.New("bench leaf absent")
+
 func scanOne(parent *os.File, b bench) error {
 	fd, err := syscall.Openat(int(parent.Fd()), b.key, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
 	if errors.Is(err, syscall.ENOENT) {
-		return os.ErrNotExist
+		return errAbsent
 	}
 	if err != nil {
 		return err
