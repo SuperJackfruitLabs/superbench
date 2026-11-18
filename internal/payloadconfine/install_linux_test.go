@@ -86,6 +86,9 @@ func probe(stage string) {
 		fail(stage+" FS_IOC_FSGETXATTR refused", e)
 	}
 	for _, nr := range DeniedSyscalls {
+		if nr >= 425 && nr <= 427 && os.Getenv("SB_CONFINE_IO_URING_DISABLED") == "1" {
+			continue // the host refuses io_uring with EPERM already: unprovable here
+		}
 		if _, _, e := syscall.Syscall6(uintptr(nr), 1, uintptr(unsafe.Pointer(&attr[0])), 0, 0, 0, 0); e != syscall.EPERM {
 			fail(stage+" syscall not refused", e)
 		}
@@ -97,6 +100,12 @@ func child(t *testing.T, mode string) string {
 	t.Helper()
 	cmd := exec.Command(os.Args[0], "-test.run=^$")
 	cmd.Env = append(os.Environ(), "SB_CONFINE_CHILD="+mode)
+	// With io_uring_disabled set, the host already refuses io_uring with
+	// EPERM, so the filter's refusal cannot be told apart and is not probed.
+	if raw, err := os.ReadFile("/proc/sys/kernel/io_uring_disabled"); err == nil && strings.TrimSpace(string(raw)) != "0" {
+		t.Logf("io_uring_disabled=%s on this host: the io_uring refusal is not proven here, only the attribute ioctls and file_setattr", strings.TrimSpace(string(raw)))
+		cmd.Env = append(cmd.Env, "SB_CONFINE_IO_URING_DISABLED=1")
+	}
 	out, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("%s child: %v %s", mode, err, out)

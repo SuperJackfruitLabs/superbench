@@ -4,7 +4,6 @@ package payloadconfine
 
 import (
 	"errors"
-	"os"
 	"strings"
 	"syscall"
 	"unsafe"
@@ -49,10 +48,30 @@ func Install() error {
 }
 
 // Verify requires the kernel to report seccomp filter mode for this process.
+// It reads /proc/self/status with raw system calls, never an os.File, so a
+// caller that later requires an exact descriptor table finds no poller.
 func Verify() error {
-	raw, err := os.ReadFile("/proc/self/status")
-	if err != nil || len(raw) > 64<<10 {
+	fd, err := syscall.Open("/proc/self/status", syscall.O_RDONLY|syscall.O_CLOEXEC, 0)
+	if err != nil {
 		return errors.Join(ErrConfine, err)
+	}
+	defer syscall.Close(fd)
+	raw := make([]byte, 0, 4096)
+	buf := make([]byte, 4096)
+	for {
+		n, err := syscall.Read(fd, buf)
+		if err == syscall.EINTR {
+			continue
+		}
+		if err != nil {
+			return errors.Join(ErrConfine, err)
+		}
+		if n == 0 {
+			break
+		}
+		if raw = append(raw, buf[:n]...); len(raw) > 64<<10 {
+			return ErrConfine
+		}
 	}
 	for _, line := range strings.Split(string(raw), "\n") {
 		if value, found := strings.CutPrefix(line, "Seccomp:"); found {
