@@ -25,7 +25,9 @@ A Fresh bench's tree belongs to the payload account, so SuperBench confines that
 process started through the payload helper runs under a seccomp filter. The filter refuses the
 attribute-setting `ioctl` requests, `file_setattr` and io_uring, so those changes fail with
 `EPERM`. Separately, the helper's read-only verify refuses a bench whose leaf directory has lost
-its project ID or inherit flag. This holds only for processes that start through the helper.
+its project ID or inherit flag. This holds only for processes that start through the helper. Before
+you turn Fresh on, and after each upgrade, run `bench-quota scan-projects` as direct root: it walks
+every bench's tree and reports any bench outside its project.
 
 What managed storage does:
 

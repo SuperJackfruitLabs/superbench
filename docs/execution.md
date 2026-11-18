@@ -79,12 +79,17 @@ tree belongs to the payload account, so SuperBench confines that account.
 - **Prevention.** `bench-payload` installs a seccomp filter after `no_new_privs`
   and the credential drop, before the payload runs anything. Every thread of that
   process gets it, and so do all its children. The filter covers setup and run
-  stages, member and root runs, and every Git route through the helper. It refuses
+  stages, member and root runs, and every Git route through the helper. The
+  reclaim purge worker, which runs as the payload account, installs the same
+  filter after `no_new_privs`, and so does the daemon-account clean worker. Each
+  proves seccomp filter mode in its status self-check. It refuses
   `ioctl` `FS_IOC_FSSETXATTR`, `FS_IOC_SETFLAGS` and `FS_IOC32_SETFLAGS` (it compares
   the request's low 32 bits, which is what the kernel uses), as well as
   `file_setattr`, `io_uring_setup`, `io_uring_enter` and `io_uring_register`. Each
   refusal fails with `EPERM`. Only amd64 and arm64 are supported. Any other
-  architecture, the 32-bit compat ABIs and x32 are killed. On other CPU
+  architecture, the 32-bit compat ABIs and x32 are killed. A syscall number of
+  -1, which a tracer sets to skip a call, stays allowed, so `strace` fault
+  injection works inside a bench. On other CPU
   architectures the helper refuses to launch. Reading attributes still works. The
   helper checks that the kernel reports seccomp filter mode before it executes the
   payload.
@@ -94,13 +99,44 @@ tree belongs to the payload account, so SuperBench confines that account.
   check fails, it refuses with `bench leaf is outside its quota project`. benchd
   runs this verify before each Fresh launch and lease, and before it exports a
   checkpoint from a managed Fresh bench. An absent leaf holds no data and passes.
-  The leaf check is cheap. Walking the whole tree on every launch is not, so a
-  full-tree check is provided for reclaim; no released-bench reclaim calls it yet.
-  It runs as root through descriptors only, never follows a symlink and never
-  leaves the filesystem. It is bounded by the bench's inode cap, and every
-  directory and regular file must carry the project, with directories also
-  carrying the inherit flag. Symlinks and special files are counted but not
-  opened.
+  The leaf check is cheap. Walking the whole tree on every launch is not, so the
+  full-tree check runs at reclaim: before the reclaim retains `reclaiming`,
+  again before the purge, and on the emptied leaf before root removes it. It
+  runs as root through descriptors only, never follows a symlink and never
+  leaves the filesystem. It holds one directory open at a time and is bounded by
+  the bench's inode cap. Every directory and regular file must carry the
+  project, with directories also carrying the inherit flag. Symlinks and special
+  files are never opened. On Linux 6.17 and later, root reads their project by
+  name with `file_getattr` without following them. On older kernels they are
+  only counted, which is a gap: a symlink or FIFO whose owner moved it to another
+  project is not found there. A tree that fails refuses the reclaim with
+  `the bench tree has entries outside its quota project`.
+- **Scan existing benches.** The leaf check misses an escape below the leaf, and
+  benches written before this filter shipped were never confined. As direct
+  root, `bench-quota scan-projects` walks every allocated bench's tree the same
+  way and prints one JSON line per bench (`contained`, `absent` or `outside`
+  with the reason). It exits non-zero while any bench is outside its project,
+  and it changes nothing. Run it after installing or upgrading, and before you
+  set `fresh_payload` in the activation file. Do not turn Fresh on while it
+  reports a bench outside its project. Nothing enforces this yet: benchd does
+  not run the scan itself.
+
+#### Recovering a bench outside its project
+
+When `verify`, a reclaim or `scan-projects` reports `bench leaf is outside its
+quota project` or `the bench tree has entries outside its quota project`, stop
+the bench's runs. Then, as root, move its tree back and restore the inherit
+flag:
+
+```sh
+xfs_io -x -c 'chproj -R PROJECT_ID' /srv/superbench-data/benches/KEY
+find /srv/superbench-data/benches/KEY -xdev -type d -exec xfs_io -x -c 'chattr +P' {} \;
+bench-quota scan-projects
+```
+
+`PROJECT_ID` is the bench's project in the scan output. The files you move back
+count against the bench's cap again, so a bench that is now over its cap stays
+over it until its owner deletes data. Then retry the refused operation.
 
 The filter does not cover a process that runs as the payload account without
 going through `bench-payload`. Keep that account without a login shell,
