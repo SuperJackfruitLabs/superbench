@@ -22,7 +22,7 @@ type identityRecord struct {
 	project             uint32
 	bytes, inodes       uint64
 	phase               string
-	unfinished          bool // a create that never completed (workspacepolicy.Unfinished)
+	unfinished          bool // a create that never completed (workspacepolicy.Unfinished or Stalled)
 	lease               *model.Lease
 	pending, checkpoint *model.WorkspaceCheckpoint
 	preparation         []model.WorkspacePreparation
@@ -112,7 +112,7 @@ func Capture(records Database) IdentitySnapshot {
 			entry.project = b.ProjectID
 			entry.bytes = b.QuotaBytes
 			entry.inodes = b.QuotaInodes
-			entry.lease, entry.unfinished = copyLease(b.Lease), workspacepolicy.Unfinished(b)
+			entry.lease, entry.unfinished = copyLease(b.Lease), workspacepolicy.Unfinished(b) || workspacepolicy.Stalled(b)
 		}
 		out[key] = entry
 	}
