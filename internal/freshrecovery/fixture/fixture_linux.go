@@ -11,7 +11,8 @@
 // payload account, under the reclaim operation's own identity (reclaim_linux.go),
 // and creates a reclaimed key's next generation (recreate_linux.go), both
 // from a branch the mirror holds only as a remote-tracking ref (moved_linux.go),
-// and a failed create's once root retired it (failedcreate_linux.go).
+// and a failed create's once root retired it (failedcreate_linux.go), a
+// stalled create's after its reclaim and a second failure's (stuck_linux.go).
 // On failure every leak is retained as evidence.
 package fixture
 
@@ -89,6 +90,13 @@ var Markers = []string{
 	"LOWER_FAILED_CREATE_NEXT_GENERATION_NEW_PROJECT_PASS",
 	"LOWER_FAILED_CREATE_OLD_PROJECT_NOT_REVIVED_PASS",
 	"LOWER_FAILED_CREATE_NEXT_GENERATION_RECLAIMED_PASS",
+	"LOWER_STALLED_CREATE_IN_USE_REFUSED_PASS",
+	"LOWER_STALLED_CREATE_RECLAIMED_PASS",
+	"LOWER_STALLED_CREATE_NEXT_GENERATION_PASS",
+	"LOWER_STALLED_CREATE_NEXT_GENERATION_RECLAIMED_PASS",
+	"LOWER_SECOND_FAILED_GENERATION_RECOVERED_PASS",
+	"LOWER_THIRD_GENERATION_AFTER_SECOND_FAILURE_PASS",
+	"LOWER_THIRD_GENERATION_RECLAIMED_PASS",
 }
 
 // Logged requires the child's log to hold every marker exactly once.
@@ -202,6 +210,10 @@ func Run(t *testing.T, gate Gate) {
 	e.assertFootprint(footprint, "the moved-branch cases")
 	e.failedRecreates()
 	e.assertFootprint(footprint, "the failed-create cases")
+	e.stalledReclaims()
+	e.assertFootprint(footprint, "the stalled-create cases")
+	e.secondFailure()
+	e.assertFootprint(footprint, "the second-failure cases")
 }
 
 // newLeak reserves a real Fresh allocation under a real operation, stops it
@@ -348,7 +360,7 @@ func (e *env) exactRows(l *leak) {
 }
 
 func (e *env) approval(l *leak, step string) string {
-	return filepath.Join(e.p.Ledger, "payload-cleanups", l.spec.Key+"."+step+".json")
+	return filepath.Join(e.p.Ledger, "payload-cleanups", payloadbootstrap.Stem(l.spec)+"."+step+".json")
 }
 
 // removeLeaf plans, reviews and removes the leaf, then retries the same plan.

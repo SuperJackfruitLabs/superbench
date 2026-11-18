@@ -129,7 +129,7 @@ func (e *env) syntheticLeak(key, phase string, files, size int) *leak {
 
 func (e *env) planFile(l *leak) string { return e.approval(l, "plan") }
 func (e *env) approvalFile(l *leak) string {
-	return filepath.Join(e.p.Ledger, "payload-cleanups", l.spec.Key+".json")
+	return filepath.Join(e.p.Ledger, "payload-cleanups", payloadbootstrap.Stem(l.spec)+".json")
 }
 
 // planClean plans the cleanup and checks the published plan: its path, its

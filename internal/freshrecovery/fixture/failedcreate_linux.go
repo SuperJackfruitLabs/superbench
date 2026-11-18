@@ -16,6 +16,7 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/payloadbootstrap"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotahelper"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotaoperation"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotaoperationjournal"
 )
 
 // failedRecreates proves on real XFS that a Fresh create which failed while
@@ -31,67 +32,33 @@ func (e *env) failedRecreates() {
 	key := "failed-create"
 	s := e.template.Spec
 	s.Key, s.ID, s.QuotaBytes = key, hash("failed-bid:" + key)[:32], 0
-	// A source commit the mirror does not hold: Materialize records staging,
-	// then its first check of the member fails, as a real failed create does.
-	s.Members = append([]payloadbootstrap.Member{}, s.Members...)
-	s.Members[0].Source = strings.Repeat("e", len(s.Members[0].Source))
-	identity := e.identity("create:" + key)
-	store, err := e.control.Operation(ctx, identity, func(i quotaoperation.Identity) error {
-		authority, err := e.p.OperationAuthority(ctx)
-		if err != nil {
-			return err
-		}
-		if i != identity || i.Authority != authority {
-			return quotaoperation.ErrAuthority
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	m, err := payloadbootstrap.Open(ctx, e.control, identity)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = m.Bootstrap(ctx, s); err == nil {
-		t.Fatal("a create with an absent source commit completed")
-	}
-	i, err := m.Inspect(ctx, s)
-	if err != nil || i.Phase != "staging" || i.OperationDenied || i.RecordedAllocation.ProjectID < 10000 {
-		t.Fatalf("failed create: %+v %v", i, err)
-	}
-	failed := bench{s, hoststorage.Assignment(i.RecordedAllocation)}
+	f := e.failCreate(s, key)
+	failed := f.bench
+	s = f.spec
 	second := successor(failed, "failed-second")
 	second.Members = e.template.Spec.Members
 
 	// Before root's recovery: root's inspection and the next generation refuse.
 	bootstrapDir := filepath.Join(e.p.Ledger, "payload-bootstrap")
 	row := e.row(key)
-	if _, err = freshrecovery.InspectRetired(ctx, s); err == nil {
+	if _, err := freshrecovery.InspectRetired(ctx, s); err == nil {
 		t.Fatal("root proved an unretired create retired")
 	}
-	if _, err = e.next(second, "failed-second-early"); err == nil {
+	if _, err := e.next(second, "failed-second-early"); err == nil {
 		t.Fatal("a next generation began before root retired the failed create")
 	}
-	if _, err = os.Lstat(filepath.Join(bootstrapDir, payloadbootstrap.Stem(second)+".json")); !errors.Is(err, os.ErrNotExist) || e.row(key) != row {
+	if _, err := os.Lstat(filepath.Join(bootstrapDir, payloadbootstrap.Stem(second)+".json")); !errors.Is(err, os.ErrNotExist) || e.row(key) != row {
 		t.Fatalf("a refused next generation had effects: %v %+v", err, e.row(key))
 	}
 	t.Log("LOWER_FAILED_CREATE_REFUSED_BEFORE_RETIREMENT_PASS")
 
 	// Root's recovery: deny the original operation, then clean, remove the
 	// empty leaf and retire, as fresh-bootstrap-recovery.md documents.
-	if _, err = store.Cancel(ctx); err != nil {
-		t.Fatal(err)
-	}
-	l := &leak{spec: s, manager: m, a: failed.allocation, gateHits: new(int)}
-	l.intent.Root = node{i.RecordedRoot.Device, i.RecordedRoot.Inode}
-	hits := l.gateHits
-	e.gate(m, func(context.Context, hoststorage.Policy) error { *hits++; return nil })
 	failedIntent, err := os.ReadFile(filepath.Join(bootstrapDir, key+".json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	e.recoverDaemon(l)
+	e.recoverFailed(f)
 	if _, err = os.Lstat(filepath.Join(e.p.Ledger, "payload-retirements", key+".json")); err != nil {
 		t.Fatal("no retained retirement:", err)
 	}
@@ -168,4 +135,64 @@ func (e *env) failedRecreates() {
 		t.Fatalf("retired generations after the reclaim: %+v", l.Retired)
 	}
 	t.Log("LOWER_FAILED_CREATE_NEXT_GENERATION_RECLAIMED_PASS")
+}
+
+// failed is a Fresh create that failed while materializing, its operation
+// still admitted, as a real failed create leaves it.
+type failed struct {
+	bench
+	leak  *leak
+	store *quotaoperationjournal.Store
+}
+
+// failCreate runs the real Bootstrap of s under its own create identity.
+// Its first member's source commit is one the mirror does not hold:
+// Materialize records staging, then its first check of the member fails.
+func (e *env) failCreate(s payloadbootstrap.Spec, label string) failed {
+	t := e.t
+	t.Helper()
+	ctx := t.Context()
+	s.Members = append([]payloadbootstrap.Member{}, s.Members...)
+	s.Members[0].Source = strings.Repeat("e", len(s.Members[0].Source))
+	identity := e.identity("create:" + label)
+	store, err := e.control.Operation(ctx, identity, func(i quotaoperation.Identity) error {
+		authority, err := e.p.OperationAuthority(ctx)
+		if err != nil {
+			return err
+		}
+		if i != identity || i.Authority != authority {
+			return quotaoperation.ErrAuthority
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := payloadbootstrap.Open(ctx, e.control, identity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = m.Bootstrap(ctx, s); err == nil {
+		t.Fatal("a create with an absent source commit completed")
+	}
+	i, err := m.Inspect(ctx, s)
+	if err != nil || i.Phase != "staging" || i.OperationDenied || i.RecordedAllocation.ProjectID < 10000 {
+		t.Fatalf("failed create: %+v %v", i, err)
+	}
+	b := bench{s, hoststorage.Assignment(i.RecordedAllocation)}
+	l := &leak{spec: s, manager: m, a: b.allocation, gateHits: new(int)}
+	l.intent.Root = node{i.RecordedRoot.Device, i.RecordedRoot.Inode}
+	return failed{b, l, store}
+}
+
+// recoverFailed is root's documented recovery of a failed create: deny its
+// operation, then clean, remove the empty leaf and retire.
+func (e *env) recoverFailed(f failed) {
+	e.t.Helper()
+	if _, err := f.store.Cancel(e.t.Context()); err != nil {
+		e.t.Fatal(err)
+	}
+	hits := f.leak.gateHits
+	e.gate(f.leak.manager, func(context.Context, hoststorage.Policy) error { *hits++; return nil })
+	e.recoverDaemon(f.leak)
 }
