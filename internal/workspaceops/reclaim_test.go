@@ -38,3 +38,12 @@ func TestReclaimRefusesLegacyAndUninstalledFreshWithoutEffects(t *testing.T) {
 		t.Fatal("an unknown key reclaimed")
 	}
 }
+
+// The sweep's route always carries its condition; without one it is invalid.
+func TestReclaimIdleRequiresItsCondition(t *testing.T) {
+	m, r := fixture(t)
+	create(t, m, r)
+	if _, err := m.ReclaimIdle(context.Background(), "card", nil); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("an unconditioned idle reclaim: %v", err)
+	}
+}
