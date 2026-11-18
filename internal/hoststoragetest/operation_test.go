@@ -1,4 +1,6 @@
-package hoststorage
+// Package hoststoragetest tests host storage through its exported API,
+// outside the package, which is at its size bound.
+package hoststoragetest
 
 import (
 	"context"
@@ -8,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/operationcontrol"
 )
 
@@ -27,8 +30,8 @@ func TestCancelledOperationCannotLaunchPrivilegedQuotaHelper(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Direct root helper is not required; a denied Start must precede even sudo.
-	w := Worker{State: root, Data: filepath.Join(root, "data"), Context: ctx}
-	if _, err = w.Quota(HostConfig{QuotaHelper: helper}, "bench", "card", 0); !errors.Is(err, denied) {
+	w := hoststorage.Worker{State: root, Data: filepath.Join(root, "data"), Context: ctx}
+	if _, err = w.Quota(hoststorage.HostConfig{QuotaHelper: helper}, "bench", "card", 0); !errors.Is(err, denied) {
 		t.Fatal("helper launch crossed cancel", err)
 	}
 	if _, err = os.Lstat(marker); !os.IsNotExist(err) {

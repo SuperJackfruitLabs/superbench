@@ -1,4 +1,4 @@
-package hoststorage
+package allocationledger
 
 import (
 	"errors"
@@ -8,11 +8,11 @@ import (
 )
 
 func TestRetainedBootstrapIntentBlocksLegacyAllocationRegardlessOfContents(t *testing.T) {
-	p := Policy{Ledger: t.TempDir()}
-	if err := p.refuseRegisteredAllocation("card"); err != nil {
+	ledger := t.TempDir()
+	if err := RefuseRegistered(ledger, "card"); err != nil {
 		t.Fatal(err)
 	}
-	parent := filepath.Join(p.Ledger, "payload-bootstrap")
+	parent := filepath.Join(ledger, "payload-bootstrap")
 	if err := os.Mkdir(parent, 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -22,7 +22,7 @@ func TestRetainedBootstrapIntentBlocksLegacyAllocationRegardlessOfContents(t *te
 	if err := os.WriteFile(path, []byte("{"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := p.refuseRegisteredAllocation("card"); !errors.Is(err, ErrRegisteredAllocation) {
+	if err := RefuseRegistered(ledger, "card"); !errors.Is(err, ErrRegisteredAllocation) {
 		t.Fatalf("legacy ownership allowed: %v", err)
 	}
 	if err := os.Remove(path); err != nil {
@@ -31,7 +31,7 @@ func TestRetainedBootstrapIntentBlocksLegacyAllocationRegardlessOfContents(t *te
 	if err := os.Symlink("missing", path); err != nil {
 		t.Fatal(err)
 	}
-	if err := p.refuseRegisteredAllocation("card"); !errors.Is(err, ErrRegisteredAllocation) {
+	if err := RefuseRegistered(ledger, "card"); !errors.Is(err, ErrRegisteredAllocation) {
 		t.Fatalf("symlink intent allowed: %v", err)
 	}
 }
