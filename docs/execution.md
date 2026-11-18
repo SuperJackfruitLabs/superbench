@@ -103,8 +103,11 @@ tree belongs to the payload account, so SuperBench confines that account.
   full-tree check runs at reclaim: before the reclaim retains `reclaiming`,
   again before the purge, and on the emptied leaf before root removes it. It
   runs as root through descriptors only, never follows a symlink and never
-  leaves the filesystem. It holds one directory open at a time and is bounded by
-  the bench's inode cap. Every directory and regular file must carry the
+  leaves the filesystem. It holds one directory open at a time. It counts
+  distinct inodes against the bench's inode cap, so hard links never count
+  twice, and it has a separate bound of 2^26 names, the same as the purge
+  worker's step bound. Hitting the name bound refuses, but is not reported as
+  an escape. Every directory and regular file must carry the
   project, with directories also carrying the inherit flag. Symlinks and special
   files are never opened. On Linux 6.17 and later, root reads their project by
   name with `file_getattr` without following them. On older kernels they are
@@ -114,9 +117,11 @@ tree belongs to the payload account, so SuperBench confines that account.
 - **Scan existing benches.** The leaf check misses an escape below the leaf, and
   benches written before this filter shipped were never confined. As direct
   root, `bench-quota scan-projects` walks every allocated bench's tree the same
-  way and prints one JSON line per bench (`contained`, `absent` or `outside`
-  with the reason). It exits non-zero while any bench is outside its project,
-  and it changes nothing. Run it after installing or upgrading, and before you
+  way and prints one JSON line per bench. The status is `contained`, `absent`,
+  `outside` (a real project, inherit-flag or inode-cap escape) or `unverified`
+  (the walk could not finish, for example because the tree changed under it),
+  with a reason for the last two. It exits non-zero while any bench is
+  `outside` or `unverified`, and it changes nothing. Run it after installing or upgrading, and before you
   set `fresh_payload` in the activation file. Do not turn Fresh on while it
   reports a bench outside its project. Nothing enforces this yet: benchd does
   not run the scan itself.
