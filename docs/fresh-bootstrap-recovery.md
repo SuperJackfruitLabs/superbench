@@ -93,7 +93,7 @@ request limit is 128 KiB; the plan command's Spec limit remains 64 KiB.
 Retirement holds the existing operation lock, re-establishes the original denial's
 durability, rechecks retained provenance and actual controller authority, and
 persists the exact reviewed plan as a root-owned 0600 file at
-`LEDGER/payload-retirements/KEY.json` before changing any reservation. An existing
+`LEDGER/payload-retirements/KEY.json` (`KEY@N.json` for generation N) before changing any reservation. An existing
 approval must match exactly, including after a lost reply. The file is published
 atomically: a complete, fsynced temp file in the same directory is linked to the
 final name, so a crash leaves either no approval or a complete one, never a
@@ -140,7 +140,7 @@ bench-quota repair-bootstrap-quota           KEY OPERATION_ID EPOCH STATE_ID AUT
 
 Before its first effect, an effect publishes the exact reviewed plan as a
 root-owned `0600` file, `LEDGER/payload-cleanups/KEY.leaf.json` or
-`KEY.repair.json`, with the same atomic link-and-fsync publication as retirement
+`KEY.repair.json` (`KEY@N.*` for generation N), with the same atomic link-and-fsync publication as retirement
 approvals. An existing file must match exactly. After that point an error reads
 "effects may have occurred; retry the same plan": keep the plan and retry it.
 A retry after a lost reply returns the same result, which names the SHA-256 of
@@ -238,7 +238,8 @@ re-hash and unlink what it approved. A file the daemon cannot read, a directory
 it cannot search or write, a special file or a hard link refuses the plan before
 anything is retained.
 
-The plan is published as `LEDGER/payload-cleanups/KEY.plan.json` (root `0600`,
+The plan is published as `LEDGER/payload-cleanups/KEY.plan.json` (`KEY@N.*`
+for generation N, as every approval below; root `0600`,
 up to 16 MiB), atomically replacing an earlier plan; planning again is how a
 plan is refreshed. The command prints `{"Path":…,"SHA256":…}`. A plan is not
 authority: once `KEY.json` exists no plan can be published, and the effect
@@ -405,6 +406,7 @@ and evidence, and the earlier generation's stays where it was.
 | Intent and controls | `payload-bootstrap/KEY.json`, `KEY.controls` | `payload-bootstrap/KEY@N.json`, `KEY@N.controls` |
 | Quota project | assigned once | a new ID from the ledger's counter |
 | Layout registration | `payload-layouts/KEY.json` | the same name; the daemon first renames the previous one to `KEY.<previous bench_id>.reclaimed` |
+| Recovery approvals | `payload-cleanups/KEY.*`, `payload-retirements/KEY.json` | `payload-cleanups/KEY@N.*`, `payload-retirements/KEY@N.json` |
 
 The daemon records the new bench `materializing` in place of its `reclaimed`
 record; that is the only change a `reclaimed` record allows. Every create and
@@ -431,12 +433,15 @@ one, and a repeat of the first generation's bootstrap all refuse with no
 effect. A retry of the earlier generation's own reclaim after the next one
 exists refuses too: its ledger row is the next generation's now. A later
 generation that is interrupted is recovered with the steps above, using its
-own spec. The cleanup and retirement approvals are named by the key alone
-(`payload-cleanups/KEY.*`, `payload-retirements/KEY.json`), so a key's
-direct-root recovery runs once: if a generation of a key whose earlier
-generation was already recovered that way fails too, the steps refuse on the
-existing approval. Keep everything as evidence and stop; that case needs
-per-generation approval names, which do not exist yet.
+own spec. Its cleanup and retirement approvals are named by its generation
+(the table above), so the recovery of a second failed generation of a key
+neither collides with nor touches the first's, and the key's next create
+makes a third. Earlier binaries named every generation's approvals by the
+key: a later generation without its own `payload-retirements/KEY@N.json`
+falls back to `KEY.json`, which counts only if it retired exactly that
+generation's intent. A cleanup an earlier binary began for a later generation
+under the key's names is not resumed under the new names; finish it with that
+binary's names before upgrading.
 
 The lower fixture proves this on real XFS after the reclaim cases. Its markers,
 each logged alone on its line, are
@@ -481,8 +486,8 @@ and `LOWER_RECREATE_FROM_MOVED_BRANCH_PASS`.
 
 ### After a failed create is retired
 
-A create that never completed (its intent stops before `completed`, and the
-daemon's record stays `materializing` or `initializing`) also gives way to the
+A create whose bootstrap never completed (its intent stops before `completed`,
+and the daemon's record stays `materializing` with no quota project) also gives way to the
 key's next generation, once root has retired its allocation with the steps
 above: [deny](#denying-the-original-operation), clean, remove the empty leaf,
 retire. The intent is never rewritten; it stays in the phase it stopped in.
@@ -497,10 +502,12 @@ record's own canonical Spec on stdin:
 
 The daemon runs it through its sudo route; direct root can run it the same way
 to check a recovery. It is read-only and takes no identity, path or policy
-override. Root answers only from its own retained files: the
+override. Root answers only from its own retained files, and holds the
+allocation lock briefly while it reads the ledger, so a reclaim or create that
+needs the lock at that moment fails closed and is retried. The
 intent of that Spec (`KEY.json` or `KEY@N.json`) is canonical, in a phase
 before `completed`, under the current storage authority;
-`payload-retirements/KEY.json` reviewed exactly that intent (its digest, spec,
+`payload-retirements/KEY.json` (`KEY@N.json`) reviewed exactly that intent (its digest, spec,
 phase, workspace, operation, policy and recorded allocation) under its denied
 operation; and, under the allocation lock, the ledger row is that project's
 tombstone with its Fresh marker and the leaf is absent. Its reply names the
@@ -525,3 +532,43 @@ reclaim. Its markers, each logged alone on its line, are
 `LOWER_FAILED_CREATE_NEXT_GENERATION_NEW_PROJECT_PASS`,
 `LOWER_FAILED_CREATE_OLD_PROJECT_NOT_REVIVED_PASS` and
 `LOWER_FAILED_CREATE_NEXT_GENERATION_RECLAIMED_PASS`.
+
+### After a stalled initialization
+
+A create whose bootstrap completed (its intent is `completed` and its layout
+published) but whose initialization never finished leaves the daemon's record
+at `initializing`, or at `materializing` with its quota project, with its
+`initialization` lease. There is nothing to keep: no checkpoint was ever
+confirmed. The documented direct-root steps refuse it, because its intent is
+`completed`; root's reclaim is its route instead.
+
+First stop its initialization owner, with the owner's `stop` or the
+operator's `stop_admin`: the daemon records the stop and fences any run. A
+record whose owner was not stopped is never touched; a create on its key is a
+conflict without asking root. Then a `create` on the key with a new request ID
+asks the fixed helper's `reclaim-payload`, under the reclaim's own identity
+derived from the key and `bench_id`, with the record's own canonical Spec.
+Root reclaims exactly as for a released bench, from its own checks and never
+the daemon's record: the intent is `completed`, the leaf is the bench's own,
+no process is using the bench (otherwise "the bench is in use" and nothing
+changes), every entry is in the bench's project, then the confined purge, the
+empty-leaf removal and the retirement. On root's checked tombstone, and only
+then, the create records the next generation in place of the stalled record,
+and root's Begin follows the `reclaimed` intent as after any reclaim. A reclaim
+refused or interrupted part way leaves the record as it was, and the next
+create on the key resumes the same reclaim.
+
+The daemon's record shows no new phase: it keeps `initializing` until the next
+generation replaces it, because `reclaimed` means a released, checkpointed
+bench. Its capacity is returned when the key is created again; a stalled
+bench whose key is never created again keeps its reservation.
+
+The lower fixture proves root's side on real XFS, and a second failed
+generation's recovery. Its markers are
+`LOWER_STALLED_CREATE_IN_USE_REFUSED_PASS`,
+`LOWER_STALLED_CREATE_RECLAIMED_PASS`,
+`LOWER_STALLED_CREATE_NEXT_GENERATION_PASS`,
+`LOWER_STALLED_CREATE_NEXT_GENERATION_RECLAIMED_PASS`,
+`LOWER_SECOND_FAILED_GENERATION_RECOVERED_PASS`,
+`LOWER_THIRD_GENERATION_AFTER_SECOND_FAILURE_PASS` and
+`LOWER_THIRD_GENERATION_RECLAIMED_PASS`.

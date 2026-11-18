@@ -13,9 +13,16 @@ stamps the section `## vX.Y.Z — YYYY-MM-DD`, and the release notes quote it.
   commit from the daemon's mirror before the checkout; nothing is fetched from the network, no
   other branch is copied into the bench and the mirror is not written. A bench already stuck at
   `materializing` from this still needs the recovery steps in `docs/fresh-bootstrap-recovery.md`.
+- A Fresh create whose initialization stalled after its bootstrap completed (the workspace stays
+  `initializing`) no longer holds its key for good either. Once its initialization owner is
+  stopped (`stop` or `stop_admin`), a `create` on the key with a new request ID has the helper
+  reclaim the bench, with root's own in-use, containment and leaf checks, and makes the key's
+  next generation. A failed create's recovery approvals are now named per generation
+  (`KEY@N`), so a key whose create fails a second time is recovered the same way.
 - A Fresh create that failed no longer holds its key for good. Once root has recovered it
   (denied its operation with `bench-quota cancel-operation`, cleaned, removed the empty leaf and
-  retired the allocation), a `create` on the key with a new request ID asks the helper's
+  retired the allocation; this covers a create still `materializing` with no quota project), a
+  `create` on the key with a new request ID asks the helper's
   read-only `inspect-retired-payload` and, on root's proof, makes the key's next generation with
   a new `bench_id` and a new quota project. Without that proof it is a conflict, as before. The
   recovery docs now say how to deny the original operation.

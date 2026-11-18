@@ -107,22 +107,35 @@ end-to-end card result:
   is an exact retry, a retry of the old bench's own create returns it unchanged
   (`reclaimed`), and the create needs `fresh_payload`: without it, it is refused
   and the reclaimed record stays. See [Generations of a key](fresh-bootstrap-recovery.md#generations-of-a-key).
-- **A refused or failed Fresh create keeps its record until root retires it.** A
+- **A refused or failed Fresh create keeps its record until root frees it.** A
   Fresh create that fails, including a `capacity_exhausted` refusal, leaves the
   workspace at `materializing` or `initializing` with its `initialization`
-  lease. Reclaim refuses it: it covers only a released, `ready` bench. Recover it with the direct-root steps in
-  [Retained Fresh bootstrap evidence](fresh-bootstrap-recovery.md): deny the
-  original operation (`bench-quota cancel-operation` with the five values from
-  the retained intent), clean, remove the empty leaf and retire. After that, a
-  `create` on the key with a new request ID asks root, read-only, whether the
-  allocation is retired, and on root's proof makes the key's next generation
-  in place of the failed record; until then it is refused as a conflict. See
-  [After a failed create is retired](fresh-bootstrap-recovery.md#after-a-failed-create-is-retired).
-  A create the helper refused before it recorded an intent, such as a
-  `capacity_exhausted` refusal, leaves nothing for root to retire, and its
-  record still has no supported removal. Reinitializing the storage (below)
-  does not remove a record: the records live in `/var/lib/superbench`, which
-  that procedure backs up but keeps.
+  lease. Which route frees the key depends on how far the bootstrap got:
+  - **`materializing`, no quota project: the bootstrap never completed.**
+    Recover it with the direct-root steps in
+    [Retained Fresh bootstrap evidence](fresh-bootstrap-recovery.md): deny the
+    original operation (`bench-quota cancel-operation` with the five values
+    from the retained intent), clean, remove the empty leaf and retire. Then a
+    `create` on the key with a new request ID asks root, read-only, whether the
+    allocation is retired, and on root's proof makes the key's next generation
+    in place of the failed record. See
+    [After a failed create is retired](fresh-bootstrap-recovery.md#after-a-failed-create-is-retired).
+  - **`initializing` (or `materializing` with a project): the bootstrap
+    completed, initialization stalled.** The direct-root steps refuse it. Stop
+    its initialization owner (`stop`, or `stop_admin` without the token); then
+    a `create` on the key with a new request ID has root reclaim the bench, with
+    root's own in-use, containment and leaf checks, and makes the next
+    generation. See
+    [After a stalled initialization](fresh-bootstrap-recovery.md#after-a-stalled-initialization).
+
+  Until then a create on the key is refused as a conflict, and the record is
+  unchanged. Each generation's recovery approvals have their own names, so a
+  key whose create fails again is recovered the same way. A create the helper
+  refused before it recorded an intent, such as a `capacity_exhausted`
+  refusal, leaves nothing for root to retire, and its record still has no
+  supported removal. Reinitializing the storage (below) does not remove a
+  record: the records live in `/var/lib/superbench`, which that procedure
+  backs up but keeps.
 - **Harness configuration in the payload home.** The payload helper sets `HOME`
   from each bench's Fresh layout. Nothing yet places a harness's provider
   configuration there, and the harness adapter refuses to provision credentials.
