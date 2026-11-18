@@ -53,6 +53,32 @@ func RetireReclaimed(ctx context.Context, p hoststorage.Policy, approved Approva
 	return a, err
 }
 
+// Retired proves, read-only, that approved's allocation is now its key's
+// permanent tombstone and its leaf is absent, as a completed RetireAbsent of
+// approved leaves them, under the same storage authority and benches parent.
+// It writes nothing. Like RetireReclaimed it admits the fixed helper's sudo
+// caller: a later generation's Begin and the daemon's read-only inspection of
+// a create that never completed both ask it.
+func Retired(ctx context.Context, p hoststorage.Policy, approved Approval) error {
+	if approved.validate(p) != nil {
+		return ErrRetirement
+	}
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	return hold(ctx, p, approved.Key, &approved.Assignment, true, func(h held) error {
+		if !h.retired || h.observed != approved {
+			return ErrRetirement
+		}
+		if err := h.check(); err != nil {
+			return err
+		}
+		if _, err := h.parent.Lstat(approved.Key); !errors.Is(err, syscall.ENOENT) {
+			return errors.Join(ErrRetirement, err)
+		}
+		return nil
+	})
+}
+
 func run(ctx context.Context, p hoststorage.Policy, key string, approved *Approval, helper bool) (Approval, hoststorage.Assignment, error) {
 	var zero Approval
 	var noAssignment hoststorage.Assignment

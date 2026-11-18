@@ -27,9 +27,8 @@ func (m *Manager) Begin(ctx context.Context, s Spec) error {
 		reserved := intent{Spec: s, Operation: m.operation, PolicyDigest: m.digest, Phase: "reserved"}
 		apply := m.storage.ApplyFreshRequested
 		if s.Generation != 0 {
-			// A later generation follows only its reclaimed predecessor, and
-			// takes a new project in place of exactly that one's tombstone.
-			previous, err := m.predecessor(s)
+			// A later generation takes a new project in place of its predecessor's tombstone.
+			previous, err := m.predecessor(ctx, s)
 			if err == nil {
 				err = freshgeneration.LayoutAbsent(m.policy.StateRoot, s.Key)
 			}
