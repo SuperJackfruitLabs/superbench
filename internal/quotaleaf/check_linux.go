@@ -17,6 +17,15 @@ const (
 	atSymlinkNofollow = 0x100
 )
 
+// maxNames is MaxNames; tests lower it.
+var maxNames = MaxNames
+
+// hooks run at the walk's two time-of-check points; tests only.
+var hooks struct {
+	beforeReopen func(name string) // between an entry's O_PATH stat and its open
+	beforeUp     func(cur int)     // before returning to a parent through ".."
+}
+
 // getattr is Get and getattrAt is GetAt; unprivileged tests substitute
 // observed attributes.
 var getattr, getattrAt = Get, GetAt
@@ -89,10 +98,11 @@ func Leaf(benches, key string, project uint32) error {
 
 // Tree checks the leaf and every directory and regular file beneath it, as
 // root, through descriptors only. It never follows a symlink, never leaves the
-// leaf's filesystem and refuses rather than continue past limit entries.
+// leaf's filesystem and refuses rather than continue past limit distinct
+// inodes (ErrTreeLimit) or MaxNames names (ErrTreeNames).
 // Symlinks and special files are never opened: their project is read by name
 // with file_getattr where the kernel has it (6.17 and later), and on older
-// kernels they are only counted, which is a gap. Depth is bounded only by limit:
+// kernels they are only counted, which is a gap. Depth is bounded only by those:
 // it holds one directory descriptor at a time, returning to a parent through
 // ".." and proving that it is the node it left.
 func Tree(leaf *os.File, project uint32, limit int) error {
@@ -112,7 +122,11 @@ func Tree(leaf *os.File, project uint32, limit int) error {
 		return err
 	}
 	syscall.CloseOnExec(cur)
-	w := walker{device: root.Dev, project: project, left: limit, cur: cur}
+	w := walker{device: root.Dev, project: project, budget: newBudget(limit, maxNames), cur: cur}
+	if err := w.budget.inode(root.Dev, root.Ino); err != nil {
+		syscall.Close(cur)
+		return err
+	}
 	defer func() { syscall.Close(w.cur) }()
 	return w.walk(root)
 }
@@ -126,13 +140,13 @@ type level struct {
 type walker struct {
 	device  uint64
 	project uint32
-	left    int
+	budget  *budget
 	cur     int
 	stack   []level
 }
 
 func (w *walker) walk(root syscall.Stat_t) error {
-	names, err := w.names()
+	names, err := w.list()
 	if err != nil {
 		return err
 	}
@@ -157,8 +171,9 @@ func (w *walker) walk(root syscall.Stat_t) error {
 	return nil
 }
 
-// names reads every name of the current directory, counting them against limit.
-func (w *walker) names() ([]string, error) {
+// list reads every name of the current directory, counting them against the
+// name bound.
+func (w *walker) list() ([]string, error) {
 	dup, err := syscall.Dup(w.cur)
 	if err != nil {
 		return nil, err
@@ -172,8 +187,8 @@ func (w *walker) names() ([]string, error) {
 	var all []string
 	for {
 		names, err := d.Readdirnames(256)
-		if w.left -= len(names); w.left < 0 {
-			return nil, ErrTreeLimit
+		if err := w.budget.name(len(names)); err != nil {
+			return nil, err
 		}
 		all = append(all, names...)
 		if err == io.EOF {
@@ -187,6 +202,9 @@ func (w *walker) names() ([]string, error) {
 
 // up returns to the parent through ".." and requires it to be want's node.
 func (w *walker) up(want level) error {
+	if hooks.beforeUp != nil {
+		hooks.beforeUp(w.cur)
+	}
 	fd, err := syscall.Openat(w.cur, "..", syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
 	if err != nil {
 		return err
@@ -212,6 +230,9 @@ func (w *walker) entry(name string) error {
 	if err != nil {
 		return err
 	}
+	if err := w.budget.inode(st.Dev, st.Ino); err != nil {
+		return err
+	}
 	kind := st.Mode & syscall.S_IFMT
 	if kind != syscall.S_IFDIR && kind != syscall.S_IFREG {
 		// Never opened: read by name where the kernel can, else only counted.
@@ -229,6 +250,9 @@ func (w *walker) entry(name string) error {
 	}
 	if st.Dev != w.device {
 		return ErrTreeProject
+	}
+	if hooks.beforeReopen != nil {
+		hooks.beforeReopen(name)
 	}
 	flags := syscall.O_RDONLY | syscall.O_NOFOLLOW | syscall.O_NONBLOCK | syscall.O_NOCTTY | syscall.O_CLOEXEC
 	if kind == syscall.S_IFDIR {
@@ -255,7 +279,7 @@ func (w *walker) entry(name string) error {
 	}
 	syscall.Close(w.cur)
 	w.cur = fd
-	names, err := w.names()
+	names, err := w.list()
 	if err != nil {
 		return err
 	}

@@ -120,11 +120,12 @@ func TestTreeRefusesNestedEntryOutsideProject(t *testing.T) {
 func TestTreeIsBounded(t *testing.T) {
 	leaf, _ := tree(t)
 	fake(t, nil)
-	if err := walk(t, leaf, 3); !errors.Is(err, ErrTreeLimit) {
-		t.Fatalf("four entries under a limit of three: %v", err)
+	// leaf, a, b, out and f: five inodes.
+	if err := walk(t, leaf, 4); !errors.Is(err, ErrTreeLimit) {
+		t.Fatalf("five inodes under a cap of four: %v", err)
 	}
-	if err := walk(t, leaf, 4); err != nil {
-		t.Fatalf("four entries under a limit of four: %v", err)
+	if err := walk(t, leaf, 5); err != nil {
+		t.Fatalf("five inodes under a cap of five: %v", err)
 	}
 }
 
@@ -178,5 +179,77 @@ func TestTreeChecksSymlinksByNameWhereTheKernelCan(t *testing.T) {
 	getattrAt = func(int, string) (Attr, error) { return Attr{}, errNoGetattrAt }
 	if err := walk(t, leaf, 16); err != nil {
 		t.Fatalf("a kernel without file_getattr: %v", err)
+	}
+}
+
+// Hard links add names, not inodes: a tree of many links to one file stays
+// under the inode cap, and only the separate name bound limits the walk,
+// with its own error rather than an escape.
+func TestTreeCountsDistinctInodesNotHardLinks(t *testing.T) {
+	leaf, _ := tree(t)
+	file := filepath.Join(leaf, "a", "b", "f")
+	for i := 0; i < 20; i++ {
+		if err := os.Link(file, filepath.Join(leaf, "a", "b", "link"+strconv.Itoa(i))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	fake(t, nil)
+	if err := walk(t, leaf, 5); err != nil {
+		t.Fatalf("hard links counted as inodes: %v", err)
+	}
+	old := maxNames
+	t.Cleanup(func() { maxNames = old })
+	maxNames = 10
+	if err := walk(t, leaf, 5); !errors.Is(err, ErrTreeNames) || errors.Is(err, ErrTreeLimit) {
+		t.Fatalf("24 names under a bound of 10: %v", err)
+	}
+}
+
+// An entry swapped between its O_PATH stat and its open is refused.
+func TestTreeRefusesAnEntryReplacedBeforeItsOpen(t *testing.T) {
+	leaf, elsewhere := tree(t)
+	fake(t, nil)
+	t.Cleanup(func() { hooks.beforeReopen = nil })
+	hooks.beforeReopen = func(name string) {
+		if name != "b" {
+			return
+		}
+		hooks.beforeReopen = nil
+		b := filepath.Join(leaf, "a", "b")
+		if err := os.Rename(b, filepath.Join(elsewhere, "old-b")); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Mkdir(b, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := walk(t, leaf, 16); !errors.Is(err, ErrTreeProject) {
+		t.Fatalf("replaced directory: %v", err)
+	}
+}
+
+// A directory moved while the walk is inside it returns through ".." to a
+// different node, which is refused rather than walked.
+func TestTreeRefusesAParentThatChangedUnderTheWalk(t *testing.T) {
+	leaf, _ := tree(t)
+	if err := os.Mkdir(filepath.Join(leaf, "c"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	fake(t, nil)
+	t.Cleanup(func() { hooks.beforeUp = nil })
+	b := inode(t, filepath.Join(leaf, "a", "b"))
+	hooks.beforeUp = func(cur int) {
+		var st syscall.Stat_t
+		if syscall.Fstat(cur, &st) != nil || st.Ino != b {
+			return
+		}
+		hooks.beforeUp = nil
+		// The walk is in a/b and about to return to a: b now lives under c.
+		if err := os.Rename(filepath.Join(leaf, "a", "b"), filepath.Join(leaf, "c", "b")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := walk(t, leaf, 16); !errors.Is(err, ErrTreeProject) {
+		t.Fatalf("parent changed under the walk: %v", err)
 	}
 }

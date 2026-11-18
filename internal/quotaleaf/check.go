@@ -12,9 +12,17 @@ var (
 	ErrLeafProject = errors.New("bench leaf is outside its quota project")
 	// ErrTreeProject: an entry beneath the leaf is outside the project.
 	ErrTreeProject = errors.New("bench tree entry is outside its quota project")
-	// ErrTreeLimit: the tree has more entries or depth than the walk allows.
-	ErrTreeLimit = errors.New("bench tree exceeds the project check limit")
+	// ErrTreeLimit: the tree holds more distinct inodes than the bench's
+	// inode cap, which only entries charged elsewhere make possible.
+	ErrTreeLimit = errors.New("bench tree holds more inodes than its project cap")
+	// ErrTreeNames: the walk met more names than MaxNames. Hard links add
+	// names without inodes, so this is a bound on work, not an escape.
+	ErrTreeNames = errors.New("bench tree exceeds the project check's name bound")
 )
+
+// MaxNames bounds the names one walk visits, as the purge worker's step
+// bound does.
+const MaxNames = 1 << 26
 
 // FlagProjInherit is FS_XFLAG_PROJINHERIT.
 const FlagProjInherit = 0x200
@@ -26,4 +34,35 @@ type Attr struct{ Xflags, ProjectID uint32 }
 // gives new children the same project.
 func Check(a Attr, project uint32, directory bool) bool {
 	return project != 0 && a.ProjectID == project && (!directory || a.Xflags&FlagProjInherit != 0)
+}
+
+// budget is one walk's bounds: distinct inodes against the bench's inode cap
+// and names against the name bound. Hard links add names, not inodes.
+type budget struct {
+	seen          map[[2]uint64]bool
+	inodes, names int
+}
+
+func newBudget(inodes, names int) *budget {
+	return &budget{seen: map[[2]uint64]bool{}, inodes: inodes, names: names}
+}
+
+// inode counts a node once however many names reach it.
+func (b *budget) inode(dev, ino uint64) error {
+	id := [2]uint64{dev, ino}
+	if b.seen[id] {
+		return nil
+	}
+	if b.seen[id] = true; len(b.seen) > b.inodes {
+		return ErrTreeLimit
+	}
+	return nil
+}
+
+// name counts n more names.
+func (b *budget) name(n int) error {
+	if b.names -= n; b.names < 0 {
+		return ErrTreeNames
+	}
+	return nil
 }
