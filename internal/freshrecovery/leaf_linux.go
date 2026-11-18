@@ -108,7 +108,7 @@ func RemoveLeaf(ctx context.Context, m *payloadbootstrap.Manager, s payloadboots
 		defer benches.Close()
 		h, err := observe(benches, s.Key, payloadbootstrap.FixedDirectories(s))
 		if errors.Is(err, errAbsent) {
-			if err = retain(r.Storage.Ledger, s.Key, "leaf", raw, true); err != nil {
+			if err = retain(r.Storage.Ledger, payloadbootstrap.Stem(s), "leaf", raw, true); err != nil {
 				return err
 			}
 			retained = true
@@ -130,7 +130,7 @@ func RemoveLeaf(ctx context.Context, m *payloadbootstrap.Manager, s payloadboots
 		if err = recheck(); err != nil {
 			return err
 		}
-		if err = retain(r.Storage.Ledger, s.Key, "leaf", raw, false); err != nil {
+		if err = retain(r.Storage.Ledger, payloadbootstrap.Stem(s), "leaf", raw, false); err != nil {
 			return err
 		}
 		retained = true

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/freshgeneration"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/retainedfile"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/storagecustody"
 )
@@ -33,7 +34,7 @@ func ParseRetirement(raw []byte) (Spec, RetirementPlan, error) {
 	return request.Spec, request.Plan, nil
 }
 
-func (m *Manager) retainRetirement(plan RetirementPlan) error {
+func (m *Manager) retainRetirement(s Spec, plan RetirementPlan) error {
 	if err := m.check(); err != nil {
 		return err
 	}
@@ -41,7 +42,7 @@ func (m *Manager) retainRetirement(plan RetirementPlan) error {
 	if err != nil || len(raw) > MaxRetirement {
 		return ErrBootstrap
 	}
-	if err := retainRetirementFile(m.storage.Ledger, plan.Bootstrap.Key, raw); err != nil {
+	if err := retainRetirementFile(m.storage.Ledger, s.Key, s.Generation, raw); err != nil {
 		return err
 	}
 	return m.check()
@@ -49,7 +50,7 @@ func (m *Manager) retainRetirement(plan RetirementPlan) error {
 
 // retainRetirementFile publishes the reviewed plan once under the ledger. An
 // exact retry is accepted; any other existing file refuses.
-func retainRetirementFile(ledgerPath, key string, raw []byte) error {
+func retainRetirementFile(ledgerPath, key string, generation uint32, raw []byte) error {
 	if retainedfile.DirectRoot() != nil || !name.MatchString(key) || len(raw) == 0 || len(raw) > MaxRetirement {
 		return ErrBootstrap
 	}
@@ -71,7 +72,7 @@ func retainRetirementFile(ledgerPath, key string, raw []byte) error {
 	if err = ledger.Sync(); err != nil {
 		return err
 	}
-	if err = retainedfile.Publish(parent, key+".json", raw, MaxRetirement); errors.Is(err, retainedfile.ErrRefused) {
+	if err = retainedfile.Publish(parent, freshgeneration.Stem(key, generation)+".json", raw, MaxRetirement); errors.Is(err, retainedfile.ErrRefused) {
 		return ErrBootstrap
 	}
 	return err

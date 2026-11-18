@@ -117,7 +117,7 @@ func (m *Manager) RetireAbsent(ctx context.Context, s Spec, plan RetirementPlan)
 		if i != plan.Bootstrap {
 			return ErrBootstrap
 		}
-		if err = m.retainRetirement(plan); err != nil {
+		if err = m.retainRetirement(s, plan); err != nil {
 			return err
 		}
 		approvalRetained = true

@@ -190,3 +190,31 @@ func TestALaterGenerationFollowsARetiredUnfinishedCreate(t *testing.T) {
 	}
 	t.Log("FAILED_CREATE_UNRETIRED_PREDECESSOR_REFUSED_PASS")
 }
+
+// Each generation's retirement has its own file; a later generation whose own
+// file is absent falls back to the key's, which earlier binaries wrote for
+// every generation. The first generation's file is the key's, as before.
+func TestEachGenerationsRetirementHasItsOwnFile(t *testing.T) {
+	ledger := t.TempDir()
+	dir := filepath.Join(ledger, "payload-retirements")
+	own := filepath.Join(dir, "card@2.json")
+	if got := RetirementPath(ledger, "card", 0); got != filepath.Join(dir, "card.json") {
+		t.Fatal("first generation", got)
+	}
+	if got := RetirementPath(ledger, "card", 2); got != filepath.Join(dir, "card.json") {
+		t.Fatal("a later generation without its own file", got)
+	}
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(own, []byte("{}"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if got := RetirementPath(ledger, "card", 2); got != own {
+		t.Fatal("a later generation's own file", got)
+	}
+	if got := RetirementPath(ledger, "card", 3); got != filepath.Join(dir, "card.json") {
+		t.Fatal("another generation took generation 2's file", got)
+	}
+	t.Log("STUCK_CREATE_RETIREMENT_NAMED_PER_GENERATION_PASS")
+}

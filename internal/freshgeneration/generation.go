@@ -146,6 +146,18 @@ func Follows(prior Prior, key, previous string, generation uint32, authority, ro
 	return Retired(prior, authority, root)
 }
 
+// RetirementPath is the file under LEDGER/payload-retirements that holds root's
+// retirement of key's generation: KEY@N.json, KEY.json for the first. Earlier
+// binaries named every generation's KEY.json, so a later generation's absent
+// own file falls back to it; its reader's binding to the exact intent decides.
+func RetirementPath(ledger, key string, generation uint32) string {
+	path := filepath.Join(ledger, "payload-retirements", Stem(key, generation)+".json")
+	if _, err := os.Lstat(path); generation != 0 && errors.Is(err, os.ErrNotExist) {
+		return filepath.Join(ledger, "payload-retirements", key+".json")
+	}
+	return path
+}
+
 // LayoutAbsent refuses, before any effect, while the daemon's layout registry
 // in state still publishes a layout under key. Publication creates a key's
 // registration exclusively, so a later generation's would be refused only

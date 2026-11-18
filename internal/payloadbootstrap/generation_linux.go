@@ -48,7 +48,7 @@ func ReadPrior(ledger, key string, generation uint32) (freshgeneration.Prior, *R
 		return prior, nil, nil
 	}
 	var plan RetirementPlan
-	if raw, err = storagecustody.ReadProtected(filepath.Join(ledger, "payload-retirements", key+".json"), MaxRetirement); err == nil {
+	if raw, err = storagecustody.ReadProtected(freshgeneration.RetirementPath(ledger, key, generation), MaxRetirement); err == nil {
 		err = json.Unmarshal(raw, &plan)
 	}
 	canonical, _ = json.Marshal(plan)
