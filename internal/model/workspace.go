@@ -12,6 +12,10 @@ type Workspace struct {
 	CheckpointRepository string
 	RecoveredFrom        *WorkspaceRecovery `json:",omitempty"`
 	Phase                string
+	// IdleSince (RFC 3339, UTC) starts the idle grace: the state update that
+	// releases the last writer records it, and the idle sweep records it on
+	// first sight of a released record that predates it.
+	IdleSince            string `json:",omitempty"`
 	ExplicitQuotaBytes   uint64 `json:",omitempty"`
 	Members              []WorkspaceMember
 	Preparation          []WorkspacePreparation         `json:",omitempty"`

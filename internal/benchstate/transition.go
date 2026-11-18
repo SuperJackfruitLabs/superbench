@@ -101,7 +101,7 @@ func Capture(records Database) IdentitySnapshot {
 			entry.phase = w.Phase
 			entry.pending = copyCheckpoint(w.Pending)
 			entry.checkpoint = copyCheckpoint(w.Checkpoint)
-			w.Phase = ""
+			w.Phase, w.IdleSince = "", "" // the idle time moves with releases and the sweep
 			w.Pending = nil
 			w.Checkpoint = nil
 			entry.workspace = &w
@@ -315,7 +315,7 @@ func ValidateTransition(before IdentitySnapshot, after Database) error {
 			return invalid
 		}
 		w := *b.Workspace
-		w.Phase = ""
+		w.Phase, w.IdleSince = "", ""
 		w.Pending = nil
 		w.Checkpoint = nil
 		w.Preparation = nil

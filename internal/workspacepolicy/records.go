@@ -60,7 +60,7 @@ func Validate(b *model.Bench) error {
 	if err := validateReclaim(b); err != nil {
 		return invalid
 	}
-	if !filepath.IsAbs(b.Path) || filepath.Clean(b.Path) != b.Path {
+	if !filepath.IsAbs(b.Path) || filepath.Clean(b.Path) != b.Path || !validIdleSince(b.Workspace.IdleSince) {
 		return invalid
 	}
 	data := filepath.Dir(filepath.Dir(b.Path))

@@ -2,6 +2,7 @@ package workspacepolicy
 
 import (
 	"errors"
+	"time"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
 )
@@ -20,4 +21,24 @@ func validateReclaim(b *model.Bench) error {
 		return errors.New("invalid aggregate reclaim")
 	}
 	return nil
+}
+
+// validIdleSince accepts no idle timestamp (a record from before it existed)
+// or one in the RFC 3339 UTC form the state update and the sweep write.
+func validIdleSince(s string) bool {
+	if s == "" {
+		return true
+	}
+	t, err := time.Parse(time.RFC3339Nano, s)
+	return err == nil && t.Location() == time.UTC && t.Format(time.RFC3339Nano) == s
+}
+
+// IdleSince is when a released workspace's idle grace began, and whether the
+// record holds that time. A record without one is idle from first sight.
+func IdleSince(b *model.Bench) (time.Time, bool) {
+	if b == nil || b.Workspace == nil || b.Workspace.IdleSince == "" || !validIdleSince(b.Workspace.IdleSince) {
+		return time.Time{}, false
+	}
+	t, _ := time.Parse(time.RFC3339Nano, b.Workspace.IdleSince)
+	return t, true
 }
