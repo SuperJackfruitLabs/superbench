@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"syscall"
 	"testing"
 )
@@ -33,8 +34,18 @@ func TestLeafRefusesDirectoryOutsideProject(t *testing.T) {
 
 // fake reports a project per inode, so the walk is tested without XFS.
 func fake(t *testing.T, outside map[uint64]Attr) {
-	old := getattr
-	t.Cleanup(func() { getattr = old })
+	old, oldAt := getattr, getattrAt
+	t.Cleanup(func() { getattr, getattrAt = old, oldAt })
+	getattrAt = func(dir int, name string) (Attr, error) {
+		var st syscall.Stat_t
+		if err := syscall.Lstat("/proc/self/fd/"+strconv.Itoa(dir)+"/"+name, &st); err != nil {
+			return Attr{}, err
+		}
+		if a, ok := outside[st.Ino]; ok {
+			return a, nil
+		}
+		return Attr{ProjectID: 10001}, nil
+	}
 	getattr = func(fd int) (Attr, error) {
 		var st syscall.Stat_t
 		if err := syscall.Fstat(fd, &st); err != nil {
@@ -114,5 +125,58 @@ func TestTreeIsBounded(t *testing.T) {
 	}
 	if err := walk(t, leaf, 4); err != nil {
 		t.Fatalf("four entries under a limit of four: %v", err)
+	}
+}
+
+// A chain deeper than any descriptor budget is walked with one directory held
+// at a time; a file at its bottom outside the project is still found.
+func TestTreeWalksDeepChainsWithoutDescriptorsPerLevel(t *testing.T) {
+	leaf := filepath.Join(t.TempDir(), "leaf")
+	deep := leaf
+	for i := 0; i < 300; i++ {
+		deep = filepath.Join(deep, "d")
+	}
+	if err := os.MkdirAll(deep, 0700); err != nil {
+		t.Fatal(err)
+	}
+	bottom := filepath.Join(deep, "f")
+	if err := os.WriteFile(bottom, []byte("x"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(leaf, "after"), []byte("x"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var limit syscall.Rlimit
+	if err := syscall.Getrlimit(syscall.RLIMIT_NOFILE, &limit); err != nil {
+		t.Fatal(err)
+	}
+	low := limit
+	low.Cur = 64 // far fewer than the chain's 300 levels
+	if err := syscall.Setrlimit(syscall.RLIMIT_NOFILE, &low); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = syscall.Setrlimit(syscall.RLIMIT_NOFILE, &limit) })
+	fake(t, nil)
+	if err := walk(t, leaf, 1000); err != nil {
+		t.Fatalf("deep chain: %v", err)
+	}
+	fake(t, map[uint64]Attr{inode(t, bottom): {}})
+	if err := walk(t, leaf, 1000); !errors.Is(err, ErrTreeProject) {
+		t.Fatalf("escaped file at the bottom of a deep chain: %v", err)
+	}
+}
+
+// A symlink is never followed or opened, but its own project is checked where
+// the kernel can read it by name; without file_getattr it is only counted.
+func TestTreeChecksSymlinksByNameWhereTheKernelCan(t *testing.T) {
+	leaf, _ := tree(t)
+	link := filepath.Join(leaf, "a", "out")
+	fake(t, map[uint64]Attr{inode(t, link): {}})
+	if err := walk(t, leaf, 16); !errors.Is(err, ErrTreeProject) {
+		t.Fatalf("symlink outside its project: %v", err)
+	}
+	getattrAt = func(int, string) (Attr, error) { return Attr{}, errNoGetattrAt }
+	if err := walk(t, leaf, 16); err != nil {
+		t.Fatalf("a kernel without file_getattr: %v", err)
 	}
 }
