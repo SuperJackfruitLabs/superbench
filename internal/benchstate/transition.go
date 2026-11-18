@@ -9,6 +9,7 @@ import (
 	"slices"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspacepolicy"
 )
 
 type identityRecord struct {
@@ -313,6 +314,9 @@ func ValidateTransition(before IdentitySnapshot, after Database) error {
 		}
 		if !exists || b == nil || b.Workspace == nil {
 			return invalid
+		}
+		if old.phase == "reclaimed" && workspacepolicy.Succeeds(old.workspace.ID, old.workspace.Generation, b) {
+			continue // A create on a reclaimed key starts its next generation.
 		}
 		w := *b.Workspace
 		w.Phase, w.IdleSince = "", ""
