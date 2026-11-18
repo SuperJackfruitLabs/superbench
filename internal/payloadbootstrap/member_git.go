@@ -22,7 +22,6 @@ type GitStep struct {
 
 // MemberSteps are, in order, the only Git commands that materialize member
 // from its daemon mirror into checkout, with its own admin directory.
-//
 // The clone copies only the mirror's local branches. A source reachable only
 // from the mirror's remote-tracking refs (a branch already pushed past main)
 // is not in it, so the exact source object is then fetched from the same
@@ -30,12 +29,13 @@ type GitStep struct {
 // no branch it did not ask for and the mirror is never written. Protocol v2
 // serves any object the mirror holds; Materialize has already verified that
 // the source is a commit there. After that the remote URL becomes the
-// registered one, which no bootstrap command ever contacts.
+// registered one, which no bootstrap command ever contacts. The last step is -B:
+// the clone made the default branch, its only local one; -B moves just that.
 func MemberSteps(root, mirror, checkout, admin string, member Member) []GitStep {
 	return []GitStep{
 		{root, []string{"clone", "--template=", "--no-local", "--no-hardlinks", "--no-checkout", "--separate-git-dir", admin, "--", mirror, checkout}},
 		{checkout, []string{"-c", "protocol.version=2", "fetch", "--no-tags", "--no-write-fetch-head", "--no-auto-maintenance", "--recurse-submodules=no", "--refmap=", "--", mirror, member.Source}},
 		{checkout, []string{"config", "--local", "remote.origin.url", member.Repository}},
-		{checkout, []string{"checkout", "--no-guess", "-b", member.Branch, member.Source, "--"}},
+		{checkout, []string{"checkout", "--no-guess", "-B", member.Branch, member.Source, "--"}},
 	}
 }
