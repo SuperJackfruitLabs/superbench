@@ -143,9 +143,11 @@ func control(id string) {
 	os.Exit(3)
 }
 
-func open(t *testing.T, path string, flags int) *os.File {
+// open opens path without following a symlink; mode applies only when
+// flags create the file.
+func open(t *testing.T, path string, flags int, mode uint32) *os.File {
 	t.Helper()
-	fd, err := syscall.Open(path, flags|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
+	fd, err := syscall.Open(path, flags|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, mode)
 	if err != nil {
 		t.Fatalf("open %s: %v", path, err)
 	}
@@ -166,11 +168,11 @@ func attr(t *testing.T, f *os.File) fsxattr {
 func Prove(t *testing.T, private payloadexec.Policy, storage hoststorage.Policy, key, member string, project uint32) {
 	t.Helper()
 	leafPath := filepath.Join(storage.Root, "benches", key)
-	leaf := open(t, leafPath, syscall.O_RDONLY|syscall.O_DIRECTORY)
+	leaf := open(t, leafPath, syscall.O_RDONLY|syscall.O_DIRECTORY, 0)
 	defer leaf.Close()
-	dir := open(t, filepath.Join(leafPath, member), syscall.O_RDONLY|syscall.O_DIRECTORY)
+	dir := open(t, filepath.Join(leafPath, member), syscall.O_RDONLY|syscall.O_DIRECTORY, 0)
 	defer dir.Close()
-	file := open(t, filepath.Join(leafPath, member, "payload.txt"), syscall.O_RDONLY)
+	file := open(t, filepath.Join(leafPath, member, "payload.txt"), syscall.O_RDONLY, 0)
 	defer file.Close()
 	limit := int(storage.BenchInodes)
 	if err := quotaleaf.Tree(leaf, project, limit); err != nil {
@@ -180,7 +182,7 @@ func Prove(t *testing.T, private payloadexec.Policy, storage hoststorage.Policy,
 
 	// Control: without the filter the owner really can leave the project.
 	scratch := filepath.Join(leafPath, member, ".confine-control")
-	control := open(t, scratch, syscall.O_RDWR|syscall.O_CREAT|syscall.O_EXCL)
+	control := open(t, scratch, syscall.O_RDWR|syscall.O_CREAT|syscall.O_EXCL, 0o600)
 	if err := control.Chown(int(private.PayloadUID), int(private.PayloadGID)); err != nil {
 		t.Fatal(err)
 	}
