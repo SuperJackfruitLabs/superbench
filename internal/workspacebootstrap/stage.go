@@ -26,8 +26,17 @@ var ErrBootstrap = errors.New("fresh workspace bootstrap refused")
 // Validation alone grants no authority; Stage additionally requires the actual
 // installed service identity and original controlled create/recover operation.
 func Specification(data string, b *model.Bench) (payloadbootstrap.Spec, error) {
+	if workspacepolicy.Validate(b) != nil || b.Workspace.Phase != "materializing" || b.ProjectID != 0 || b.Lease == nil || b.Lease.StopRequested || b.Lease.Execution != nil || b.Lease.Continuation == "" || b.Workspace.InitializationRepair != nil || b.RegistrationID != "" || b.PayloadLayoutVersion != "" || b.AllocationRoot != "" {
+		return payloadbootstrap.Spec{}, ErrBootstrap
+	}
+	return specification(data, b)
+}
+
+// specification is the canonical Spec of b's durable source vector, the
+// bytes its create sent the fixed helper.
+func specification(data string, b *model.Bench) (payloadbootstrap.Spec, error) {
 	var zero payloadbootstrap.Spec
-	if !filepath.IsAbs(data) || filepath.Clean(data) != data || workspacepolicy.Validate(b) != nil || b.Path != filepath.Join(data, "benches", b.Key) || b.Workspace.Phase != "materializing" || b.ProjectID != 0 || b.Lease == nil || b.Lease.StopRequested || b.Lease.Execution != nil || b.Lease.Continuation == "" || b.Workspace.InitializationRepair != nil || b.RegistrationID != "" || b.PayloadLayoutVersion != "" || b.AllocationRoot != "" {
+	if !filepath.IsAbs(data) || filepath.Clean(data) != data || workspacepolicy.Validate(b) != nil || b.Path != filepath.Join(data, "benches", b.Key) {
 		return zero, ErrBootstrap
 	}
 	w := b.Workspace
@@ -160,4 +169,62 @@ func MoveLayoutAside(state string, b *model.Bench) error {
 	}
 	defer d.Close()
 	return d.Sync()
+}
+
+// NewRetired supplies the workspace manager's proof that an unfinished
+// create's allocation was retired (Retired).
+func NewRetired(state, data string) func(context.Context, *model.Bench) error {
+	return func(ctx context.Context, b *model.Bench) error { return Retired(ctx, state, data, b) }
+}
+
+// Retired asks the fixed helper, read-only, whether root retired the
+// allocation of b, a create that never completed (workspacepolicy.Unfinished),
+// sending the same canonical Spec its create sent. Only the helper's checked
+// reply, never b itself, lets a new create on the key replace b.
+func Retired(ctx context.Context, state, data string, b *model.Bench) error {
+	return retired(data, b, func(spec payloadbootstrap.Spec, input []byte) (quotahelper.RetiredResult, error) {
+		var zero quotahelper.RetiredResult
+		authority, err := serviceidentity.ResolveService()
+		if err != nil {
+			return zero, errors.Join(ErrBootstrap, err)
+		}
+		p, err := authority.Policy()
+		if err != nil || p.StateRoot != state || p.DataRoot != data {
+			return zero, ErrBootstrap
+		}
+		config, err := (hoststorage.Worker{State: state, Data: data}).Config()
+		if err != nil || config == nil || config.PolicyOverride != "" {
+			return zero, ErrBootstrap
+		}
+		result, err := quotahelper.Retired(ctx, quotahelper.Config{State: state, Data: data, Command: config.QuotaHelper}, spec.Key, spec.ID, spec.Generation, input)
+		if err == nil {
+			err = authority.Recheck()
+		}
+		return result, err
+	})
+}
+
+// retired asks root about unfinished b with its canonical Spec. The reply
+// already names b's key, workspace and generation; an allocated b's project
+// must be the retired one.
+func retired(data string, b *model.Bench, ask func(payloadbootstrap.Spec, []byte) (quotahelper.RetiredResult, error)) error {
+	if !workspacepolicy.Unfinished(b) {
+		return ErrBootstrap
+	}
+	spec, err := specification(data, b)
+	if err != nil {
+		return err
+	}
+	input, err := spec.Bytes()
+	if err != nil {
+		return err
+	}
+	result, err := ask(spec, input)
+	if err != nil {
+		return err
+	}
+	if b.ProjectID != 0 && result.Allocation.ProjectID != b.ProjectID {
+		return ErrBootstrap
+	}
+	return nil
 }
