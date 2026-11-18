@@ -8,7 +8,8 @@
 // APIs; interrupted intents are synthesised exactly as the ordering fixture
 // does. Only the booted maintenance gate is replaced, by the caller's hook.
 // It then reclaims completed benches made through the real Bootstrap, as the
-// payload account, under the reclaim operation's own identity (reclaim_linux.go).
+// payload account, under the reclaim operation's own identity (reclaim_linux.go),
+// and creates a reclaimed key's next generation (recreate_linux.go).
 // On failure every leak is retained as evidence.
 package fixture
 
@@ -69,6 +70,12 @@ var Markers = []string{
 	"FRESH_RECLAIM_CAPACITY_RETURNED_PASS",
 	"FRESH_RECLAIM_PURGE_WORKER_CONFINED_PASS",
 	"FRESH_RECLAIM_KILLED_WORKER_RETRY_PASS",
+	"LOWER_RECREATE_REFUSED_WHILE_OLD_LAYOUT_PUBLISHED_PASS",
+	"LOWER_RECREATE_NEW_PROJECT_PASS",
+	"LOWER_RECREATE_FRESH_TREE_PASS",
+	"LOWER_RECREATE_OLD_EVIDENCE_RETAINED_PASS",
+	"LOWER_RECREATE_OLD_PROJECT_NOT_REVIVED_PASS",
+	"LOWER_RECREATE_SECOND_GENERATION_RECLAIMED_PASS",
 }
 
 // Logged requires the child's log to hold every marker exactly once.
@@ -162,6 +169,7 @@ func Run(t *testing.T, gate Gate) {
 	}
 	t.Log("FRESH_RECOVERY_ALL_LEAKS_RETIRED_PASS")
 	e.reclaims()
+	e.recreates()
 }
 
 // newLeak reserves a real Fresh allocation under a real operation, stops it
