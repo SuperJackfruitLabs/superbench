@@ -24,7 +24,7 @@ Besides `version` and `operation`:
 
 | Operation | Required | Optional | What it does |
 | --- | --- | --- | --- |
-| `create` | `key`, `repositories`, `checkpoint_repository`, `initialize`, `request_id` | `quota_bytes` | Create a workspace from its member vector, prepare every member and confirm its genesis checkpoint. |
+| `create` | `key`, `repositories`, `checkpoint_repository`, `initialize`, `request_id` | `quota_bytes` | Create a workspace from its member vector, prepare every member and confirm its genesis checkpoint. On a key whose workspace is `reclaimed`, a new `request_id` creates a new workspace there, with a new `bench_id`. |
 | `recover` | `key`, `repositories`, `source`, `initialize`, `request_id` | `quota_bytes` | Rebuild a fresh workspace with distinct task refs from an exact historical seal. |
 | `status` | (none) | `key` | Read one workspace, or the whole inventory. Read-only. |
 | `host_status` | (none) | (none) | Read the host's storage and admission state. Read-only. |
@@ -36,7 +36,7 @@ Besides `version` and `operation`:
 | `stop` | `key`, `lease_token` | (none) | Fence the holder's supervised execution. |
 | `stop_admin` | `key` | (none) | Operator stop without the holder's token; returns the retained capability only after fencing succeeds. |
 | `archive` | `key` | (none) | Freeze the whole workspace read-only. Never approves deletion. |
-| `reclaim` | `key` | (none) | Delete a released Fresh workspace's tree and retire its quota, ending at phase `reclaimed`. A legacy workspace is refused. |
+| `reclaim` | `key` | (none) | Delete a released Fresh workspace's tree and retire its quota, ending at phase `reclaimed`. A legacy workspace is refused. With `fresh_payload` on, the daemon also reclaims a Fresh workspace idle past `fresh_reclaim_idle_hours` (default 24) by itself. |
 
 `create`, `recover`, `lease`, `run` and `setup` are growth operations: they need a `request_id`
 and get durable receipts. `status` and `host_status` are open to readers; everything else needs an
@@ -81,7 +81,9 @@ bytes; see [Errors](/api/errors/). Results are closed shapes:
   A workspace's `phase` is one of `materializing`, `initializing`, `prepared`, `ready`,
   `archived`, `reaping`, `reaped`, `reclaiming` or `reclaimed`; while it is being initialized,
   its lease holder is `initialization`. `reclaiming` never returns to `ready`: repeat the same
-  `reclaim`.
+  `reclaim`. A `reclaimed` workspace stays `reclaimed` in `status` until a `create` on its key
+  records the next one, whose `bench_id` is always new: bind a lease or receipt to the
+  `bench_id`, not the key alone.
 - **Run outcome**: a mutation plus the `execution` (ID and a phase of `starting`, `running` or
   `stopped`), `exit_code` and `log_truncated`.
 - **Setup outcome**: a run outcome plus a `preparation` status for each member.

@@ -286,7 +286,7 @@ quotes when it reports the worker's diagnostics.
 | `begun`, `staging`, `materialized_unfenced`, `staged` | daemon-owned leaf, fixed directories, Git trees | plan-clean, clean, leaf removal, absent retirement |
 | `transferring` | mixed root, daemon and payload owners | parked: every step refuses |
 | `completed` | a registered layout | not a leak; reclaim it once released |
-| `reclaiming`, `reclaimed` | a reclaim's retained intent | reclaim only: rerun the same reclaim |
+| `reclaiming`, `reclaimed` | a reclaim's retained intent | reclaim only: rerun the same reclaim; after `reclaimed`, a create makes the [next generation](#generations-of-a-key) |
 
 `KEY.controls`, its `git-controls` journal and every retained approval stay as
 evidence.
@@ -368,3 +368,53 @@ in the bench", as it does when entries reappear after the purge or usage stays
 above zero because a payload process still holds a file. Stop the bench's
 processes and rerun the same reclaim.
 
+
+## Generations of a key
+
+A create on a key whose bench is `reclaimed` makes the key's next generation:
+a new bench, never the old one again. Each generation has its own identity
+and evidence, and the earlier generation's stays where it was.
+
+| | First generation | Generation N (2, 3, ...) |
+|---|---|---|
+| Bootstrap spec | `superbench.payload-bootstrap.v1`, unchanged | `superbench.payload-bootstrap.v2`, naming `Generation` and `Previous`, the reclaimed `bench_id` it follows |
+| `bench_id` | random | random, never the previous generation's |
+| Intent and controls | `payload-bootstrap/KEY.json`, `KEY.controls` | `payload-bootstrap/KEY@N.json`, `KEY@N.controls` |
+| Quota project | assigned once | a new ID from the ledger's counter |
+| Layout registration | `payload-layouts/KEY.json` | the same name; the daemon first renames the previous one to `KEY.<previous bench_id>.reclaimed` |
+
+The daemon records the new bench `materializing` in place of its `reclaimed`
+record; that is the only change a `reclaimed` record allows. Every create and
+reclaim step above then takes the generation's own spec, with the same six
+identity arguments.
+
+What root checks before a later generation's first effect, under the create
+operation's lock and then the allocation lock:
+
+- the previous generation's retained intent (`KEY.json`, or `KEY@N-1.json`) is
+  canonical, names the same key, the `bench_id` the spec names as `Previous` and
+  the generation before, is in phase `reclaimed`, was recorded under the same
+  storage authority, and its leaf is this key's;
+- no layout registration under the key is still published;
+- the ledger row for the key is exactly that intent's project as a tombstone
+  (zero caps) with its Fresh marker. In the same save that assigns the new
+  project, the tombstone moves to the ledger's `Retired` list, where its ID is
+  never assigned again; the ledger becomes format 4, which an older binary
+  refuses to read;
+- the leaf is absent, so the old tree is never adopted.
+
+A second create of the same generation, a create of a generation that skips
+one, and a repeat of the first generation's bootstrap all refuse with no
+effect. A retry of the earlier generation's own reclaim after the next one
+exists refuses too: its ledger row is the next generation's now. A later
+generation that is interrupted is recovered with the steps above, using its
+own spec; the earlier generations reached `reclaimed` and hold no retirement
+or cleanup approvals, so the approval file names do not collide.
+
+The lower fixture proves this on real XFS after the reclaim cases. Its markers,
+each logged alone on its line, are
+`LOWER_RECREATE_REFUSED_WHILE_OLD_LAYOUT_PUBLISHED_PASS`,
+`LOWER_RECREATE_NEW_PROJECT_PASS`, `LOWER_RECREATE_FRESH_TREE_PASS`,
+`LOWER_RECREATE_OLD_EVIDENCE_RETAINED_PASS`,
+`LOWER_RECREATE_OLD_PROJECT_NOT_REVIVED_PASS` and
+`LOWER_RECREATE_SECOND_GENERATION_RECLAIMED_PASS`.
