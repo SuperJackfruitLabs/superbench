@@ -45,10 +45,9 @@ func (m *Manager) gitCommand(ctx context.Context, dir string, args ...string) (*
 	if err := ctx.Err(); err != nil {
 		return nil, nil, err
 	}
-	fixed := []string{"--no-optional-locks", "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "credential.helper=", "-c", "protocol.ext.allow=never", "-c", "protocol.file.allow=always"}
-	cmd := exec.Command("/usr/bin/git", append(fixed, args...)...)
+	cmd := exec.Command("/usr/bin/git", append(append([]string{}, gitConfig...), args...)...)
 	cmd.Dir = dir
-	cmd.Env = []string{"PATH=/usr/bin:/bin", "LC_ALL=C", "HOME=/nonexistent", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null", "GIT_TERMINAL_PROMPT=0", "GIT_OPTIONAL_LOCKS=0", "GIT_NO_REPLACE_OBJECTS=1", "GIT_ATTR_NOSYSTEM=1", "GIT_TEMPLATE_DIR=/dev/null"}
+	cmd.Env = append([]string{}, gitEnvironment...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: m.policy.DaemonUID, Gid: m.policy.DaemonGID, Groups: []uint32{}}}
 	output := &boundedOutput{}
 	cmd.Stdout = output
@@ -97,14 +96,10 @@ func (m *Manager) Materialize(ctx context.Context, s Spec) error {
 			}
 			checkout := filepath.Join(m.root(s), member.Name)
 			admin := filepath.Join(m.root(s), ".superbench-git", member.Name)
-			if _, err = m.runScoped(ctx, s, m.root(s), "clone", "--template=", "--no-local", "--no-hardlinks", "--no-checkout", "--separate-git-dir", admin, "--", mirror, checkout); err != nil {
-				return err
-			}
-			if _, err = m.runScoped(ctx, s, checkout, "config", "--local", "remote.origin.url", member.Repository); err != nil {
-				return err
-			}
-			if _, err = m.runScoped(ctx, s, checkout, "checkout", "--no-guess", "-b", member.Branch, member.Source, "--"); err != nil {
-				return err
+			for _, step := range MemberSteps(m.root(s), mirror, checkout, admin, member) {
+				if _, err = m.runScoped(ctx, s, step.Dir, step.Args...); err != nil {
+					return err
+				}
 			}
 		}
 		if err = m.verifyGit(ctx, s); err != nil {
