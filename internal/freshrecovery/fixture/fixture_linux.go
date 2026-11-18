@@ -10,7 +10,8 @@
 // It then reclaims completed benches made through the real Bootstrap, as the
 // payload account, under the reclaim operation's own identity (reclaim_linux.go),
 // and creates a reclaimed key's next generation (recreate_linux.go), both
-// from a branch the mirror holds only as a remote-tracking ref (moved_linux.go).
+// from a branch the mirror holds only as a remote-tracking ref (moved_linux.go),
+// and a failed create's once root retired it (failedcreate_linux.go).
 // On failure every leak is retained as evidence.
 package fixture
 
@@ -83,6 +84,11 @@ var Markers = []string{
 	"LOWER_RECREATE_SECOND_GENERATION_RECLAIMED_PASS",
 	"LOWER_FRESH_CREATE_FROM_MOVED_BRANCH_PASS",
 	"LOWER_RECREATE_FROM_MOVED_BRANCH_PASS",
+	"LOWER_FAILED_CREATE_REFUSED_BEFORE_RETIREMENT_PASS",
+	"LOWER_FAILED_CREATE_ROOT_PROVES_RETIRED_PASS",
+	"LOWER_FAILED_CREATE_NEXT_GENERATION_NEW_PROJECT_PASS",
+	"LOWER_FAILED_CREATE_OLD_PROJECT_NOT_REVIVED_PASS",
+	"LOWER_FAILED_CREATE_NEXT_GENERATION_RECLAIMED_PASS",
 }
 
 // Logged requires the child's log to hold every marker exactly once.
@@ -194,6 +200,8 @@ func Run(t *testing.T, gate Gate) {
 	e.assertFootprint(footprint, "the re-creation cases")
 	e.movedBranches()
 	e.assertFootprint(footprint, "the moved-branch cases")
+	e.failedRecreates()
+	e.assertFootprint(footprint, "the failed-create cases")
 }
 
 // newLeak reserves a real Fresh allocation under a real operation, stops it
