@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotapolicy"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -23,7 +25,21 @@ type Ledger struct {
 	Next           uint32
 	Fresh          map[string]uint32 `json:",omitempty"`
 	Assignments    map[string]quotapolicy.Assignment
+	// Retired holds, in order, the retired Fresh projects of keys that have a
+	// later generation. Each stays permanent evidence: its project ID is never
+	// assigned again, and its row moved here only when the next generation of
+	// the same key was allocated. It requires format 4.
+	Retired []RetiredBench `json:",omitempty"`
 }
+
+// RetiredBench is an earlier generation's retired Fresh project under a key.
+type RetiredBench struct {
+	Name      string
+	ProjectID uint32
+}
+
+// FormatGenerations is the ledger format that holds earlier generations.
+const FormatGenerations = 4
 
 type Binding struct {
 	OperationJournal                                      string `json:",omitempty"`
@@ -45,8 +61,8 @@ func (l Ledger) Filesystem() string {
 }
 
 func (l Ledger) Header(expected Binding, upgrading bool) error {
-	if l.FormatVersion != 3 && len(l.Fresh) != 0 {
-		return errors.New("fresh markers require quota ledger format 3")
+	if l.FormatVersion < 3 && len(l.Fresh) != 0 || l.FormatVersion != FormatGenerations && len(l.Retired) != 0 {
+		return errors.New("fresh markers require quota ledger format 3, and earlier generations format 4")
 	}
 	switch l.FormatVersion {
 	case 0:
@@ -56,7 +72,7 @@ func (l Ledger) Header(expected Binding, upgrading bool) error {
 		if l.VolumeID == "" || l.FilesystemUUID != "" || l.Binding != nil {
 			return errors.New("invalid legacy ledger identity")
 		}
-	case 2, 3:
+	case 2, 3, FormatGenerations:
 		if l.VolumeID != "" || !volumePattern.MatchString(l.FilesystemUUID) || l.Binding == nil {
 			return errors.New("invalid quota ledger identity or policy binding")
 		}
@@ -134,11 +150,45 @@ func (l Ledger) Validate(root string, p Binding, upgrading bool) error {
 	}
 	for name, id := range l.Fresh {
 		a, ok := l.Assignments[name]
-		if l.FormatVersion != 3 || !strings.HasPrefix(name, "bench:") || !ok || a.ProjectID != id {
+		if l.FormatVersion < 3 || !strings.HasPrefix(name, "bench:") || !ok || a.ProjectID != id {
 			return errors.New("invalid fresh allocation marker")
 		}
 	}
+	// An earlier generation's project is in the bench range, unique among every
+	// project, and older than its key's current Fresh generation, a validated
+	// bench row whose ID is below Next.
+	for _, r := range l.Retired {
+		current, ok := l.Assignments[r.Name]
+		if r.ProjectID < 10000 || seen[r.ProjectID] || !ok || current.ProjectID <= r.ProjectID || l.Fresh[r.Name] != current.ProjectID {
+			return errors.New("invalid earlier bench generation")
+		}
+		seen[r.ProjectID] = true
+	}
 	return nil
+}
+
+// Succeed retires name's current Fresh project, previous, to make way for the
+// key's next generation: the row must be exactly previous's tombstone (zero
+// caps at path) with its Fresh marker. The tombstone moves to Retired, never
+// to be assigned again, and the caller saves the next generation's row with
+// it. The caller's maps are not changed.
+func (l *Ledger) Succeed(name, path string, previous uint32) error {
+	current, ok := l.Assignments[name]
+	if !ok || previous < 10000 || current != (quotapolicy.Assignment{Path: path, ProjectID: previous}) || l.Fresh[name] != previous {
+		return errors.New("the previous generation is not this key's retired Fresh project")
+	}
+	assignments, fresh := maps.Clone(l.Assignments), maps.Clone(l.Fresh)
+	delete(assignments, name)
+	delete(fresh, name)
+	l.Assignments, l.Fresh = assignments, fresh
+	l.Retired = append(slices.Clone(l.Retired), RetiredBench{Name: name, ProjectID: previous})
+	l.FormatVersion = FormatGenerations
+	return nil
+}
+
+// Bound reports a bound v2 ledger: format 2, 3 or 4.
+func (l Ledger) Bound() bool {
+	return l.FormatVersion == 2 || l.FormatVersion == 3 || l.FormatVersion == FormatGenerations
 }
 
 func Save(dir, path string, v any) error {

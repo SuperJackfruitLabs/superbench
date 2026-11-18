@@ -148,3 +148,19 @@ func TestSelectedRefusesAmbiguousOrNoncanonicalLedger(t *testing.T) {
 		}
 	}
 }
+
+// A key on its second generation selects that generation's project; the
+// earlier one is evidence in Retired, never a selectable row.
+func TestSelectedTakesTheCurrentGenerationOfAReclaimedKey(t *testing.T) {
+	p, l, a := recordsFixture()
+	a.Assignment.ProjectID, l.Next = 10002, 10003
+	l.FormatVersion, l.Retired = allocationledger.FormatGenerations, []allocationledger.RetiredBench{{Name: "bench:card", ProjectID: 10000}}
+	l.Assignments["bench:card"], l.Fresh["bench:card"] = a.Assignment, a.Assignment.ProjectID
+	if _, got, retired, err := selected(p, a.Key, encoded(t, l), nil); err != nil || got != a.Assignment || retired {
+		t.Fatalf("second generation: %+v %v %v", got, retired, err)
+	}
+	l.FormatVersion = 5
+	if _, _, _, err := selected(p, a.Key, encoded(t, l), nil); err == nil {
+		t.Fatal("an unknown format selected")
+	}
+}

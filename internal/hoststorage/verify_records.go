@@ -17,7 +17,7 @@ func (p Policy) inspectStorageRecords(key string, raw, anchor []byte, allowAbsen
 	if err := strictStorageJSON(raw, &l); err != nil {
 		return Assignment{}, "", err
 	}
-	if l.FormatVersion != 2 && l.FormatVersion != 3 {
+	if !l.Bound() {
 		return Assignment{}, "", errors.New("read-only verification requires an existing bound v2 ledger")
 	}
 	if err := p.checkLedger(l); err != nil {
