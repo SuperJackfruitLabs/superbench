@@ -37,6 +37,9 @@ func run(args []string) error {
 	if *policy != "/etc/superbench/storage.json" && (os.Getuid() != 0 || os.Geteuid() != 0 || os.Getenv("SUDO_UID") != "") {
 		return fmt.Errorf("policy override requires a direct root caller")
 	}
+	if f.NArg() == 1 && f.Arg(0) == "scan-projects" {
+		return scanProjects(*policy, os.Stdout)
+	}
 	if f.NArg() > 0 && (f.Arg(0) == "initialize-indexed" || f.Arg(0) == "bootstrap-payload" || f.Arg(0) == "reclaim-payload" || f.Arg(0) == "inspect-bootstrap-payload" || f.Arg(0) == "plan-retire-bootstrap" || f.Arg(0) == "retire-bootstrap" || isRecoveryCommand(f.Arg(0))) {
 		return runBootstrapCommand(f.Args(), *policy != "/etc/superbench/storage.json", os.Stdin, os.Stdout)
 	}
@@ -56,7 +59,7 @@ func run(args []string) error {
 	allocation := f.NArg() == 3 && f.Arg(0) == "inspect-allocation" && f.Arg(1) == "bench"
 	verifying := f.NArg() == 3 && f.Arg(0) == "verify" && f.Arg(1) == "bench"
 	if !allocation && !migrating && !verifying && !retirement && ((f.NArg() != 3 && f.NArg() != 4) || f.Arg(0) != "apply") && (f.NArg() != 4 || f.Arg(0) != "release" || f.Arg(1) != "bench") {
-		return fmt.Errorf("usage: bench-quota [--policy ROOT_POLICY] apply <bench|shared> KEY [BENCH_BYTES] | verify bench KEY | inspect-allocation bench KEY | release bench KEY PROJECT_ID | retire-approved bench KEY | verify-retired bench KEY | verify-retirement-authority bench KEY | migrate-inodes")
+		return fmt.Errorf("usage: bench-quota [--policy ROOT_POLICY] apply <bench|shared> KEY [BENCH_BYTES] | verify bench KEY | inspect-allocation bench KEY | release bench KEY PROJECT_ID | retire-approved bench KEY | verify-retired bench KEY | verify-retirement-authority bench KEY | migrate-inodes | scan-projects")
 	}
 	p, e := hoststorage.Load(*policy)
 	if e != nil {

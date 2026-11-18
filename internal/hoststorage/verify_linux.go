@@ -8,17 +8,18 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotaleaf"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/storagecustody"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/storageproof"
-	"io"
 	"os"
 	"path/filepath"
 	"syscall"
 	"time"
 )
 
-// VerifyStorage inspects only an already allocated logical bench. In particular
-// it never calls Apply, creates a lock/ledger/anchor, or touches the bench path.
+// VerifyStorage inspects only an already allocated logical bench. It never
+// calls Apply or creates a lock, ledger or anchor; it only opens benches/KEY
+// (no symlink followed) to read the leaf's project ID and inherit flag.
 func (p Policy) VerifyStorage(ctx context.Context, key string) (StorageIdentity, error) {
 	return p.verifyStorage(ctx, key, false, nil)
 }
@@ -86,8 +87,13 @@ func (p Policy) inspectStorage(ctx context.Context, key string, locked bool, ori
 			return zero, e
 		}
 		defer lock.Close()
-		if e = syscall.Flock(int(lock.Fd()), syscall.LOCK_SH|syscall.LOCK_NB); e != nil {
-			return zero, errors.New("quota ledger is busy")
+		// Another bench's create or retire holds it briefly: wait up to 5s.
+		for start := time.Now(); ; time.Sleep(50 * time.Millisecond) {
+			if e = syscall.Flock(int(lock.Fd()), syscall.LOCK_SH|syscall.LOCK_NB); e == nil {
+				break
+			} else if !errors.Is(e, syscall.EWOULDBLOCK) || time.Since(start) > 5*time.Second || ctx.Err() != nil {
+				return zero, errors.New("quota ledger is busy")
+			}
 		}
 		defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
 	}
@@ -108,6 +114,11 @@ func (p Policy) inspectStorage(ctx context.Context, key string, locked bool, ori
 	}
 	if err != nil {
 		return zero, err
+	}
+	if a.ProjectID != 0 { // Owners can leave a project; refuse a leaf that did.
+		if err = quotaleaf.Leaf(benches, key, a.ProjectID); err != nil {
+			return zero, err
+		}
 	}
 	var l ledger
 	if err = strictStorageJSON(raw, &l); err != nil {
@@ -175,22 +186,4 @@ func managedStorageMount(ctx context.Context, root string, device uint64) (strin
 	return storageproof.ParseManagedMount(raw, root, device)
 }
 
-func unmanagedStorageMount(root string) (string, error) {
-	info, err := os.Stat(root)
-	if err != nil {
-		return "", err
-	}
-	f, err := os.Open("/proc/self/mountinfo")
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-	raw, err := io.ReadAll(io.LimitReader(f, (1<<20)+1))
-	if err != nil {
-		return "", err
-	}
-	if len(raw) > 1<<20 {
-		return "", errors.New("mount table exceeds verification limit")
-	}
-	return storageproof.ParseUnmanagedMount(raw, root, uint64(info.Sys().(*syscall.Stat_t).Dev))
-}
+func unmanagedStorageMount(root string) (string, error) { return storageproof.UnmanagedMount(root) }

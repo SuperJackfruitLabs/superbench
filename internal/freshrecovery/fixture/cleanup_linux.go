@@ -346,7 +346,7 @@ func (e *env) checkWorker(signal syscall.Signal) error {
 		if err != nil || !strings.Contains(string(cgroup), "/superbench-clean-") {
 			return fmt.Errorf("worker %d outside a worker cgroup: %q %v", pid, cgroup, err)
 		}
-		for key, want := range map[string]string{"TracerPid": "0", "NoNewPrivs": "1", "CapBnd": "0000000000000000", "Groups": ""} {
+		for key, want := range map[string]string{"TracerPid": "0", "NoNewPrivs": "1", "Seccomp": "2", "CapBnd": "0000000000000000", "Groups": ""} {
 			if got, ok := fields[key]; !ok || got != want {
 				return fmt.Errorf("worker %d status %s is %q, want %q: %s", pid, key, got, want, status)
 			}

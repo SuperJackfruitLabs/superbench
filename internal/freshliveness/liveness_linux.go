@@ -23,10 +23,10 @@ type fsxattr struct {
 // directory, root, open file or file mapping on the data device in the
 // bench's project. Root opens such an entry only through /proc to read its
 // project; an entry on the data device it cannot attribute counts as use, and
-// so does a process with live tasks it cannot read. This is a best-effort,
-// point-in-time check: the empty-leaf removal and the zero-usage check at
-// retirement are the guarantees, and the project attribution is only as good
-// as the payload's inability to relabel quota projects.
+// so does a process with live tasks it cannot read. This is a point-in-time
+// check: the empty-leaf removal and the zero-usage check at retirement are the
+// guarantees. The project attribution holds because the payload runs under
+// the payload filter, which refuses project and inherit-flag changes.
 func Installed(cgroupRoot string, payloadUID uint32, dataDevice uint64, project uint32) Liveness {
 	return adapter{cgroupRoot, "/proc", os.Getpid(), payloadUID, dataDevice, project, projectID}.liveness()
 }

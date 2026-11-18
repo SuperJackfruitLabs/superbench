@@ -18,6 +18,7 @@ type world struct {
 	present, full, retired bool
 	fenceErr               error
 	busy                   []bool // idle results in call order, then idle
+	escaped                []bool // contained results in call order, then contained
 	calls                  []string
 	faultStep, faultWhen   string
 }
@@ -55,6 +56,17 @@ func (w *world) steps() reclaimSteps {
 				w.busy = w.busy[1:]
 				if busy {
 					return ErrReclaimBusy
+				}
+			}
+			return nil
+		},
+		contained: func() error {
+			w.calls = append(w.calls, "contained")
+			if len(w.escaped) != 0 {
+				escaped := w.escaped[0]
+				w.escaped = w.escaped[1:]
+				if escaped {
+					return ErrReclaimEscaped
 				}
 			}
 			return nil
@@ -100,7 +112,7 @@ func TestReclaimRunsItsEffectsInTheirOnlyOrder(t *testing.T) {
 	if err != nil || !retained {
 		t.Fatalf("reclaim: %v %v", retained, err)
 	}
-	want := []string{"leaf", "fenced", "idle", "retain", "leaf", "idle", "purge", "remove", "retire", "finish"}
+	want := []string{"leaf", "fenced", "idle", "contained", "retain", "leaf", "idle", "contained", "purge", "remove", "retire", "finish"}
 	if !reflect.DeepEqual(w.calls, want) || w.phase != "reclaimed" || w.present || !w.retired {
 		t.Fatalf("calls %v, state %+v", w.calls, w)
 	}
@@ -125,7 +137,7 @@ func TestReclaimRefusesBeforeRetainingAnything(t *testing.T) {
 			t.Errorf("%s: retained %v, %v, state %+v", name, retained, err, w)
 		}
 		for _, call := range w.calls {
-			if call != "leaf" && call != "fenced" && call != "idle" {
+			if call != "leaf" && call != "fenced" && call != "idle" && call != "contained" {
 				t.Errorf("%s ran %s before refusing", name, call)
 			}
 		}
@@ -223,5 +235,24 @@ func TestReclaimRefusesWhileTheBenchIsInUse(t *testing.T) {
 func TestOnlyAPurgeWorkerIsWatched(t *testing.T) {
 	if !watched(cleanworker.Purge) || watched(cleanworker.Observe) || watched(cleanworker.Delete) {
 		t.Fatal("watched worker modes")
+	}
+}
+
+// Root's tree walk refuses before retention and, on a retained reclaim,
+// before the purge: an escaped tree is never retained or purged.
+func TestReclaimRefusesAnEscapedTreeBeforeRetentionAndPurge(t *testing.T) {
+	w := released()
+	w.escaped = []bool{true}
+	if retained, err := w.steps().run(); !errors.Is(err, ErrReclaimEscaped) || retained || w.phase != "completed" || !reflect.DeepEqual(w.calls, []string{"leaf", "fenced", "idle", "contained"}) {
+		t.Fatalf("escaped before retention: %v %v %v", retained, err, w.calls)
+	}
+	w = released()
+	w.escaped = []bool{false, true}
+	retained, err := w.steps().run()
+	if !errors.Is(err, ErrReclaimEscaped) || !retained || !w.full || !w.present {
+		t.Fatalf("escaped before the purge: %v %v %+v", retained, err, w)
+	}
+	if want := []string{"leaf", "fenced", "idle", "contained", "retain", "leaf", "idle", "contained"}; !reflect.DeepEqual(w.calls, want) {
+		t.Fatalf("calls %v, want %v", w.calls, want)
 	}
 }

@@ -208,6 +208,20 @@ refuses to write the storage policy unless `/srv/superbench-data` is a separate
 mounted XFS filesystem root with enforced project quotas (`prjquota`, not
 `pqnoenforce`), without `nouuid` and, on a first install, empty.
 
+Project quotas alone do not hold against a file's owner. The owner can move its
+own files to another project, or clear the inherit flag on its own directories,
+without any capability. SuperBench confines the payload account so that it cannot
+do either: `bench-payload` puts every payload process under a seccomp filter that
+refuses those attribute changes and io_uring. The read-only `bench-quota verify
+bench KEY` refuses a bench whose leaf directory has lost its project ID or inherit
+flag (`bench leaf is outside its quota project`). See
+[Project quotas and the payload account](execution.md#project-quotas-and-the-payload-account).
+Give the payload account no login shell, lingering, cron or at jobs: a process
+that does not start through `bench-payload` is not confined. After installing or
+upgrading, and before you set `fresh_payload`, run `bench-quota scan-projects` as
+direct root. It must report no bench `outside`. For the recovery, see
+[Recovering a bench outside its project](execution.md#recovering-a-bench-outside-its-project).
+
 ### Reboot and device numbers
 
 A device number (`st_dev`) is not a stable name: a loop image attached with the

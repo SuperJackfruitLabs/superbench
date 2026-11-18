@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-const goodStatus = "Name:\tbench-quota\nUmask:\t0022\nState:\tR (running)\nTgid:\t4242\nPid:\t4242\nPPid:\t4100\nTracerPid:\t0\nUid:\t61001\t61001\t61001\t61001\nGid:\t61003\t61003\t61003\t61003\nFDSize:\t64\nGroups:\t\nCapInh:\t0000000000000000\nCapPrm:\t0000000000000000\nCapEff:\t0000000000000000\nCapBnd:\t0000000000000000\nCapAmb:\t0000000000000000\nNoNewPrivs:\t1\nSeccomp:\t0\n"
+const goodStatus = "Name:\tbench-quota\nUmask:\t0022\nState:\tR (running)\nTgid:\t4242\nPid:\t4242\nPPid:\t4100\nTracerPid:\t0\nUid:\t61001\t61001\t61001\t61001\nGid:\t61003\t61003\t61003\t61003\nFDSize:\t64\nGroups:\t\nCapInh:\t0000000000000000\nCapPrm:\t0000000000000000\nCapEff:\t0000000000000000\nCapBnd:\t0000000000000000\nCapAmb:\t0000000000000000\nNoNewPrivs:\t1\nSeccomp:\t2\n"
 
 var daemon = Identity{61001, 61003, 0}
 
@@ -29,6 +29,9 @@ func TestStatusRefusesAnyCredentialTheDropDidNotProduce(t *testing.T) {
 		"ambient":        {"CapAmb:\t0000000000000000", "CapAmb:\t0000000000000001", "CapAmb"},
 		"privs":          {"NoNewPrivs:\t1", "NoNewPrivs:\t0", "NoNewPrivs"},
 		"missing-privs":  {"NoNewPrivs:\t1\n", "", "NoNewPrivs"},
+		"unconfined":     {"Seccomp:\t2", "Seccomp:\t0", "Seccomp"},
+		"strict-mode":    {"Seccomp:\t2", "Seccomp:\t1", "Seccomp"},
+		"missing-filter": {"Seccomp:\t2\n", "", "Seccomp"},
 		"missing-uid":    {"Uid:\t61001\t61001\t61001\t61001\n", "", "Uid"},
 		"duplicate":      {"Groups:\t\n", "Groups:\t\nGroups:\t\n", "duplicate"},
 	} {

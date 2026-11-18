@@ -25,3 +25,6 @@ go build -o /tmp/superbench-check-quota ./cmd/bench-quota
 go build -o /tmp/superbench-check-daemon ./cmd/benchd
 # The privilege-boundary executable deliberately has no cgo implementation.
 GOOS=linux CGO_ENABLED=0 go build -o /tmp/superbench-check-payload ./cmd/bench-payload
+# Every command must build for both shipped Linux architectures.
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build ./cmd/...
+GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build ./cmd/...

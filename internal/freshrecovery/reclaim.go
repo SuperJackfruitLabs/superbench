@@ -14,6 +14,11 @@ var (
 	ErrReclaimPayloadActive = freshliveness.ErrPayloadActive
 )
 
+// ErrReclaimEscaped refuses a reclaim whose tree has an entry outside the
+// bench's quota project or a directory without the project-inherit flag. Root
+// changes nothing: the operator restores the project, then retries.
+var ErrReclaimEscaped = errors.New("fresh reclaim refused: the bench tree has entries outside its quota project")
+
 // errLeafGone refuses a completed bench whose leaf is already missing: that is
 // not a reclaim's to finish, and Fresh recovery inspects it instead.
 var errLeafGone = errors.New("fresh reclaim refused: a completed bench's leaf is missing; inspect it with Fresh recovery")
@@ -52,10 +57,13 @@ type reclaimSteps struct {
 	// fenced requires the bootstrap's Git controls fenced.
 	fenced func() error
 	// idle refuses (ErrReclaimBusy) when root's own check, never the daemon's
-	// record, sees the bench in use. It is best-effort and point in time; the
-	// empty-leaf removal and the zero-usage retirement are the guarantees. It
-	// runs before retention and again before the purge.
+	// record, sees the bench in use. It is point in time; the empty-leaf
+	// removal and the zero-usage retirement are the guarantees. It runs
+	// before retention and again before the purge.
 	idle func() error
+	// contained refuses (ErrReclaimEscaped) a tree with anything outside the
+	// bench's project. It runs right after each idle check.
+	contained func() error
 	// retain moves the intent completed -> reclaiming, before any effect.
 	retain func() error
 	// purge empties the leaf as the payload account; remove is root's removal
@@ -65,8 +73,8 @@ type reclaimSteps struct {
 	purge, remove, retire, finish func() error
 }
 
-// run applies the only order: idle, retain, idle, purge, remove, retire,
-// finish. It reports whether the reclaiming intent was retained, after which
+// run applies the only order: idle, contained, retain, idle, contained,
+// purge, remove, retire, finish. It reports whether the reclaiming intent was retained, after which
 // any error may follow effects and the caller must say so.
 func (r reclaimSteps) run() (retained bool, err error) {
 	phase, err := r.phase()
@@ -88,6 +96,9 @@ func (r reclaimSteps) run() (retained bool, err error) {
 		if err = r.idle(); err != nil {
 			return false, err
 		}
+		if err = r.contained(); err != nil {
+			return false, err
+		}
 		// A failed write can follow its rename: report it as retained.
 		if err = r.retain(); err != nil {
 			return true, err
@@ -105,6 +116,9 @@ func (r reclaimSteps) run() (retained bool, err error) {
 			return true, ErrRecovery
 		}
 		if err = r.idle(); err != nil {
+			return true, err
+		}
+		if err = r.contained(); err != nil {
 			return true, err
 		}
 		if err = r.purge(); err != nil {

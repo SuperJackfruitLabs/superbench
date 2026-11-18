@@ -319,6 +319,16 @@ func (l Lifecycle) Checkpoint(ctx context.Context, key, token string) (*model.Be
 		if err != nil {
 			return err
 		}
+		// Root re-verifies a managed Fresh allocation, its leaf's project and
+		// inherit flag included, before payload data is exported.
+		if i.Tree != nil && committed.ProjectID != 0 {
+			if l.FreshQuota == nil {
+				return errors.New("fresh checkpoint export requires read-only quota verification")
+			}
+			if err = l.FreshQuota(committed); err != nil {
+				return err
+			}
+		}
 		if err = i.Import(ctx, l.State, committed, committed.Workspace.Pending.Members); err != nil {
 			return err
 		}

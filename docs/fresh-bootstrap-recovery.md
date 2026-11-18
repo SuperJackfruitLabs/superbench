@@ -312,7 +312,7 @@ What root trusts and what it checks:
   checkpointed and durable lives in the daemon-owned mirror and the remote,
   which root cannot observe. A compromised daemon can have root delete work it
   never checkpointed.
-- **Not in use: a best-effort check by root.** Root refuses with "the bench is
+- **Not in use: a point-in-time check by root.** Root refuses with "the bench is
   in use" while any cgroup beneath the policy's cgroup root, nested ones too, is
   populated with a process that has any task whose working directory, root,
   open file or file mapping is on the data volume in the bench's project, or
@@ -320,9 +320,21 @@ What root trusts and what it checks:
   `cgroup.events`, an entry on the data volume root cannot attribute, and a
   process with live tasks root cannot read all count as use. Root checks before
   it retains `reclaiming` and again before the purge. This is a point-in-time
-  check: a process can start between it and the purge, and the project ID that
-  attributes an open file to the bench is only as reliable as the payload's
-  inability to relabel quota projects, which a separate change will confine.
+  check: a process can start between it and the purge. The project ID that
+  attributes an open file to the bench is reliable because every payload
+  process, the purge worker included, runs under the payload seccomp filter,
+  which refuses project-ID and inherit-flag changes (see
+  [Project quotas and the payload account](execution.md#project-quotas-and-the-payload-account)).
+- **Contained: checked by root.** Before it retains `reclaiming`, again before
+  the purge and again before it removes the emptied leaf, root walks the tree
+  through descriptors only, never following a symlink or opening a FIFO, socket
+  or device, bounded by the bench's inode cap. Every directory and regular file
+  must carry the bench's project, and every directory the inherit flag.
+  Otherwise the reclaim refuses with "the bench tree has entries outside its
+  quota project" and changes nothing; restore the project as root
+  (`xfs_io -x -c 'chproj -R PROJECT_ID' PATH`, and
+  `xfs_io -x -c 'chattr +P' DIR` for a directory)
+  and retry the same reclaim.
 - **The guarantees are the backstops after the purge.** Root removes only an
   empty leaf, so anything written during the purge stops the reclaim, and it
   saves the tombstone only when the project's usage is zero, so a file still

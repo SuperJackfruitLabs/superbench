@@ -109,7 +109,8 @@ func Bind(f *os.File) error {
 	if err := Check(f); err != nil {
 		return err
 	}
-	if err := syscall.Dup2(int(f.Fd()), 0); err != nil {
+	// dup3 exists on every Linux architecture; dup2 does not on arm64.
+	if err := syscall.Dup3(int(f.Fd()), 0, 0); err != nil {
 		return errors.Join(ErrInput, err)
 	}
 	a, err := f.Stat()

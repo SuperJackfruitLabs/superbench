@@ -11,6 +11,8 @@ import (
 	"strings"
 	"syscall"
 	"unsafe"
+
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/payloadconfine"
 )
 
 var errCredentials = errors.New("managed payload credential drop refused")
@@ -75,6 +77,12 @@ func dropCredentials(p Policy) error {
 	if errno != 0 {
 		return errors.Join(errCredentials, errno)
 	}
+	// Every payload-uid process descends from here: Git observations, the
+	// final exec and all their children inherit the filter, which refuses the
+	// owner's project-ID and inherit-flag changes that would escape the quota.
+	if err := payloadconfine.Install(); err != nil {
+		return errors.Join(errCredentials, err)
+	}
 	return verifyDropped(p)
 }
 
@@ -90,7 +98,7 @@ func verifyDropped(p Policy) error {
 	if err != nil || len(raw) > 64<<10 {
 		return errors.Join(errCredentials, err)
 	}
-	wanted := map[string]string{"Uid:": fmt.Sprintf("%d %d %d %d", p.PayloadUID, p.PayloadUID, p.PayloadUID, p.PayloadUID), "Gid:": fmt.Sprintf("%d %d %d %d", p.PayloadGID, p.PayloadGID, p.PayloadGID, p.PayloadGID), "Groups:": "", "CapInh:": "0000000000000000", "CapPrm:": "0000000000000000", "CapEff:": "0000000000000000", "CapBnd:": "0000000000000000", "CapAmb:": "0000000000000000", "NoNewPrivs:": "1"}
+	wanted := map[string]string{"Uid:": fmt.Sprintf("%d %d %d %d", p.PayloadUID, p.PayloadUID, p.PayloadUID, p.PayloadUID), "Gid:": fmt.Sprintf("%d %d %d %d", p.PayloadGID, p.PayloadGID, p.PayloadGID, p.PayloadGID), "Groups:": "", "CapInh:": "0000000000000000", "CapPrm:": "0000000000000000", "CapEff:": "0000000000000000", "CapBnd:": "0000000000000000", "CapAmb:": "0000000000000000", "NoNewPrivs:": "1", "Seccomp:": "2"}
 	seen := map[string]bool{}
 	for _, line := range strings.Split(string(raw), "\n") {
 		key, value, _ := strings.Cut(line, "\t")
