@@ -103,6 +103,7 @@ func (e *env) recreates() {
 	if err = workspacebootstrap.MoveLayoutAside(policy.StateRoot, record); err != nil {
 		t.Fatal("a repeated move aside:", err)
 	}
+	e.guardsBeforeTheNextGeneration(first, firstIntent)
 	b, err := e.next(second, "recreate")
 	if err != nil {
 		t.Fatal("the next generation:", err)
@@ -141,6 +142,7 @@ func (e *env) recreates() {
 		t.Fatal("the first layout was not kept:", err)
 	}
 	t.Log("LOWER_RECREATE_OLD_EVIDENCE_RETAINED_PASS")
+	e.secondSuccessorRefused(first, b, layouts)
 
 	// Neither the first generation nor another second one can be made again.
 	ledgerBytes, err := os.ReadFile(filepath.Join(e.p.Ledger, "assignments.json"))

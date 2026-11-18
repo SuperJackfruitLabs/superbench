@@ -72,9 +72,13 @@ var Markers = []string{
 	"FRESH_RECLAIM_PURGE_WORKER_CONFINED_PASS",
 	"FRESH_RECLAIM_KILLED_WORKER_RETRY_PASS",
 	"LOWER_RECREATE_REFUSED_WHILE_OLD_LAYOUT_PUBLISHED_PASS",
+	"LOWER_RECREATE_FORGED_PREVIOUS_REFUSED_PASS",
+	"LOWER_RECREATE_GENERATION_GAP_REFUSED_PASS",
+	"LOWER_RECREATE_PREDECESSOR_BINDING_REFUSED_PASS",
 	"LOWER_RECREATE_NEW_PROJECT_PASS",
 	"LOWER_RECREATE_FRESH_TREE_PASS",
 	"LOWER_RECREATE_OLD_EVIDENCE_RETAINED_PASS",
+	"LOWER_RECREATE_SECOND_SUCCESSOR_REFUSED_PASS",
 	"LOWER_RECREATE_OLD_PROJECT_NOT_REVIVED_PASS",
 	"LOWER_RECREATE_SECOND_GENERATION_RECLAIMED_PASS",
 	"LOWER_FRESH_CREATE_FROM_MOVED_BRANCH_PASS",
@@ -83,12 +87,22 @@ var Markers = []string{
 
 // Logged requires the child's log to hold every marker exactly once.
 func Logged(log []byte) error {
-	for _, marker := range Markers {
-		if n := bytes.Count(log, []byte(marker)); n != 1 {
-			return fmt.Errorf("recovery marker %s logged %d times", marker, n)
-		}
+	if missing := Missing(log); len(missing) != 0 {
+		return fmt.Errorf("recovery markers not logged exactly once: %s", strings.Join(missing, ", "))
 	}
 	return nil
+}
+
+// Missing names, in order, each marker the child's log does not hold exactly
+// once, with the number of times it does.
+func Missing(log []byte) []string {
+	var missing []string
+	for _, marker := range Markers {
+		if n := bytes.Count(log, []byte(marker)); n != 1 {
+			missing = append(missing, fmt.Sprintf("%s (logged %d times)", marker, n))
+		}
+	}
+	return missing
 }
 
 // Relay logs, in the caller's (parent) test, each marker the child emitted
@@ -171,9 +185,15 @@ func Run(t *testing.T, gate Gate) {
 		t.Fatalf("%d of %d leaks retired", e.retired, 9+cleanupLeaks)
 	}
 	t.Log("FRESH_RECOVERY_ALL_LEAKS_RETIRED_PASS")
+	// Each group returns every reservation it makes, so the next group, the
+	// parent's later steps and its capacity refusal see the whole volume.
+	footprint := e.liveBenches()
 	e.reclaims()
+	e.assertFootprint(footprint, "the reclaim cases")
 	e.recreates()
+	e.assertFootprint(footprint, "the re-creation cases")
 	e.movedBranches()
+	e.assertFootprint(footprint, "the moved-branch cases")
 }
 
 // newLeak reserves a real Fresh allocation under a real operation, stops it
