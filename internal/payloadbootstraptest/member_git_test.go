@@ -127,6 +127,45 @@ func TestMemberStepsCheckOutASourceOnlyUnderRemoteTrackingRefs(t *testing.T) {
 	}
 }
 
+// A create whose branch is the mirror's own default branch: the clone already
+// made that local branch, so the last step must move it to the source rather
+// than collide with it. HEAD ends at refs/heads/main at exactly the source,
+// and no other branch appears.
+func TestMemberStepsCheckOutTheMirrorsDefaultBranch(t *testing.T) {
+	mirror, main, _, tip := movedMirror(t)
+	for name, source := range map[string]string{"at-the-branch": main, "at-another-commit": tip} {
+		t.Run(name, func(t *testing.T) {
+			root, err := filepath.EvalSymlinks(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			checkout := filepath.Join(root, "api")
+			admin := filepath.Join(root, ".superbench-git", "api")
+			if err = os.Mkdir(filepath.Dir(admin), 0700); err != nil {
+				t.Fatal(err)
+			}
+			member := Member{Name: "api", Repository: "https://example.invalid/api.git", Branch: "main", Source: source, ObjectFormat: "sha1"}
+			for _, step := range MemberSteps(root, mirror, checkout, admin, member) {
+				if out, err := runStep(step); err != nil {
+					t.Fatalf("git %v: %v %s", step.Args, err, out)
+				}
+			}
+			for args, want := range map[string]string{
+				"symbolic-ref --quiet HEAD":                   "refs/heads/main",
+				"rev-parse --verify HEAD^{commit}":            source,
+				"rev-parse --verify refs/heads/main":          source,
+				"for-each-ref --format=%(refname) refs/heads": "refs/heads/main",
+				"status --porcelain=v1 --untracked-files=all": "",
+			} {
+				if got := fixtureGit(t, checkout, strings.Fields(args)...); got != want {
+					t.Fatalf("git %s = %q, want %q", args, got, want)
+				}
+			}
+			fixtureGit(t, checkout, "fsck", "--full", "--no-reflogs")
+		})
+	}
+}
+
 // The steps are a fixed allow-list: the only variable words are the daemon's
 // own paths and the spec's validated branch, source and registered URL.
 func TestMemberStepsAreExact(t *testing.T) {
@@ -136,7 +175,7 @@ func TestMemberStepsAreExact(t *testing.T) {
 		{Dir: "/r", Args: []string{"clone", "--template=", "--no-local", "--no-hardlinks", "--no-checkout", "--separate-git-dir", "/r/.superbench-git/api", "--", "/m.git", "/r/api"}},
 		{Dir: "/r/api", Args: []string{"-c", "protocol.version=2", "fetch", "--no-tags", "--no-write-fetch-head", "--no-auto-maintenance", "--recurse-submodules=no", "--refmap=", "--", "/m.git", member.Source}},
 		{Dir: "/r/api", Args: []string{"config", "--local", "remote.origin.url", member.Repository}},
-		{Dir: "/r/api", Args: []string{"checkout", "--no-guess", "-b", "card/x", member.Source, "--"}},
+		{Dir: "/r/api", Args: []string{"checkout", "--no-guess", "-B", "card/x", member.Source, "--"}},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("member steps changed:\n%q\nwant\n%q", got, want)
