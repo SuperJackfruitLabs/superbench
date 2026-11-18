@@ -66,9 +66,10 @@ func (e *env) reclaim(ctx context.Context, b bench) (quotahelper.ReclaimResult, 
 	return freshrecovery.Reclaim(ctx, e.reclaimer(b), b.spec)
 }
 
-func (e *env) intentPhase(key string) string {
+// intentPhase reads the phase of the intent under stem, a generation's name.
+func (e *env) intentPhase(stem string) string {
 	e.t.Helper()
-	raw, err := os.ReadFile(filepath.Join(e.p.Ledger, "payload-bootstrap", key+".json"))
+	raw, err := os.ReadFile(filepath.Join(e.p.Ledger, "payload-bootstrap", stem+".json"))
 	if err != nil {
 		e.t.Fatal(err)
 	}
@@ -212,7 +213,7 @@ func (e *env) assertReclaimed(b bench, got quotahelper.ReclaimResult) {
 	if row := e.row(b.spec.Key); row != tombstone || got.Allocation != tombstone || got.Key != b.spec.Key || got.Version != quotahelper.ReclaimVersion {
 		t.Fatalf("project not retired: row %+v reply %+v", row, got)
 	}
-	if p := e.intentPhase(b.spec.Key); p != "reclaimed" {
+	if p := e.intentPhase(payloadbootstrap.Stem(b.spec)); p != "reclaimed" {
 		t.Fatalf("intent phase %s", p)
 	}
 }

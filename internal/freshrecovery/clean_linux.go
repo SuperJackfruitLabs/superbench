@@ -71,7 +71,7 @@ func cleanStep(ctx context.Context, m *payloadbootstrap.Manager, s payloadbootst
 		if err = reselect(func(func() error) error { return c.bind(s) }); err != nil {
 			return err
 		}
-		if err = controlsFenced(r.Storage.Ledger, s.Key, i); err != nil {
+		if err = controlsFenced(r.Storage.Ledger, payloadbootstrap.Stem(s), i); err != nil {
 			return err
 		}
 		if err = action(c, reselect); err != nil {
@@ -111,14 +111,15 @@ func (c *cleaning) bind(s payloadbootstrap.Spec) error {
 	return nil
 }
 
-// controlsFenced requires KEY.controls to be the recorded root-owned private
+// controlsFenced requires STEM.controls (KEY.controls for a key's first
+// generation, KEY@N.controls for a later one) to be the recorded root-owned private
 // directory and its git-controls journal to be absent, empty or fenced, by
 // gitcontrol.Recover's rules, without changing it: the intents stay as evidence.
 // The recorded device is not compared: btrfs and LVM can renumber the state
 // filesystem at boot. The directory must instead be on the ledger's device in
 // this boot; the operation authority binds the ledger by its filesystem UUID.
-func controlsFenced(ledger, key string, i payloadbootstrap.Inspection) error {
-	state := filepath.Join(ledger, "payload-bootstrap", key+".controls")
+func controlsFenced(ledger, stem string, i payloadbootstrap.Inspection) error {
+	state := filepath.Join(ledger, "payload-bootstrap", stem+".controls")
 	parent, err := os.Lstat(ledger)
 	if err != nil {
 		return errors.Join(ErrRecovery, err)

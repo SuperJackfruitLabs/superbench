@@ -12,7 +12,7 @@ func OperationAuthorityRecords(root, ledgerPath string, binding allocationledger
 	if err := StrictJSON(raw, &l); err != nil {
 		return "", "", err
 	}
-	if l.FormatVersion != 2 && l.FormatVersion != 3 {
+	if !l.Bound() {
 		return "", "", errors.New("operation authority requires existing bound v2 ledger")
 	}
 	if err := l.Validate(root, binding, upgrading); err != nil {

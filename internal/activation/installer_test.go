@@ -34,7 +34,7 @@ sys.stdout.buffer.write(install.activation_document()[install.ACTIVATION_FILE][0
 		}
 		*all.field(name) = true
 	}
-	if all != (Switches{true, true, true, true, true}) {
+	if all != (Switches{true, true, true, true, true, 0, false}) {
 		t.Fatal("a switch has no key", all)
 	}
 }

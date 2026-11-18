@@ -64,8 +64,7 @@ end-to-end card result:
   removes the empty leaf and retires the quota project. The bench ends
   `reclaimed` and a later create can use the space. `reclaiming` never returns to
   `ready`: after any failure, rerun the same command. A large tree holds the
-  helper's operation lock while it is deleted, so other creates wait. No
-  automatic policy reclaims yet; the caller that finishes a card reclaims it.
+  helper's operation lock while it is deleted, so other creates wait.
   Root trusts the daemon that the work is checkpointed (that evidence is in the
   daemon's mirror, which root cannot see). Root's own "in use" check is
   best-effort and point in time; what it guarantees is that it removes only an
@@ -74,6 +73,40 @@ end-to-end card result:
   Before each launch and lease, benchd checks a Fresh bench's pinned allocation
   with the helper's read-only `verify bench KEY`; the helper refuses the ordinary
   bench apply for it.
+- **benchd reclaims an idle Fresh bench itself.** With `fresh_payload` on, a
+  maintenance sweep (every five minutes) reclaims each released Fresh bench
+  that has been idle longer than `fresh_reclaim_idle_hours` (default 24, see
+  [Activation](#activation)), exactly as the command above does. A bench is
+  idle from the moment its last writer released it: the state update that
+  releases a lease records `IdleSince` in the same transaction, whatever route
+  released it. A record from before this field, which has none, is given the
+  time of the first sweep that sees it, so an upgrade never reclaims a bench at
+  once. The sweep takes only a `ready` bench with no lease, nothing pending or
+  staged, no archive, transfer or repair, an allocation and a complete
+  checkpoint confirmed on the remote; a legacy bench is never touched. The
+  reclaim repeats every check, the grace included, in the transaction that
+  records `reclaiming`, under the same host lock as a lease acquisition: a
+  lease taken, or taken and released, after the sweep chose the bench refuses
+  the reclaim, and once `reclaiming` is recorded no lease can be granted. A
+  recorded reclaim that failed (the bench in use, the payload account active, a
+  lost reply) is resumed by the next sweep, once per sweep, never in a loop;
+  the journal logs `automatic reclaim blocked: KEY: ...` for each failure. Set
+  `fresh_reclaim_idle_hours` to `0` to turn the sweep off and reclaim by hand.
+- **Create a reclaimed key again for its next card.** A bench is a cache over
+  its pushed branches. After `reclaimed`, a v2 `create` on the same key (a new
+  request ID) makes a new bench, cloned again from the branches the request
+  names: the key's next generation. A status read still shows the old bench as
+  `reclaimed` until that create records the new one. The new bench has a new
+  `bench_id`, a random 128-bit identity drawn for each create and never one an
+  earlier generation of the key had, so a lease or receipt bound to the old
+  `bench_id` never matches the new bench. It gets a new quota project and a
+  fresh tree; the old project ID is never assigned again, and the old bootstrap
+  intent, controls and layout registration are kept as evidence
+  (`payload-bootstrap/KEY.json`, then `KEY@2.json` for the second generation,
+  and `payload-layouts/KEY.<old bench_id>.reclaimed`). Retrying the same create
+  is an exact retry, a retry of the old bench's own create returns it unchanged
+  (`reclaimed`), and the create needs `fresh_payload`: without it, it is refused
+  and the reclaimed record stays. See [Generations of a key](fresh-bootstrap-recovery.md#generations-of-a-key).
 - **A refused or failed Fresh create keeps its record.** A Fresh create that fails
   after its intent is recorded, including a `capacity_exhausted` refusal, leaves the
   workspace at `materializing` or `initializing` with its `initialization`
@@ -583,7 +616,8 @@ managed readiness or proof that a previous execution has stopped.
 benchd reads the default-off v2 switches only from
 `/etc/superbench/activation.json`. No request, environment variable, `benchd.env`
 entry or command-line flag can set them. The file is a JSON object with the exact
-version and any of five switches, each a literal `true` or `false`:
+version, any of five switches, each a literal `true` or `false`, and one
+setting:
 
 ```json
 {
@@ -604,7 +638,12 @@ version and any of five switches, each a literal `true` or `false`:
 | `cancellation` | v2 `cancel` and the operation reconciler ([cancellation](operation-cancellation.md)) |
 | `registration_observation` | `POST /v2/registrations/observe` |
 
-An omitted switch is off. An unknown, duplicated or non-boolean key, a missing or
+| Setting | Means |
+| --- | --- |
+| `fresh_reclaim_idle_hours` | How long a released Fresh bench stays idle before benchd reclaims it: a whole number of hours, `0` (never: reclaim by hand) or `1` to `8760`, for example `"fresh_reclaim_idle_hours": 72`. Omitted, it is `24`. It applies only while `fresh_payload` is on, and is refused without it. |
+
+An omitted switch is off. An unknown, duplicated or non-boolean key, a
+`fresh_reclaim_idle_hours` that is not a whole number from 0 to 8760, a missing or
 different version, or trailing data refuses startup. `receipt_lookup` and
 `cancellation` also move the socket to the private connection classes. Any of
 `receipt_lookup`, `cancellation` and `registration_observation` makes each
@@ -621,6 +660,7 @@ the socket, and refuses a file that breaks one:
 | `fresh_payload` | a ready indexed quota operation journal | benchd reads `/etc/superbench/storage.json` at start and refuses unless it sets `"OperationJournal": "indexed-v2"` and the helper's `operation-info` opens that journal, which needs the ready record of a finished `initialize-indexed` ([Indexed storage](#indexed-storage)). The payload helper refuses anything else, so every Fresh create would stop at `materializing`. |
 | `finite_io` | `fresh_payload` | A finite run executes only on a Fresh payload tree. |
 | `registration_observation` | `fresh_payload` | Observation reads only a Fresh payload tree. |
+| `fresh_reclaim_idle_hours` | `fresh_payload` | Only Fresh benches are reclaimed. Present without it, the file is refused. |
 | `receipt_lookup`, `cancellation` | nothing | |
 
 So the registered launch, which needs all five, sets every switch to `true`, and
@@ -648,7 +688,8 @@ and the daemon behaves exactly as without this feature. benchd runs as the
 installer creates it with mode 0755). If it cannot, benchd cannot tell whether
 the file exists and refuses to start. At start
 benchd logs one line with the effective switches, for example
-`activation: fresh_payload=false finite_io=false receipt_lookup=false cancellation=false registration_observation=false`.
+`activation: fresh_payload=false finite_io=false receipt_lookup=false cancellation=false registration_observation=false fresh_reclaim_idle=0s`
+(with `fresh_payload` on and the setting omitted, `fresh_reclaim_idle=24h0m0s`).
 
 **Existing non-Fresh workspaces.** `fresh_payload` changes only new v2 `create`
 and `recover`. A v2 workspace that completed in the non-Fresh layout before the

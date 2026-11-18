@@ -9,6 +9,7 @@ import (
 	"slices"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspacepolicy"
 )
 
 type identityRecord struct {
@@ -101,7 +102,7 @@ func Capture(records Database) IdentitySnapshot {
 			entry.phase = w.Phase
 			entry.pending = copyCheckpoint(w.Pending)
 			entry.checkpoint = copyCheckpoint(w.Checkpoint)
-			w.Phase = ""
+			w.Phase, w.IdleSince = "", "" // the idle time moves with releases and the sweep
 			w.Pending = nil
 			w.Checkpoint = nil
 			entry.workspace = &w
@@ -314,8 +315,11 @@ func ValidateTransition(before IdentitySnapshot, after Database) error {
 		if !exists || b == nil || b.Workspace == nil {
 			return invalid
 		}
+		if old.phase == "reclaimed" && workspacepolicy.Succeeds(old.workspace.ID, old.workspace.Generation, b) {
+			continue // A create on a reclaimed key starts its next generation.
+		}
 		w := *b.Workspace
-		w.Phase = ""
+		w.Phase, w.IdleSince = "", ""
 		w.Pending = nil
 		w.Checkpoint = nil
 		w.Preparation = nil

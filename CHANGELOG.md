@@ -6,6 +6,17 @@ stamps the section `## vX.Y.Z — YYYY-MM-DD`, and the release notes quote it.
 
 ## Unreleased
 
+- benchd reclaims a released Fresh bench by itself once it has been idle longer than
+  `fresh_reclaim_idle_hours` in `/etc/superbench/activation.json` (default 24 hours while
+  `fresh_payload` is on; `0` turns it off). Its sweep runs the same reclaim as
+  `bench workspace reclaim`, and a reclaim that fails is resumed by the next sweep. Idle time
+  starts when the last writer releases; a bench released before the upgrade starts its grace
+  at the first sweep.
+- A `create` on a reclaimed key makes a new bench: the key's next generation, cloned again from
+  its branches, with a new `bench_id`, a new quota project and a fresh tree. The old project is
+  never reused and the old evidence is kept. The quota ledger becomes format 4 the first time a
+  key is created again; older binaries refuse to read it.
+
 - A released Fresh bench can be reclaimed: `bench workspace reclaim KEY` (v2 operation
   `reclaim`) deletes its payload-private tree as the payload account, removes the empty leaf
   and retires its quota project, so a later create can use the space. Before, every Fresh

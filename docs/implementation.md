@@ -155,8 +155,8 @@ PRs describe their publication history.
   [Git control operations](git-control.md).
 
 - Aggregate admission foundation: the strict Go v2 request parser checks the
-  mandatory schema/corpus pinned to treaty `04813138dd1dc32aef2e528fc08dd7e76cca92f5`
-  (merged in treaty #33). It validates request shape only; the service still
+  mandatory schema/corpus pinned to treaty `83e51d583a71f668eec8c2093394613e002c1678`
+  (first merged in treaty #33; the reclaim operation in treaty #49). It validates request shape only; the service still
   exposes v1. A separate workspace planner selects every member's immutable
   source and quota declaration before any task checkout is created. Matching
   declarations select one total allocation; conflicting declarations refuse

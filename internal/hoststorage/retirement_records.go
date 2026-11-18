@@ -12,7 +12,7 @@ func (p Policy) retirementRecords(key string, raw, anchor []byte, original Assig
 	if err := strictStorageJSON(raw, &l); err != nil {
 		return Assignment{}, "", false, err
 	}
-	if l.FormatVersion != 2 && l.FormatVersion != 3 {
+	if !l.Bound() {
 		return Assignment{}, "", false, errors.New("retirement requires a bound v2 ledger")
 	}
 	if err := p.checkLedger(l); err != nil {

@@ -20,12 +20,14 @@ func TestPinnedWorkspaceResponseSource(t *testing.T) {
 	if err := json.Unmarshal(raw, &source); err != nil {
 		t.Fatal(err)
 	}
-	if source.Repository != "https://forge.superjackfruit.com/SuperJackfruitLabs/treaty" || source.Revision != "63af0f8675ef2a35188465884c4416a190f6f41f" {
+	if source.Repository != "https://forge.superjackfruit.com/SuperJackfruitLabs/treaty" || source.Revision != "83e51d583a71f668eec8c2093394613e002c1678" {
 		t.Fatal("canonical response source differs")
 	}
 	want := map[string]struct{ local, hash string }{
-		"schemas/superbench/response.v2.json":              {"response.v2.json", "31883310fd7fe8bad85a63d6faa5fc2aabe71d3a84c3bd0fc14311c92f9f3360"},
-		"fixtures/superbench-api/workspace-responses.json": {"workspace-responses.json", "296f36452e2418c805c625f97cf96da5f5028aadf2e035034df7fc8913b320b3"},
+		"schemas/superbench/response.v2.json":              {"response.v2.json", "64e72583a3e75da94534e28985d01ab9ac12b5bfbc25c37487f975e93a8a0053"},
+		"fixtures/superbench-api/workspace-responses.json": {"workspace-responses.json", "1c82207d680f420b49b66741374be29b512093cfe70d5106f108f2c6ebad06f6"},
+		"fixtures/superbench-api/reclaim.json":             {"reclaim.json", "f18828e44ea42cbae7875906f5472633a8c291feff062e87e58dd526b7371084"},
+		"fixtures/superbench-api/reclaim-lifecycle.json":   {"reclaim-lifecycle.json", "19fd90285c4e465b95e0e455ff4d4071b022baf5b1ef066858923d7fab064a52"},
 		"fixtures/superbench-api/workspace-lifecycle.json": {"workspace-lifecycle.json", "0d0dca060902df3706bf3d0c1322c1ea1fbfb22ac5cb50a3243e761906848255"},
 	}
 	if len(source.Files) != len(want) {

@@ -63,7 +63,7 @@ func (a Approval) validate(p hoststorage.Policy) error {
 // old quota from the policy ceiling or another allocation's metadata.
 func selected(p hoststorage.Policy, key string, raw []byte, original *hoststorage.Assignment) (allocationledger.Ledger, hoststorage.Assignment, bool, error) {
 	var l allocationledger.Ledger
-	if !allocationledger.Key.MatchString(key) || storageproof.StrictJSON(raw, &l) != nil || p.Validate() != nil || p.OperationJournal != "indexed-v2" || l.FormatVersion != 3 || l.Validate(p.Root, p.AllocationBinding(), false) != nil {
+	if !allocationledger.Key.MatchString(key) || storageproof.StrictJSON(raw, &l) != nil || p.Validate() != nil || p.OperationJournal != "indexed-v2" || l.FormatVersion < 3 || !l.Bound() || l.Validate(p.Root, p.AllocationBinding(), false) != nil {
 		return l, hoststorage.Assignment{}, false, ErrRetirement
 	}
 	canonical, err := json.MarshalIndent(l, "", "  ")

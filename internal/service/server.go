@@ -1,6 +1,7 @@
 package service
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -21,6 +22,7 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/maintenance"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/protocol"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/scalarapi"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspaceops"
 )
 
 type Config struct {
@@ -30,6 +32,7 @@ type Config struct {
 	MaxActive          int
 	RetentionInterval  time.Duration
 	ArchiveInterval    time.Duration
+	ReclaimInterval    time.Duration       // idle reclaim sweep; 0 means five minutes
 	Activation         activation.Switches // only from the root-owned activation file
 }
 type Server struct {
@@ -135,6 +138,11 @@ func serve(ctx context.Context, c Config, proposed bool) error {
 			}
 		})
 	}()
+	reclaimDone := make(chan struct{})
+	go func() { // Returns at once unless fresh_payload is on with a nonzero grace.
+		defer close(reclaimDone)
+		workspaceops.Manager{Store: s.config.Store}.IdleSweep(a.ReclaimIdle()).Run(lifetime, cmp.Or(c.ReclaimInterval, 5*time.Minute), func(e error) { log.Printf("automatic reclaim blocked: %v", e) })
+	}()
 	httpServer := &http.Server{Handler: s, ConnContext: connContext, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 << 10}
 	shutdownDone := make(chan error, 1)
 	go func() {
@@ -158,6 +166,7 @@ func serve(ctx context.Context, c Config, proposed bool) error {
 	<-operationDone
 	<-maintenanceDone
 	<-archiveDone
+	<-reclaimDone
 	if e == http.ErrServerClosed {
 		return shutdownErr
 	}

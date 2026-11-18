@@ -52,6 +52,11 @@ type Manager struct {
 	Released func(context.Context, *model.Bench) error
 	// Helper runs the fixed helper's reclaim for a reclaiming record.
 	Helper func(context.Context, *model.Bench, payloadbootstrap.Spec) error
+	// Eligible, when set, is a further condition on a ready record, checked in
+	// the same transaction, under the same host lock, that records it
+	// reclaiming: the idle sweep's grace. A refusal records nothing. It does
+	// not apply to a record already reclaiming, whose reclaim always resumes.
+	Eligible func(*model.Bench) error
 }
 
 func refuse(why string) error { return errors.Join(ErrConflict, errors.New(why)) }
@@ -98,6 +103,11 @@ func (m Manager) Reclaim(ctx context.Context, key string) (*model.Bench, error) 
 			case "ready":
 			default:
 				return refuse("workspace is not ready: finish initialization first")
+			}
+			if m.Eligible != nil {
+				if err = m.Eligible(workspace.Clone(b)); err != nil {
+					return errors.Join(ErrConflict, err)
+				}
 			}
 			if err = m.ready(ctx, tx, b); err != nil {
 				return err
@@ -197,6 +207,9 @@ func Specification(b *model.Bench) (payloadbootstrap.Spec, error) {
 	}
 	w := b.Workspace
 	s := payloadbootstrap.Spec{Version: payloadbootstrap.Version, Key: b.Key, ID: w.ID, CheckpointRepository: w.CheckpointRepository, QuotaBytes: b.RequestedQuotaBytes}
+	if w.Generation != 0 {
+		s.Version, s.Generation, s.Previous = payloadbootstrap.GenerationVersion, w.Generation, w.Previous
+	}
 	for _, member := range w.Members {
 		s.Members = append(s.Members, payloadbootstrap.Member{Name: member.Name, Repository: member.Repository, Branch: member.Branch, Source: member.Source, ObjectFormat: member.ObjectFormat})
 	}

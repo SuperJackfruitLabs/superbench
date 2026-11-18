@@ -11,6 +11,7 @@ import (
 	"errors"
 	"path/filepath"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/archivepolicy"
@@ -21,6 +22,7 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/payloadstage"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/protocolv2"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspace"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspaceidle"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspaceprep"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspacereclaim"
 )
@@ -240,22 +242,49 @@ func (m Manager) Execute(ctx context.Context, r protocolv2.Request, uid uint32) 
 		b, err := m.Store.ArchiveWorkspaceContext(ctx, r.Key, archivepolicy.DefaultGrace, nil)
 		return result(b, "", false), err
 	case "reclaim":
-		return m.reclaim(ctx, r.Key)
+		return m.reclaim(ctx, r.Key, nil)
 	}
 	return nil, ErrInvalid
+}
+
+// ReclaimIdle is the operator's reclaim with one more condition, eligible,
+// which the reclaim checks under its host lock in the transaction that
+// records the bench reclaiming. The idle sweep passes its grace here.
+func (m Manager) ReclaimIdle(ctx context.Context, key string, eligible func(*model.Bench) error) (*Result, error) {
+	if eligible == nil {
+		return nil, ErrInvalid
+	}
+	return m.reclaim(ctx, key, eligible)
 }
 
 // reclaim deletes a released Fresh workspace's tree and retires its quota
 // project through the fixed helper, under the same host lock and managed Git
 // context as archive. A refusal from the workspace's own state is a conflict.
-func (m Manager) reclaim(ctx context.Context, key string) (*Result, error) {
+func (m Manager) reclaim(ctx context.Context, key string, eligible func(*model.Bench) error) (*Result, error) {
 	admin, ctx, err := m.Store.WorkspaceArchiveAdministration(ctx)
 	if err != nil {
 		return nil, err
 	}
-	b, err := (workspacereclaim.Manager{State: admin.State, Data: admin.Data, Timeout: admin.Timeout, Within: admin.Within, Git: admin.Git}).Reclaim(ctx, key)
+	b, err := (workspacereclaim.Manager{State: admin.State, Data: admin.Data, Timeout: admin.Timeout, Within: admin.Within, Git: admin.Git, Eligible: eligible}).Reclaim(ctx, key)
 	if errors.Is(err, workspacereclaim.ErrConflict) || errors.Is(err, workspacereclaim.ErrLegacy) {
 		err = errors.Join(ErrConflict, err)
 	}
 	return result(b, "", false), err
+}
+
+// IdleSweep is the daemon's idle reclaim over this store: selection under its
+// host lock, and each reclaim through ReclaimIdle, the operator's route.
+func (m Manager) IdleSweep(grace time.Duration) workspaceidle.Sweep {
+	return workspaceidle.Sweep{State: m.Store.State, Grace: grace,
+		Within: func(ctx context.Context, fn func(workspace.Update) error) error {
+			admin, _, err := m.Store.WorkspaceArchiveAdministration(ctx)
+			if err != nil {
+				return err
+			}
+			return admin.Within(fn)
+		},
+		Reclaim: func(ctx context.Context, key string, eligible func(*model.Bench) error) error {
+			_, err := m.ReclaimIdle(ctx, key, eligible)
+			return err
+		}}
 }

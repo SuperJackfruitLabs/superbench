@@ -12,6 +12,10 @@ type Workspace struct {
 	CheckpointRepository string
 	RecoveredFrom        *WorkspaceRecovery `json:",omitempty"`
 	Phase                string
+	// IdleSince (RFC 3339, UTC) starts the idle grace: the state update that
+	// releases the last writer records it, and the idle sweep records it on
+	// first sight of a released record that predates it.
+	IdleSince            string `json:",omitempty"`
 	ExplicitQuotaBytes   uint64 `json:",omitempty"`
 	Members              []WorkspaceMember
 	Preparation          []WorkspacePreparation         `json:",omitempty"`
@@ -23,6 +27,11 @@ type Workspace struct {
 	InitializationRepair *WorkspaceInitializationRepair `json:",omitempty"`
 	Transfer             *WorkspaceTransfer             `json:",omitempty"`
 	TransferredFrom      *WorkspaceTransferOrigin       `json:",omitempty"`
+	// Generation is 0 for a key's first bench; a create on a reclaimed key
+	// records the next generation (2, 3, ...) and Previous, the reclaimed
+	// workspace's ID. Both are immutable for the bench's life.
+	Generation uint32 `json:",omitempty"`
+	Previous   string `json:",omitempty"`
 }
 
 // WorkspaceTransfer permanently relinquishes source task-ref writer authority.

@@ -20,7 +20,7 @@ func (p Policy) Apply(kind, key string) (Assignment, error) {
 	return p.ApplyRequested(kind, key, 0)
 }
 func (p Policy) ApplyRequested(kind, key string, requested uint64) (Assignment, error) {
-	return p.applyRequested(kind, key, requested, nil, nil)
+	return p.applyRequested(kind, key, requested, nil, nil, nil)
 }
 
 // ApplyFreshRequested reserves only a previously unknown bench allocation. The
@@ -33,10 +33,18 @@ func (p Policy) ApplyFreshRequested(key string, requested uint64, reserve func()
 	if reserve == nil || initialize == nil {
 		return Assignment{}, ErrFreshAllocation
 	}
-	return p.applyRequested("bench", key, requested, reserve, initialize)
+	return p.applyRequested("bench", key, requested, reserve, initialize, nil)
 }
 
-func (p Policy) applyRequested(kind, key string, requested uint64, reserve func() error, initialize func(Assignment) error) (Assignment, error) {
+// ApplyFreshSuccessor allocates a key's next Fresh generation in place of
+// predecessor, its reclaimed project's tombstone, which Ledger.Succeed retires
+// in the same save. The leaf must be absent; the predecessor's retained intent
+// is the caller's evidence, not a refusal as it is for a first allocation.
+func (p Policy) ApplyFreshSuccessor(key string, requested uint64, predecessor Assignment, reserve func() error, initialize func(Assignment) error) (Assignment, error) {
+	return p.applyRequested("bench", key, requested, reserve, initialize, &predecessor)
+}
+
+func (p Policy) applyRequested(kind, key string, requested uint64, reserve func() error, initialize func(Assignment) error, predecessor *Assignment) (Assignment, error) {
 	var zero Assignment
 	if os.Geteuid() != 0 {
 		return zero, errors.New("quota helper requires root")
@@ -173,14 +181,16 @@ func (p Policy) applyRequested(kind, key string, requested uint64, reserve func(
 		}
 	}
 
-	return p.applyLedger(l, kind, key, name, path, requested, size, inodes, fixed, fs, reserve, initialize)
+	return p.applyLedger(l, kind, key, name, path, requested, size, inodes, fixed, fs, reserve, initialize, predecessor)
 }
 
 // applyLedger runs only after the caller holds the validated allocation lock.
-func (p Policy) applyLedger(l ledger, kind, key, name, path string, requested, size, inodes uint64, fixed uint32, fs syscall.Statfs_t, reserve func() error, initialize func(Assignment) error) (Assignment, error) {
+func (p Policy) applyLedger(l ledger, kind, key, name, path string, requested, size, inodes uint64, fixed uint32, fs syscall.Statfs_t, reserve func() error, initialize func(Assignment) error, predecessor *Assignment) (Assignment, error) {
 	var zero Assignment
 	var e error
-
+	if predecessor != nil && (kind != "bench" || initialize == nil || predecessor.Path != path || l.Succeed(name, path, predecessor.ProjectID) != nil) {
+		return zero, errors.Join(ErrFreshAllocation, errors.New("the previous generation is not this key's retired Fresh project"))
+	}
 	a, known := l.Assignments[name]
 	if initialize != nil && (known || reserve == nil) {
 		return zero, ErrFreshAllocation
@@ -189,7 +199,7 @@ func (p Policy) applyLedger(l ledger, kind, key, name, path string, requested, s
 		if _, fresh := l.Fresh[name]; fresh {
 			return zero, ErrRegisteredAllocation
 		}
-		if err := p.refuseRegisteredAllocation(key); err != nil {
+		if err := p.refuseRegisteredAllocation(key); err != nil && predecessor == nil {
 			return zero, err
 		}
 	}
@@ -267,7 +277,7 @@ func (p Policy) applyLedger(l ledger, kind, key, name, path string, requested, s
 		}
 		l.Assignments[name] = a
 		if initialize != nil {
-			l.FormatVersion = 3
+			l.FormatVersion = max(l.FormatVersion, 3)
 			if l.Fresh == nil {
 				l.Fresh = map[string]uint32{}
 			}

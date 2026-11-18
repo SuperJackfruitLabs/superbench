@@ -14,7 +14,7 @@ func TestRetirementTombstoneNeedsOriginalSelectedAuthorityAndOrdinaryInspectionS
 		t.Fatal("active authority", retired, err)
 	}
 	tombstone := original
-	tombstone.Bytes, tombstone.Inodes = 0, 0
+	tombstone.Bytes, tombstone.Inodes, l.FormatVersion = 0, 0, 4 // also on a format-4 ledger
 	l.Assignments["bench:source"] = tombstone
 	raw, _ = json.Marshal(l)
 	restored, digest, retired, err := p.retirementRecords("source", raw, anchor, original)

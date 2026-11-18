@@ -17,7 +17,8 @@ func (m Manager) create(ctx context.Context, r protocolv2.Request, uid uint32) (
 	}
 	spec := creationSpec(r)
 	if rows, readErr := m.Store.Snapshot(r.Key); readErr == nil {
-		if rows[0].Workspace == nil || rows[0].Workspace.CreationID != id || rows[0].Workspace.InitializationRepair != nil || rows[0].Workspace.Transfer != nil || rows[0].Workspace.TransferredFrom != nil {
+		// A reclaimed record gives way to a different create: its next generation.
+		if rows[0].Workspace == nil || rows[0].Workspace.CreationID != id && rows[0].Workspace.Phase != "reclaimed" || rows[0].Workspace.InitializationRepair != nil || rows[0].Workspace.Transfer != nil || rows[0].Workspace.TransferredFrom != nil {
 			return nil, ErrConflict
 		}
 	} else if !errors.Is(readErr, bench.ErrNotFound) {

@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"time"
+
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/handoffguard"
 )
 
@@ -17,6 +19,14 @@ func Update(tx *sql.Tx, fn func(Database, *sql.Tx) error) error {
 	before := Capture(records)
 	if err = fn(records, tx); err != nil {
 		return err
+	}
+	// Whatever path releases a workspace's writer, the release starts its idle
+	// grace in the same transaction, so no released record is older than it.
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	for key, old := range before {
+		if b := records[key]; old.lease != nil && b != nil && b.Workspace != nil && b.Lease == nil {
+			b.Workspace.IdleSince = now
+		}
 	}
 	if err = ValidateTransition(before, records); err != nil {
 		return err
@@ -42,7 +52,6 @@ func Update(tx *sql.Tx, fn func(Database, *sql.Tx) error) error {
 		if stored != string(raw) {
 			return errors.New("core transition was not durably retained")
 		}
-
 	}
 	return nil
 }

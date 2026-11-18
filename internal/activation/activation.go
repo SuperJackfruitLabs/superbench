@@ -9,6 +9,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
+	"time"
 	"unicode/utf8"
 )
 
@@ -17,6 +19,11 @@ const (
 	FixedPath = "/etc/superbench/activation.json"
 	Version   = "superbench.activation.v1"
 	MaxSize   = 4 << 10
+	// DefaultReclaimIdleHours is the idle grace of a Fresh bench when
+	// fresh_payload is on and fresh_reclaim_idle_hours is omitted.
+	DefaultReclaimIdleHours = 24
+	// MaxReclaimIdleHours bounds the grace at one year; 0 disables the sweep.
+	MaxReclaimIdleHours = 8760
 )
 
 var ErrActivation = errors.New("invalid activation file")
@@ -28,15 +35,40 @@ type Switches struct {
 	ReceiptLookup           bool // POST /v2/receipts/lookup
 	Cancellation            bool // v2 cancel requests and the operation reconciler
 	RegistrationObservation bool // POST /v2/registrations/observe
+	// ReclaimIdleHours is fresh_reclaim_idle_hours, set only when the file names
+	// it (ReclaimIdleSet). It is a setting of fresh_payload, not a path of its own.
+	ReclaimIdleHours uint32
+	ReclaimIdleSet   bool
 }
 
-// Any reports whether at least one default-off path is enabled.
-func (s Switches) Any() bool { return s != Switches{} }
+// Any reports whether at least one default-off path is enabled. The idle
+// grace is not a path: Check refuses it without fresh_payload.
+func (s Switches) Any() bool {
+	return s.FreshPayload || s.FiniteIO || s.ReceiptLookup || s.Cancellation || s.RegistrationObservation
+}
+
+// ReclaimIdle is the effective idle grace of a released Fresh bench before the
+// daemon reclaims it: 0 (off) unless fresh_payload is on, then the file's
+// fresh_reclaim_idle_hours, or 24 hours when it is omitted. 0 hours disables it.
+func (s Switches) ReclaimIdle() time.Duration {
+	if !s.FreshPayload {
+		return 0
+	}
+	hours := uint32(DefaultReclaimIdleHours)
+	if s.ReclaimIdleSet {
+		hours = s.ReclaimIdleHours
+	}
+	return time.Duration(hours) * time.Hour
+}
 
 func (s Switches) String() string {
-	return fmt.Sprintf("fresh_payload=%t finite_io=%t receipt_lookup=%t cancellation=%t registration_observation=%t",
-		s.FreshPayload, s.FiniteIO, s.ReceiptLookup, s.Cancellation, s.RegistrationObservation)
+	return fmt.Sprintf("fresh_payload=%t finite_io=%t receipt_lookup=%t cancellation=%t registration_observation=%t fresh_reclaim_idle=%s",
+		s.FreshPayload, s.FiniteIO, s.ReceiptLookup, s.Cancellation, s.RegistrationObservation, s.ReclaimIdle())
 }
+
+// validIdleHours is the accepted range of fresh_reclaim_idle_hours: 0 turns the
+// sweep off, otherwise at least one hour and at most a year.
+func validIdleHours(hours uint32) bool { return hours <= MaxReclaimIdleHours }
 
 func (s *Switches) field(name string) *bool {
 	switch name {
@@ -65,7 +97,8 @@ func (s *Switches) field(name string) *bool {
 //     checks: the payload helper's bootstrap refuses any other storage policy,
 //     so every Fresh create would strand a materializing workspace.
 //   - finite_io and registration_observation act only on Fresh payload trees,
-//     so they need fresh_payload.
+//     so they need fresh_payload. So does fresh_reclaim_idle_hours, which only
+//     Fresh benches use, and it must be 0 or 1 to 8760 hours.
 //
 // receipt_lookup and cancellation have no prerequisite.
 func (s Switches) Check(identity, storage func() error) error {
@@ -74,6 +107,10 @@ func (s Switches) Check(identity, storage func() error) error {
 		return refuse("finite_io requires fresh_payload")
 	case s.RegistrationObservation && !s.FreshPayload:
 		return refuse("registration_observation requires fresh_payload")
+	case s.ReclaimIdleSet && !s.FreshPayload:
+		return refuse("fresh_reclaim_idle_hours requires fresh_payload")
+	case !validIdleHours(s.ReclaimIdleHours):
+		return refuse("fresh_reclaim_idle_hours must be 0 (off) or 1 to 8760")
 	case s.FreshPayload && !s.Cancellation:
 		return refuse("fresh_payload requires cancellation")
 	case !s.FreshPayload:
@@ -95,8 +132,10 @@ func (s Switches) Check(identity, storage func() error) error {
 func refuse(why string) error { return fmt.Errorf("%w: %s", ErrActivation, why) }
 
 // Parse accepts one JSON object with the exact version and any subset of the
-// five switches, each a JSON boolean. An omitted switch is false. Unknown,
-// duplicate or non-boolean keys, null, nesting and trailing data are refused.
+// five switches, each a JSON boolean, and fresh_reclaim_idle_hours, a JSON
+// integer from 0 to 8760 written without a fraction or exponent. An omitted
+// switch is false. Unknown, duplicate or mistyped keys, null, nesting and
+// trailing data are refused.
 func Parse(raw []byte) (Switches, error) {
 	var s Switches
 	if len(raw) == 0 || len(raw) > MaxSize || !utf8.Valid(raw) {
@@ -128,6 +167,14 @@ func Parse(raw []byte) (Switches, error) {
 			}
 			continue
 		}
+		if key == "fresh_reclaim_idle_hours" {
+			hours, ok := idleHours(value)
+			if !ok {
+				return Switches{}, refuse("fresh_reclaim_idle_hours must be a whole number of hours, 0 (off) or 1 to 8760")
+			}
+			s.ReclaimIdleHours, s.ReclaimIdleSet = hours, true
+			continue
+		}
 		target := s.field(key)
 		if target == nil {
 			return Switches{}, refuse("unknown key " + key)
@@ -148,4 +195,19 @@ func Parse(raw []byte) (Switches, error) {
 		return Switches{}, refuse("version is required")
 	}
 	return s, nil
+}
+
+// idleHours accepts only a JSON number that is a plain decimal integer in
+// range: ParseUint refuses a sign, fraction or exponent, and the decoder a
+// leading zero.
+func idleHours(value json.Token) (uint32, bool) {
+	n, ok := value.(json.Number)
+	if !ok {
+		return 0, false
+	}
+	hours, err := strconv.ParseUint(string(n), 10, 32)
+	if err != nil || !validIdleHours(uint32(hours)) {
+		return 0, false
+	}
+	return uint32(hours), true
 }

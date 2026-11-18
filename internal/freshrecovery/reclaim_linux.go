@@ -83,7 +83,7 @@ func reclaimAction(ctx context.Context, r payloadbootstrap.Reclamation, s payloa
 	ran, err = reclaimSteps{
 		phase:     func() (string, error) { return c.i.Phase, nil },
 		leaf:      c.leafPresent,
-		fenced:    func() error { return controlsFenced(r.Storage.Ledger, s.Key, c.i) },
+		fenced:    func() error { return controlsFenced(r.Storage.Ledger, payloadbootstrap.Stem(s), c.i) },
 		idle:      c.live.Idle,
 		contained: c.contained,
 		retain:    func() error { return r.Advance("reclaiming") },

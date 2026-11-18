@@ -24,7 +24,8 @@ func (m Manager) Complete(ctx context.Context, b *model.Bench) (result *model.Be
 	if b.Workspace.InitializationRepair != nil {
 		return nil, workspace.ErrInitializationRepair
 	}
-	if b.Workspace.Phase == "ready" || b.Workspace.Archive != nil {
+	// A reclaimed record replays its completed creation; it has no owner.
+	if b.Workspace.Phase == "ready" || b.Workspace.Archive != nil || b.Workspace.Phase == "reclaiming" || b.Workspace.Phase == "reclaimed" {
 		return b, nil
 	}
 	key, token := b.Key, b.Lease.Token

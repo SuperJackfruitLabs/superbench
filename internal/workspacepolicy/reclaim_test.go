@@ -3,6 +3,7 @@ package workspacepolicy
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
 )
@@ -55,5 +56,21 @@ func TestReclaimPhasesKeepOnlyAReleasedCheckpointedRecord(t *testing.T) {
 	}
 	if Reclaim("ready") || Reclaim("reaped") || !Reclaim("reclaiming") || !Reclaim("reclaimed") {
 		t.Fatal("reclaim phases")
+	}
+}
+
+// A record holds no idle timestamp, or one canonical RFC 3339 UTC time.
+func TestIdleSinceIsAbsentOrCanonicalUTC(t *testing.T) {
+	for value, ok := range map[string]bool{"": true, "2026-11-18T10:00:00Z": true, "2026-11-18T10:00:00.5Z": true,
+		"2026-11-18T10:00:00+01:00": false, "2026-11-18 10:00:00": false, "yesterday": false, "2026-11-18T10:00:00.50Z": false} {
+		b := ReleasedRecord(t)
+		b.Workspace.IdleSince = value
+		if err := Validate(b); (err == nil) != ok {
+			t.Errorf("%q: %v", value, err)
+		}
+		at, held := IdleSince(b)
+		if held != (ok && value != "") || held && at.Format(time.RFC3339Nano) != value {
+			t.Errorf("%q: IdleSince %v %v", value, at, held)
+		}
 	}
 }

@@ -40,7 +40,7 @@ func TestFreshReservationPersistsBeforeEffectsAndBlocksEveryRetry(t *testing.T) 
 				return reservationError
 			}
 		}
-		_, err := p.applyLedger(rows, "bench", key, name, path, 0, p.BenchBytes, p.BenchInodes, 0, fs, reserve, callback)
+		_, err := p.applyLedger(rows, "bench", key, name, path, 0, p.BenchBytes, p.BenchInodes, 0, fs, reserve, callback, nil)
 		return err
 	}
 	if err := apply(l, init); !errors.Is(err, reservationError) || len(l.Assignments) != 0 || calls != 0 {

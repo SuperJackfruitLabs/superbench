@@ -84,11 +84,12 @@ func TestArchitecture(t *testing.T) {
 				"internal/freshliveness":               {},                                           // Root's cgroup and /proc view of a bench in use; no authority.
 				"internal/freshretirement":             {"internal/allocationledger", "internal/hoststorage", "internal/storagecustody", "internal/storageproof"},
 				"internal/freshrecovery":               {"internal/quotaleaf", "internal/cleanworker", "internal/freshliveness", "internal/freshcleanup", "internal/quotahelper", "internal/freshretirement", "internal/gitcontrol", "internal/hoststorage", "internal/payloadbootstrap", "internal/payloadpolicy", "internal/retainedfile", "internal/storagecustody"},
-				"internal/freshrecovery/fixture":       {"internal/cleanworker", "internal/freshcleanup", "internal/freshrecovery", "internal/freshretirement", "internal/hoststorage", "internal/payloadbootstrap", "internal/payloadexec", "internal/quotahelper", "internal/quotaoperation", "internal/quotaoperationcontrol", "internal/quotaoperationjournal", "internal/retainedfile"},
+				"internal/freshrecovery/fixture":       {"internal/allocationledger", "internal/model", "internal/workspacebootstrap", "internal/cleanworker", "internal/freshcleanup", "internal/freshrecovery", "internal/freshretirement", "internal/hoststorage", "internal/payloadbootstrap", "internal/payloadexec", "internal/quotahelper", "internal/quotaoperation", "internal/quotaoperationcontrol", "internal/quotaoperationjournal", "internal/retainedfile"},
 				"internal/hoststorage":                 {"internal/quotaleaf", "internal/allocationledger", "internal/quotaoperationjournal", "internal/storagecustody", "internal/quotapolicy", "internal/storageproof", "internal/hostlayout", "internal/hostpolicy", "internal/quotahelper", "internal/model", "internal/output"},
 				"internal/payloadcache":                {"internal/cachepolicy", "internal/payloadpolicy"},
 				"internal/workspacebootstrap":          {"internal/hoststorage", "internal/model", "internal/operationcontrol", "internal/payloadbootstrap", "internal/quotahelper", "internal/serviceidentity", "internal/workspacecopy", "internal/workspacepolicy"},
-				"internal/payloadbootstrap":            {"internal/freshretirement", "internal/quotaoperationcontrol", "internal/execution", "internal/gitcontrol", "internal/hoststorage", "internal/payloadexec", "internal/quotahelper", "internal/quotaoperation", "internal/quotaoperationjournal", "internal/retainedfile", "internal/serviceidentity", "internal/storagecustody", "internal/repository", "internal/workspaceplan"},
+				"internal/freshgeneration":             {}, // Names a key's generations; no authority.
+				"internal/payloadbootstrap":            {"internal/freshgeneration", "internal/freshretirement", "internal/quotaoperationcontrol", "internal/execution", "internal/gitcontrol", "internal/hoststorage", "internal/payloadexec", "internal/quotahelper", "internal/quotaoperation", "internal/quotaoperationjournal", "internal/retainedfile", "internal/serviceidentity", "internal/storagecustody", "internal/repository", "internal/workspaceplan"},
 				"internal/retainedfile":                {"internal/storagecustody"},
 				"internal/payloadpolicy":               {}, // Pure fixed-policy codec; no execution authority.
 				"internal/serviceidentity":             {"internal/payloadpolicy"},
@@ -115,7 +116,7 @@ func TestArchitecture(t *testing.T) {
 				"internal/buildinfo":                   {}, // Release version stamp; no dependencies.
 				"internal/finiteio":                    {},
 				"internal/protocolv2":                  {"internal/checkpointset", "internal/model", "internal/finiteio"},
-				"internal/workspacepolicy":             {"internal/checkpointset", "internal/model", "internal/quotapolicy", "internal/repository"},
+				"internal/workspacepolicy":             {"internal/freshgeneration", "internal/checkpointset", "internal/model", "internal/quotapolicy", "internal/repository"},
 				"internal/workspace":                   {"internal/freshtree", "internal/memberinspect", "internal/hostidentity", "internal/handoffjournal", "internal/crosshost", "internal/workspacematerialize", "internal/operationcontrol", "internal/workspacecopy", "internal/transferguard", "internal/workspaceplan", "internal/worktreetransfer", "internal/reftransfer", "internal/workspacepolicy", "internal/benchstate", "internal/statepath", "internal/creation", "internal/checkpointset", "internal/model", "internal/quotapolicy", "internal/repository", "internal/setup"},
 				"internal/workspaceplan":               {"internal/checkpointset", "internal/model", "internal/quotapolicy", "internal/repository", "internal/setup"},
 				"internal/execution":                   {"internal/cachepolicy"},
@@ -126,7 +127,8 @@ func TestArchitecture(t *testing.T) {
 				"internal/retention":                   {"internal/history", "internal/reap"},
 				"internal/maintenance":                 {"internal/retention", "internal/reap"},
 				"internal/workspacereclaim":            {"internal/benchstate", "internal/freshtree", "internal/hoststorage", "internal/model", "internal/operationcontrol", "internal/payloadbootstrap", "internal/quotahelper", "internal/serviceidentity", "internal/workspace", "internal/workspacepolicy"},
-				"internal/workspaceops":                {"internal/workspacereclaim", "internal/finiteio", "internal/payloadstage", "internal/workspaceprep", "internal/bench", "internal/execution", "internal/model", "internal/protocolv2", "internal/workspace", "internal/archivepolicy"},
+				"internal/workspaceidle":               {"internal/benchstate", "internal/freshtree", "internal/model", "internal/workspace", "internal/workspacepolicy"},
+				"internal/workspaceops":                {"internal/workspaceidle", "internal/workspacereclaim", "internal/finiteio", "internal/payloadstage", "internal/workspaceprep", "internal/bench", "internal/execution", "internal/model", "internal/protocolv2", "internal/workspace", "internal/archivepolicy"},
 				"internal/workspaceapi":                {"internal/bench", "internal/model", "internal/protocolv2", "internal/workspaceops"},
 				"internal/operationreceipts":           {"internal/operationcontrol", "internal/finiteio"},
 				"internal/operationbody":               {"internal/protocolv2"},                                                         // Body bound and profile classification only.

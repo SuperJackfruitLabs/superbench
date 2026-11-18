@@ -10,10 +10,18 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/freshgeneration"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspaceplan"
 )
 
 const Version = "superbench.payload-bootstrap.v1"
+
+// GenerationVersion is a later generation of a key whose earlier generation
+// was reclaimed: it names its generation (2 or more) and the reclaimed
+// generation's workspace ID. A v1 spec is the first generation, and its
+// canonical bytes are unchanged.
+const GenerationVersion = "superbench.payload-bootstrap.v2"
+
 const MaxSpec = 64 << 10
 
 var ErrBootstrap = errors.New("fresh registered payload bootstrap refused")
@@ -27,10 +35,19 @@ type Spec struct {
 	Version, Key, ID, CheckpointRepository string
 	QuotaBytes                             uint64
 	Members                                []Member
+	Generation                             uint32 `json:",omitempty"`
+	Previous                               string `json:",omitempty"`
 }
 
+func (s Spec) generationValid() bool {
+	return s.Version == Version && s.Generation == 0 && s.Previous == "" || s.Version == GenerationVersion && freshgeneration.Later(s.Generation, s.Previous, s.ID)
+}
+
+// Stem names a generation's retained bootstrap files (freshgeneration.Stem).
+func Stem(s Spec) string { return freshgeneration.Stem(s.Key, s.Generation) }
+
 func (s Spec) Validate() error {
-	if s.Version != Version || !name.MatchString(s.Key) || !id.MatchString(s.ID) || len(s.Members) == 0 || len(s.Members) > 32 || s.QuotaBytes > 1<<50 || s.QuotaBytes != 0 && (s.QuotaBytes < 1024 || s.QuotaBytes%1024 != 0) {
+	if !s.generationValid() || !name.MatchString(s.Key) || !id.MatchString(s.ID) || len(s.Members) == 0 || len(s.Members) > 32 || s.QuotaBytes > 1<<50 || s.QuotaBytes != 0 && (s.QuotaBytes < 1024 || s.QuotaBytes%1024 != 0) {
 		return ErrBootstrap
 	}
 	last := ""

@@ -7,7 +7,7 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_REVISION = "04813138dd1dc32aef2e528fc08dd7e76cca92f5"
+DEFAULT_REVISION = "83e51d583a71f668eec8c2093394613e002c1678"
 treaty = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else ROOT.parent / "treaty"
 requested = sys.argv[2] if len(sys.argv) > 2 else DEFAULT_REVISION
 revision = subprocess.check_output(

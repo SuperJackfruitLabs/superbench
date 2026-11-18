@@ -113,7 +113,7 @@ func (m Manager) Stage(ctx context.Context, creationID string, spec Spec) (*mode
 	}
 	spec, _ = normalize(spec)
 	return m.stage(ctx, stagingRequest{
-		key: spec.Key, creationID: creationID, explicitQuota: spec.QuotaBytes,
+		key: spec.Key, creationID: creationID, explicitQuota: spec.QuotaBytes, successor: true,
 		matches: func(b *model.Bench) bool { return matchesRequest(b, creationID, spec, m.Data) },
 		selectPlan: func(ctx context.Context, timeout time.Duration) (Plan, error) {
 			return (Planner{Mirrors: repository.Mirrors{State: m.State, Data: m.Data, Timeout: timeout}, Git: m.Git}).Select(ctx, spec)
@@ -133,6 +133,7 @@ type stagingRequest struct {
 	explicitQuota   uint64
 	recoveredFrom   *model.WorkspaceRecovery
 	matches         func(*model.Bench) bool
+	successor       bool // a plain create, which may follow a reclaimed record
 	selectPlan      func(context.Context, time.Duration) (Plan, error)
 }
 
@@ -161,7 +162,7 @@ func (m Manager) stage(ctx context.Context, request stagingRequest) (*model.Benc
 	var committed *model.Bench
 	err := m.Within(func(update Update) error {
 		// Even an idempotent retry first enters migration/lookup under the host lock.
-		var found *model.Bench
+		var found, predecessor *model.Bench
 		if err := update(func(rows benchstate.Database, tx *sql.Tx) error {
 			if request.crossHost == nil {
 				if err := handoffjournal.Unreserved(tx, request.key); err != nil {
@@ -176,7 +177,9 @@ func (m Manager) stage(ctx context.Context, request stagingRequest) (*model.Benc
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-			if b, ok := rows[request.key]; ok {
+			if b := rows[request.key]; request.successor && b != nil && b.Workspace != nil && b.Workspace.Phase == "reclaimed" && !request.matches(b) {
+				predecessor = privateRecord(b) // A create on a reclaimed key starts its next generation.
+			} else if b, ok := rows[request.key]; ok {
 				if b.Workspace != nil && (b.Workspace.Transfer != nil || b.Workspace.TransferredFrom != nil && request.transferID != b.Workspace.TransferredFrom.ID) {
 					return ErrTransfer
 				}
@@ -240,6 +243,9 @@ func (m Manager) stage(ctx context.Context, request stagingRequest) (*model.Benc
 			if err != nil {
 				return err
 			}
+			if predecessor != nil && (m.Fresh == nil || workspacepolicy.Follow(candidate, predecessor) != nil) {
+				return errors.New("a reclaimed key is created again only as a Fresh bench of its next generation")
+			}
 			if request.transferredFrom != nil {
 				origin := *request.transferredFrom
 				candidate.Workspace.TransferredFrom = &origin
@@ -256,7 +262,7 @@ func (m Manager) stage(ctx context.Context, request stagingRequest) (*model.Benc
 				if err := ctx.Err(); err != nil {
 					return err
 				}
-				if _, ok := rows[request.key]; ok {
+				if b, ok := rows[request.key]; ok && !reflect.DeepEqual(b, predecessor) {
 					return errors.New("workspace identity appeared during source selection")
 				}
 				if err := m.stageTransferCheck(ctx, tx, candidate); err != nil {

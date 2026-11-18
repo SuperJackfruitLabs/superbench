@@ -21,7 +21,7 @@ import (
 type materialized struct{ SpecSHA256, PolicyDigest, HostID, BootID string }
 
 func (m *Manager) controlState(s Spec) string {
-	return filepath.Join(m.storage.Ledger, "payload-bootstrap", s.Key+".controls")
+	return filepath.Join(m.storage.Ledger, "payload-bootstrap", Stem(s)+".controls")
 }
 func (m *Manager) clearControls(i intent) error {
 	info, err := os.Lstat(m.controlState(i.Spec))

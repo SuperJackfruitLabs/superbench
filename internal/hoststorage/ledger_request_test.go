@@ -142,7 +142,7 @@ func TestVersionedLedgerIdentityAndBindingCannotBeAmbiguous(t *testing.T) {
 			case "missing-binding":
 				l.Binding = nil
 			case "future-version":
-				l.FormatVersion = 4
+				l.FormatVersion = 5
 			case "unknown-version":
 				l.FormatVersion = 1
 			case "legacy-new-identity":

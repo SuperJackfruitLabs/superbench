@@ -25,6 +25,8 @@ for canonical, local in {
     "schemas/superbench/response.v2.json": "response.v2.json",
     "fixtures/superbench-api/workspace-responses.json": "workspace-responses.json",
     "fixtures/superbench-api/workspace-lifecycle.json": "workspace-lifecycle.json",
+    "fixtures/superbench-api/reclaim.json": "reclaim.json",
+    "fixtures/superbench-api/reclaim-lifecycle.json": "reclaim-lifecycle.json",
 }.items():
     raw = subprocess.check_output(
         ["git", "-C", str(treaty), "show", revision + ":" + canonical]
