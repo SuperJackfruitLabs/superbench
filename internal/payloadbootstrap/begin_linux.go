@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/freshgeneration"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/storagecustody"
 )
@@ -24,8 +25,22 @@ func (m *Manager) Begin(ctx context.Context, s Spec) error {
 		// reservation can survive a crash without a bootstrap intent. This is
 		// evidence for explicit recovery, never permission to repeat Begin.
 		reserved := intent{Spec: s, Operation: m.operation, PolicyDigest: m.digest, Phase: "reserved"}
-
-		_, err := m.storage.ApplyFreshRequested(s.Key, s.QuotaBytes, func() error {
+		apply := m.storage.ApplyFreshRequested
+		if s.Generation != 0 {
+			// A later generation follows only its reclaimed predecessor, and
+			// takes a new project in place of exactly that one's tombstone.
+			previous, err := m.predecessor(s)
+			if err == nil {
+				err = freshgeneration.LayoutAbsent(m.policy.StateRoot, s.Key)
+			}
+			if err != nil {
+				return err
+			}
+			apply = func(key string, quota uint64, reserve func() error, initialize func(hoststorage.Assignment) error) (hoststorage.Assignment, error) {
+				return m.storage.ApplyFreshSuccessor(key, quota, hoststorage.Assignment{Path: previous.Path, ProjectID: previous.ProjectID}, reserve, initialize)
+			}
+		}
+		_, err := apply(s.Key, s.QuotaBytes, func() error {
 			return m.write(reserved, true)
 		}, func(a hoststorage.Assignment) error {
 			if err := m.check(); err != nil {

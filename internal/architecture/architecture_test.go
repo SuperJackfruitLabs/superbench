@@ -88,7 +88,8 @@ func TestArchitecture(t *testing.T) {
 				"internal/hoststorage":                 {"internal/quotaleaf", "internal/allocationledger", "internal/quotaoperationjournal", "internal/storagecustody", "internal/quotapolicy", "internal/storageproof", "internal/hostlayout", "internal/hostpolicy", "internal/quotahelper", "internal/model", "internal/output"},
 				"internal/payloadcache":                {"internal/cachepolicy", "internal/payloadpolicy"},
 				"internal/workspacebootstrap":          {"internal/hoststorage", "internal/model", "internal/operationcontrol", "internal/payloadbootstrap", "internal/quotahelper", "internal/serviceidentity", "internal/workspacecopy", "internal/workspacepolicy"},
-				"internal/payloadbootstrap":            {"internal/freshretirement", "internal/quotaoperationcontrol", "internal/execution", "internal/gitcontrol", "internal/hoststorage", "internal/payloadexec", "internal/quotahelper", "internal/quotaoperation", "internal/quotaoperationjournal", "internal/retainedfile", "internal/serviceidentity", "internal/storagecustody", "internal/repository", "internal/workspaceplan"},
+				"internal/freshgeneration":             {}, // Names a key's generations; no authority.
+				"internal/payloadbootstrap":            {"internal/freshgeneration", "internal/freshretirement", "internal/quotaoperationcontrol", "internal/execution", "internal/gitcontrol", "internal/hoststorage", "internal/payloadexec", "internal/quotahelper", "internal/quotaoperation", "internal/quotaoperationjournal", "internal/retainedfile", "internal/serviceidentity", "internal/storagecustody", "internal/repository", "internal/workspaceplan"},
 				"internal/retainedfile":                {"internal/storagecustody"},
 				"internal/payloadpolicy":               {}, // Pure fixed-policy codec; no execution authority.
 				"internal/serviceidentity":             {"internal/payloadpolicy"},
@@ -115,7 +116,7 @@ func TestArchitecture(t *testing.T) {
 				"internal/buildinfo":                   {}, // Release version stamp; no dependencies.
 				"internal/finiteio":                    {},
 				"internal/protocolv2":                  {"internal/checkpointset", "internal/model", "internal/finiteio"},
-				"internal/workspacepolicy":             {"internal/checkpointset", "internal/model", "internal/quotapolicy", "internal/repository"},
+				"internal/workspacepolicy":             {"internal/freshgeneration", "internal/checkpointset", "internal/model", "internal/quotapolicy", "internal/repository"},
 				"internal/workspace":                   {"internal/freshtree", "internal/memberinspect", "internal/hostidentity", "internal/handoffjournal", "internal/crosshost", "internal/workspacematerialize", "internal/operationcontrol", "internal/workspacecopy", "internal/transferguard", "internal/workspaceplan", "internal/worktreetransfer", "internal/reftransfer", "internal/workspacepolicy", "internal/benchstate", "internal/statepath", "internal/creation", "internal/checkpointset", "internal/model", "internal/quotapolicy", "internal/repository", "internal/setup"},
 				"internal/workspaceplan":               {"internal/checkpointset", "internal/model", "internal/quotapolicy", "internal/repository", "internal/setup"},
 				"internal/execution":                   {"internal/cachepolicy"},

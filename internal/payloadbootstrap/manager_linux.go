@@ -106,5 +106,5 @@ func (m *Manager) check() error {
 }
 func (m *Manager) root(s Spec) string { return filepath.Join(m.policy.DataRoot, "benches", s.Key) }
 func (m *Manager) intentPath(s Spec) string {
-	return filepath.Join(m.storage.Ledger, "payload-bootstrap", s.Key+".json")
+	return filepath.Join(m.storage.Ledger, "payload-bootstrap", Stem(s)+".json")
 }
