@@ -164,7 +164,8 @@ func exactly(dir *os.File, want []string) error {
 	}
 	slices.Sort(names)
 	sorted := slices.Sorted(slices.Values(want))
-	if !slices.Equal(names, sorted) || st.Nlink != uint64(2+len(want)) {
+	// Nlink is uint64 on amd64 and uint32 on arm64.
+	if !slices.Equal(names, sorted) || uint64(st.Nlink) != uint64(2+len(want)) {
 		return ErrRecovery
 	}
 	return nil
