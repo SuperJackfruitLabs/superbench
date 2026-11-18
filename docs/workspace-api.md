@@ -6,10 +6,11 @@ accepted host-local boundary remains in Charter; the grouped request and respons
 extensions are proposed treaty data. Existing scalar v1 callers remain supported.
 
 The response schema, client/producer corpus and runtime obligation list are pinned
-to treaty `63af0f8675ef2a35188465884c4416a190f6f41f`, extending the original
-response proposal merged through [treaty #34](https://forge.superjackfruit.com/SuperJackfruitLabs/treaty/pulls/34).
+to treaty `83e51d583a71f668eec8c2093394613e002c1678`, extending the original
+response proposal merged through [treaty #34](https://forge.superjackfruit.com/SuperJackfruitLabs/treaty/pulls/34)
+with the reclaim vectors and phases of [treaty #49](https://forge.superjackfruit.com/SuperJackfruitLabs/treaty/pulls/49).
 `scripts/sync-workspace-responses.py` reads committed Git objects; tests verify
-the exact revision and three file hashes. Request and scalar-v1 pins remain
+the exact revision and five file hashes, and run the reclaim corpus. Request and scalar-v1 pins remain
 independent. Merging a proposed contract does not establish consumer acceptance.
 
 An outgoing original-ref transfer reports optional `transfer_state` as

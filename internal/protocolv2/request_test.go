@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-const canonicalRevision = "04813138dd1dc32aef2e528fc08dd7e76cca92f5"
+const canonicalRevision = "83e51d583a71f668eec8c2093394613e002c1678"
 
 func TestMandatoryPinnedWorkspaceCorpus(t *testing.T) {
 	raw, err := os.ReadFile("testdata/workspace-operations.json")
@@ -85,7 +85,7 @@ func TestPinnedSourceHashes(t *testing.T) {
 	}
 	want := map[string]string{"schemas/superbench/operation.v2.json": "operation.v2.json", "fixtures/superbench-api/workspace-operations.json": "workspace-operations.json"}
 	hashes := map[string]string{
-		"operation.v2.json":         "201abdbddcefcb8629246f38214a61ed3e3dfb59e3d851a9dfebd2e0096940a6",
+		"operation.v2.json":         "22bab58e95060c86010063857e5495e990530279e3c528e8f43ec3d6ed7cc1fc",
 		"workspace-operations.json": "a591ed9ee5f621824cdc33129fb4542d0e2af44ea43ee74bf8fda767df0ad120",
 	}
 	if len(source.Files) != len(want) {
