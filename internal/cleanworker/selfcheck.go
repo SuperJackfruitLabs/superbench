@@ -52,12 +52,13 @@ func verifyKeyring(current, root int32) error {
 }
 
 // statusKeys are checked in this order, so a refusal names its first cause.
-var statusKeys = []string{"TracerPid:", "Uid:", "Gid:", "Groups:", "CapInh:", "CapPrm:", "CapEff:", "CapBnd:", "CapAmb:", "NoNewPrivs:"}
+var statusKeys = []string{"TracerPid:", "Uid:", "Gid:", "Groups:", "CapInh:", "CapPrm:", "CapEff:", "CapBnd:", "CapAmb:", "NoNewPrivs:", "Seccomp:"}
 
 // verifyStatus requires /proc/self/status to show no tracer (the worker became
 // non-dumpable first, so no later attach can succeed, and one made before is
 // caught here), exactly the daemon uid and gid in every slot, no supplementary groups, every capability set empty and
-// no_new_privs, each line exactly once, as payloadexec's verifyDropped does.
+// no_new_privs and seccomp filter mode, each line exactly once, as
+// payloadexec's verifyDropped does.
 func verifyStatus(raw []byte, want Identity) error {
 	if len(raw) > 64<<10 {
 		return fmt.Errorf("%w: status", ErrWorker)
@@ -65,7 +66,7 @@ func verifyStatus(raw []byte, want Identity) error {
 	u, g := strconv.FormatUint(uint64(want.UID), 10), strconv.FormatUint(uint64(want.GID), 10)
 	zero := "0000000000000000"
 	wanted := map[string]string{"TracerPid:": "0", "Uid:": strings.Join([]string{u, u, u, u}, " "), "Gid:": strings.Join([]string{g, g, g, g}, " "), "Groups:": "",
-		"CapInh:": zero, "CapPrm:": zero, "CapEff:": zero, "CapBnd:": zero, "CapAmb:": zero, "NoNewPrivs:": "1"}
+		"CapInh:": zero, "CapPrm:": zero, "CapEff:": zero, "CapBnd:": zero, "CapAmb:": zero, "NoNewPrivs:": "1", "Seccomp:": "2"}
 	seen := map[string]string{}
 	for _, line := range strings.Split(string(raw), "\n") {
 		key, value, _ := strings.Cut(line, "\t")

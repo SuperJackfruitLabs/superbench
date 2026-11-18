@@ -14,6 +14,11 @@ var (
 	ErrReclaimPayloadActive = freshliveness.ErrPayloadActive
 )
 
+// ErrReclaimEscaped refuses a reclaim whose tree has an entry outside the
+// bench's quota project or a directory without the project-inherit flag. Root
+// changes nothing: the operator restores the project, then retries.
+var ErrReclaimEscaped = errors.New("fresh reclaim refused: the bench tree has entries outside its quota project")
+
 // errLeafGone refuses a completed bench whose leaf is already missing: that is
 // not a reclaim's to finish, and Fresh recovery inspects it instead.
 var errLeafGone = errors.New("fresh reclaim refused: a completed bench's leaf is missing; inspect it with Fresh recovery")
@@ -52,9 +57,10 @@ type reclaimSteps struct {
 	// fenced requires the bootstrap's Git controls fenced.
 	fenced func() error
 	// idle refuses (ErrReclaimBusy) when root's own check, never the daemon's
-	// record, sees the bench in use. It is best-effort and point in time; the
-	// empty-leaf removal and the zero-usage retirement are the guarantees. It
-	// runs before retention and again before the purge.
+	// record, sees the bench in use. It is point in time; the empty-leaf
+	// removal and the zero-usage retirement are the guarantees. It also
+	// refuses (ErrReclaimEscaped) a tree with anything outside the bench's
+	// project. It runs before retention and again before the purge.
 	idle func() error
 	// retain moves the intent completed -> reclaiming, before any effect.
 	retain func() error

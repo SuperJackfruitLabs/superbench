@@ -16,6 +16,7 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/hoststorage"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/payloadbootstrap"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotahelper"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/quotaleaf"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/storagecustody"
 	"golang.org/x/sys/unix"
 )
@@ -83,7 +84,12 @@ func reclaimAction(ctx context.Context, r payloadbootstrap.Reclamation, s payloa
 		phase:  func() (string, error) { return c.i.Phase, nil },
 		leaf:   c.leafPresent,
 		fenced: func() error { return controlsFenced(r.Storage.Ledger, s.Key, c.i) },
-		idle:   c.live.Idle,
+		idle: func() error {
+			if err := c.live.Idle(); err != nil {
+				return err
+			}
+			return c.contained()
+		},
 		retain: func() error { return r.Advance("reclaiming") },
 		purge:  func() error { return c.purge(ctx) },
 		remove: func() error { return c.active(c.remove(ctx)) },
@@ -208,6 +214,31 @@ func (c *reclaiming) leafPresent() (bool, error) {
 	return true, nil
 }
 
+// contained refuses (ErrReclaimEscaped) a present tree with any directory or
+// regular file outside the bench's project, or any directory without the
+// inherit flag. Root walks it through descriptors only, never following a
+// symlink or opening a FIFO, socket or device, bounded by the inode cap.
+func (c *reclaiming) contained() error {
+	benches, leaf, _, err := c.holdLeaf()
+	if errors.Is(err, errAbsent) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	defer benches.Close()
+	defer leaf.Close()
+	return c.treeContained(leaf)
+}
+
+func (c *reclaiming) treeContained(leaf *os.File) error {
+	err := quotaleaf.Tree(leaf, c.assignment.ProjectID, int(c.assignment.Inodes))
+	if errors.Is(err, quotaleaf.ErrLeafProject) || errors.Is(err, quotaleaf.ErrTreeProject) || errors.Is(err, quotaleaf.ErrTreeLimit) {
+		return errors.Join(ErrReclaimEscaped, err)
+	}
+	return err
+}
+
 // purge has the payload-uid worker empty the leaf. Root opens none of it.
 func (c *reclaiming) purge(ctx context.Context) error {
 	target := cleanworker.Target{Device: c.parent.Device, Inode: c.i.RecordedRoot.Inode, ProjectID: c.assignment.ProjectID}
@@ -228,6 +259,10 @@ func (c *reclaiming) remove(ctx context.Context) error {
 		}
 		defer benches.Close()
 		defer leaf.Close()
+		// The emptied leaf itself must still carry the project and inherit flag.
+		if err = c.treeContained(leaf); err != nil {
+			return err
+		}
 		if err = rmdirAt(benches, leaf, c.key, nodeOf(st)); err != nil {
 			return err
 		}

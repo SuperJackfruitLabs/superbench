@@ -9,6 +9,7 @@ import (
 	"os"
 	"syscall"
 
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/payloadconfine"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/reap"
 )
 
@@ -108,7 +109,15 @@ func isolate() error {
 	if _, _, errno := syscall.RawSyscall(syscall.SYS_PRCTL, prSetDumpable, 0, 0); errno != 0 {
 		return fmt.Errorf("%w: dumpable: %v", ErrWorker, errno)
 	}
-	return noNewPrivs()
+	if err := noNewPrivs(); err != nil {
+		return err
+	}
+	// A purge runs as the payload account, which could otherwise move entries
+	// out of the bench's quota project; every worker gets the payload filter.
+	if err := payloadconfine.Install(); err != nil {
+		return fmt.Errorf("%w: %v", ErrWorker, err)
+	}
+	return nil
 }
 
 // checkKeyring requires the session keyring the worker inherited from root's

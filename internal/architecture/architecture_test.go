@@ -58,8 +58,9 @@ func TestArchitecture(t *testing.T) {
 				"internal/workspacematerialize":        {"internal/workspaceplan", "internal/creation", "internal/model", "internal/repository"},
 				"internal/handoffjournal":              {"internal/crosshost", "internal/quotapolicy"},
 				"internal/crosshost":                   {"internal/model"},
-				"internal/lowerfixture":                {"internal/storagecustody"},                                            // Fixture-only helpers, tag freshstoragefixture.
-				"internal/confinefixture":              {"internal/hoststorage", "internal/payloadexec", "internal/quotaleaf"}, // Fixture-only, tag freshstoragefixture.
+				"internal/lowerfixture":                {"internal/storagecustody"}, // Fixture-only helpers, tag freshstoragefixture.
+				"internal/projectscan":                 {"internal/allocationledger", "internal/quotaleaf", "internal/storagecustody"},
+				"internal/confinefixture":              {"internal/hoststorage", "internal/payloadexec", "internal/projectscan", "internal/quotaleaf"}, // Fixture-only, tag freshstoragefixture.
 				"internal/workspaceinit":               {"internal/model", "internal/workspace"},
 				"internal/controlcontext":              {"internal/benchstate", "internal/statestore", "internal/execution", "internal/gitcontrol", "internal/operationcontrol"},
 				"internal/bench":                       {"internal/workspacebootstrap", "internal/localprep", "internal/handoffjournal", "internal/controlcontext", "internal/operationcancel", "internal/operationcontrol", "internal/workspaceinit", "internal/runprotection", "internal/workspacerepair", "internal/workspacearchive", "internal/stageexec", "internal/workspaceprep", "internal/workspace", "internal/benchstate", "internal/statestore", "internal/statepath", "internal/gitcontrol", "internal/quotapolicy", "internal/cachepolicy", "internal/archivepolicy", "internal/model", "internal/creation", "internal/repository", "internal/output", "internal/execution", "internal/setup", "internal/hoststorage", "internal/reap", "internal/history", "internal/retention"},
@@ -79,10 +80,10 @@ func TestArchitecture(t *testing.T) {
 				"internal/storageproof":                {"internal/quotahelper", "internal/allocationledger", "internal/storagecustody"},
 				"internal/allocationledger":            {"internal/quotapolicy"},
 				"internal/freshcleanup":                {"internal/payloadpolicy", "internal/quotaoperation", "internal/reap"},
-				"internal/cleanworker":                 {"internal/reap"}, // The unprivileged worker: frames, self-checks, owner-only deletion.
-				"internal/freshliveness":               {},                // Root's cgroup and /proc view of a bench in use; no authority.
+				"internal/cleanworker":                 {"internal/payloadconfine", "internal/reap"}, // The unprivileged worker: frames, self-checks, owner-only deletion.
+				"internal/freshliveness":               {},                                           // Root's cgroup and /proc view of a bench in use; no authority.
 				"internal/freshretirement":             {"internal/allocationledger", "internal/hoststorage", "internal/storagecustody", "internal/storageproof"},
-				"internal/freshrecovery":               {"internal/cleanworker", "internal/freshliveness", "internal/freshcleanup", "internal/quotahelper", "internal/freshretirement", "internal/gitcontrol", "internal/hoststorage", "internal/payloadbootstrap", "internal/payloadpolicy", "internal/retainedfile", "internal/storagecustody"},
+				"internal/freshrecovery":               {"internal/quotaleaf", "internal/cleanworker", "internal/freshliveness", "internal/freshcleanup", "internal/quotahelper", "internal/freshretirement", "internal/gitcontrol", "internal/hoststorage", "internal/payloadbootstrap", "internal/payloadpolicy", "internal/retainedfile", "internal/storagecustody"},
 				"internal/freshrecovery/fixture":       {"internal/cleanworker", "internal/freshcleanup", "internal/freshrecovery", "internal/freshretirement", "internal/hoststorage", "internal/payloadbootstrap", "internal/payloadexec", "internal/quotahelper", "internal/quotaoperation", "internal/quotaoperationcontrol", "internal/quotaoperationjournal", "internal/retainedfile"},
 				"internal/hoststorage":                 {"internal/quotaleaf", "internal/allocationledger", "internal/quotaoperationjournal", "internal/storagecustody", "internal/quotapolicy", "internal/storageproof", "internal/hostlayout", "internal/hostpolicy", "internal/quotahelper", "internal/model", "internal/output"},
 				"internal/payloadcache":                {"internal/cachepolicy", "internal/payloadpolicy"},
@@ -139,7 +140,7 @@ func TestArchitecture(t *testing.T) {
 				"internal/scalarapi":                   {"internal/bench"},
 				"internal/failurelog":                  {"internal/protocol", "internal/protocolv2"},
 				"cmd/bench-payload":                    {"internal/payloadexec"},
-				"cmd/bench-quota":                      {"internal/cleanworker", "internal/freshrecovery", "internal/payloadbootstrap", "internal/hoststorage", "internal/quotahelper", "internal/quotaoperation", "internal/quotaoperationcontrol"},
+				"cmd/bench-quota":                      {"internal/projectscan", "internal/cleanworker", "internal/freshrecovery", "internal/payloadbootstrap", "internal/hoststorage", "internal/quotahelper", "internal/quotaoperation", "internal/quotaoperationcontrol"},
 
 				"internal/quotaoperationjournal": {"internal/quotaoperation"},
 				"internal/quotaoperationcontrol": {"internal/hoststorage", "internal/quotaoperationjournal", "internal/payloadexec", "internal/serviceidentity", "internal/storagebootstrap", "internal/storagecustody"},
