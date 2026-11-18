@@ -9,7 +9,8 @@
 // does. Only the booted maintenance gate is replaced, by the caller's hook.
 // It then reclaims completed benches made through the real Bootstrap, as the
 // payload account, under the reclaim operation's own identity (reclaim_linux.go),
-// and creates a reclaimed key's next generation (recreate_linux.go).
+// and creates a reclaimed key's next generation (recreate_linux.go), both
+// from a branch the mirror holds only as a remote-tracking ref (moved_linux.go).
 // On failure every leak is retained as evidence.
 package fixture
 
@@ -76,6 +77,8 @@ var Markers = []string{
 	"LOWER_RECREATE_OLD_EVIDENCE_RETAINED_PASS",
 	"LOWER_RECREATE_OLD_PROJECT_NOT_REVIVED_PASS",
 	"LOWER_RECREATE_SECOND_GENERATION_RECLAIMED_PASS",
+	"LOWER_FRESH_CREATE_FROM_MOVED_BRANCH_PASS",
+	"LOWER_RECREATE_FROM_MOVED_BRANCH_PASS",
 }
 
 // Logged requires the child's log to hold every marker exactly once.
@@ -170,6 +173,7 @@ func Run(t *testing.T, gate Gate) {
 	t.Log("FRESH_RECOVERY_ALL_LEAKS_RETIRED_PASS")
 	e.reclaims()
 	e.recreates()
+	e.movedBranches()
 }
 
 // newLeak reserves a real Fresh allocation under a real operation, stops it

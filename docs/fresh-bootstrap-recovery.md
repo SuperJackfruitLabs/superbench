@@ -418,3 +418,30 @@ each logged alone on its line, are
 `LOWER_RECREATE_OLD_EVIDENCE_RETAINED_PASS`,
 `LOWER_RECREATE_OLD_PROJECT_NOT_REVIVED_PASS` and
 `LOWER_RECREATE_SECOND_GENERATION_RECLAIMED_PASS`.
+
+### The source commit
+
+A member's source is often not on any local branch of the daemon's mirror. The
+mirror's refresh keeps the remote's branches under `refs/remotes/origin/*`, so
+a card branch pushed past `main`, such as the branch an earlier generation
+checkpointed, is there only as a remote-tracking ref. `git clone --no-local`
+copies only the mirror's local branches. So after the clone, and before the
+checkout, each member fetches exactly the source object ID from the same mirror
+path, as the daemon account under the same fixed options and scope as every
+other bootstrap command:
+
+```
+git -c protocol.version=2 fetch --no-tags --no-write-fetch-head --no-auto-maintenance --recurse-submodules=no --refmap= -- MIRROR SOURCE
+```
+
+`MIRROR` is the daemon's own path for the registered repository and `SOURCE`
+the spec's validated object ID, which the mirror was already checked to hold as
+a commit. The fetch creates no ref and no `FETCH_HEAD`, never contacts the
+network and never writes the mirror; the bench gets only the branch the spec
+names. Protocol v2 is set because it serves any commit the mirror holds, not
+only the tips it advertises. The final check still requires `HEAD` to be the
+branch at exactly `SOURCE`.
+
+The lower fixture proves a Fresh create and a reclaimed key's next generation
+from such a branch, with the markers `LOWER_FRESH_CREATE_FROM_MOVED_BRANCH_PASS`
+and `LOWER_RECREATE_FROM_MOVED_BRANCH_PASS`.
