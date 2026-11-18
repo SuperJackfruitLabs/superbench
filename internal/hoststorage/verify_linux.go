@@ -17,8 +17,9 @@ import (
 	"time"
 )
 
-// VerifyStorage inspects only an already allocated logical bench. In particular
-// it never calls Apply, creates a lock/ledger/anchor, or touches the bench path.
+// VerifyStorage inspects only an already allocated logical bench. It never
+// calls Apply or creates a lock, ledger or anchor; it only opens benches/KEY
+// (no symlink followed) to read the leaf's project ID and inherit flag.
 func (p Policy) VerifyStorage(ctx context.Context, key string) (StorageIdentity, error) {
 	return p.verifyStorage(ctx, key, false, nil)
 }
@@ -86,8 +87,13 @@ func (p Policy) inspectStorage(ctx context.Context, key string, locked bool, ori
 			return zero, e
 		}
 		defer lock.Close()
-		if e = syscall.Flock(int(lock.Fd()), syscall.LOCK_SH|syscall.LOCK_NB); e != nil {
-			return zero, errors.New("quota ledger is busy")
+		// Another bench's create or retire holds it briefly: wait up to 5s.
+		for start := time.Now(); ; time.Sleep(50 * time.Millisecond) {
+			if e = syscall.Flock(int(lock.Fd()), syscall.LOCK_SH|syscall.LOCK_NB); e == nil {
+				break
+			} else if !errors.Is(e, syscall.EWOULDBLOCK) || time.Since(start) > 5*time.Second || ctx.Err() != nil {
+				return zero, errors.New("quota ledger is busy")
+			}
 		}
 		defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
 	}
