@@ -6,6 +6,13 @@ stamps the section `## vX.Y.Z — YYYY-MM-DD`, and the release notes quote it.
 
 ## Unreleased
 
+- A Fresh create whose source commit the mirror held only under `refs/remotes/origin/*` failed
+  with `bench-quota: exit status 128` and stayed at `materializing`. That was any branch already
+  pushed past `main`: the next generation of a reclaimed key whose bench had pushed work, or a
+  create on a card branch with commits. Each member's clone now fetches exactly the source
+  commit from the daemon's mirror before the checkout; nothing is fetched from the network, no
+  other branch is copied into the bench and the mirror is not written. A bench already stuck at
+  `materializing` from this still needs the recovery steps in `docs/fresh-bootstrap-recovery.md`.
 - benchd reclaims a released Fresh bench by itself once it has been idle longer than
   `fresh_reclaim_idle_hours` in `/etc/superbench/activation.json` (default 24 hours while
   `fresh_payload` is on; `0` turns it off). Its sweep runs the same reclaim as
