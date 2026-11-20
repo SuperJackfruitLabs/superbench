@@ -51,11 +51,42 @@ func (a Approval) validate(p hoststorage.Policy) error {
 	if v.Path != filepath.Join(p.Root, "benches", a.Key) || v.ProjectID < 10000 || v.Bytes < 1024 || v.Bytes%1024 != 0 || v.Bytes > p.BenchBytes || v.Inodes != p.BenchInodes {
 		return ErrRetirement
 	}
-	parent := a.Parent
-	if parent.Device == 0 || parent.Inode == 0 || parent.UID != 0 || os.FileMode(parent.Mode)&os.ModeType != os.ModeDir || os.FileMode(parent.Mode).Perm()&0022 != 0 {
+	if !a.Parent.valid() {
 		return ErrRetirement
 	}
 	return nil
+}
+
+// valid is a root-owned, unwritable-by-others directory node.
+func (parent Parent) valid() bool {
+	return parent.Device != 0 && parent.Inode != 0 && parent.UID == 0 && os.FileMode(parent.Mode)&os.ModeType == os.ModeDir && os.FileMode(parent.Mode).Perm()&0022 == 0
+}
+
+// unallocated validates every row and requires the key to hold nothing of its
+// own: no row and no Fresh marker, or, after a predecessor, exactly its
+// tombstone under its Fresh marker.
+func unallocated(p hoststorage.Policy, key string, raw []byte, predecessor *hoststorage.Assignment) (allocationledger.Ledger, hoststorage.Assignment, bool, error) {
+	var l allocationledger.Ledger
+	if !allocationledger.Key.MatchString(key) || storageproof.StrictJSON(raw, &l) != nil || p.Validate() != nil || p.OperationJournal != "indexed-v2" || l.FormatVersion < 3 || !l.Bound() || l.Validate(p.Root, p.AllocationBinding(), false) != nil {
+		return l, hoststorage.Assignment{}, false, ErrRetirement
+	}
+	canonical, err := json.MarshalIndent(l, "", "  ")
+	if err != nil || !bytes.Equal(raw, canonical) {
+		return l, hoststorage.Assignment{}, false, ErrRetirement
+	}
+	a, row := l.Assignments["bench:"+key]
+	marker, fresh := l.Fresh["bench:"+key]
+	if predecessor == nil {
+		if row || fresh {
+			return l, hoststorage.Assignment{}, false, ErrRetirement
+		}
+		return l, hoststorage.Assignment{}, false, nil
+	}
+	tombstone := hoststorage.Assignment{Path: predecessor.Path, ProjectID: predecessor.ProjectID}
+	if predecessor.Path != filepath.Join(p.Root, "benches", key) || predecessor.ProjectID < 10000 || !row || a != tombstone || !fresh || marker != tombstone.ProjectID {
+		return l, hoststorage.Assignment{}, false, ErrRetirement
+	}
+	return l, a, true, nil
 }
 
 // selected validates every row and the exact selected Fresh marker. A retained
