@@ -533,6 +533,50 @@ reclaim. Its markers, each logged alone on its line, are
 `LOWER_FAILED_CREATE_OLD_PROJECT_NOT_REVIVED_PASS` and
 `LOWER_FAILED_CREATE_NEXT_GENERATION_RECLAIMED_PASS`.
 
+### After a create refused before its intent
+
+A create can be refused before root writes anything: root's reservation check
+refuses with `capacity_exhausted` before the bootstrap intent's first write,
+and a daemon that dies between recording the create and starting the helper
+leaves the same. The daemon's record is `materializing` with no quota project,
+and its owner may already be stopped by the operation's cancellation. Root
+holds no intent, so there is nothing to retire and the inspection above always
+refuses. A `create` on the key with a new request ID then asks a second
+read-only inspection, with the record's own canonical Spec on stdin:
+
+```sh
+/usr/local/libexec/bench-quota inspect-absent-payload KEY < refused-spec.json
+```
+
+It takes no identity, path or policy override, writes nothing and reserves no
+operation. Root answers only from its own files, under the allocation lock that
+a Begin holds from the intent's first write through its ledger save: no intent,
+transition or controls for that Spec's generation (`KEY.*` or `KEY@N.*` under
+`payload-bootstrap/`); no ledger row or Fresh marker of the key's own (for a
+later generation, the row and marker are still exactly its predecessor's
+tombstone, and the predecessor is one this generation may follow, with the same
+evidence a Begin checks); and no leaf. Its reply names the key, `bench_id` and
+generation; the daemon checks all three. It is asked only of a record with no
+project and only after the retired inspection refuses.
+
+On that reply, and only then, the create replaces the record in its own
+generation: a new `bench_id` and initialization owner, the same `Generation`
+and `Previous`, as if the refused record had never been written. Nothing of the
+refused create remains to leak: no project, no tree and no intent. Root's Begin
+for the replacement runs every ordinary check, so if anything appeared after
+the inspection it refuses as before. Until root's reply, the create is refused
+as a conflict and the record is unchanged. A record left by a binary before
+this inspection existed is resolved the same way by the next `create` on its
+key; no operator step is needed.
+
+The helper's process cannot outlive the create that started it: the daemon
+waits for it inside its host lock, and the service unit's `KillMode=control-group`
+stops it with a daemon that dies.
+
+The lower fixture proves root's side on real XFS, on a create refused for
+capacity on a full volume: `LOWER_CAPACITY_REFUSED_CREATE_ROOT_PROVES_ABSENT_PASS`,
+then the replacement's allocation within `FRESH_RECLAIM_CAPACITY_RETURNED_PASS`.
+
 ### After a stalled initialization
 
 A create whose bootstrap completed (its intent is `completed` and its layout
