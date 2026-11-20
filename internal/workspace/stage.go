@@ -28,15 +28,14 @@ type Change = func(benchstate.Database, *sql.Tx) error
 type Update = func(Change) error
 
 type Manager struct {
-	State, Data string
-	Timeout     time.Duration
-	Within      func(func(Update) error) error
-	Git         func(context.Context, string, ...string) (string, error)
-	Admit       func() error
-	Allocate    func(*model.Bench) error
-	Fresh       func(context.Context, *model.Bench) error
-	Retired     func(context.Context, *model.Bench) error // root's proof an unfinished create's allocation is retired
-	Absent      func(context.Context, *model.Bench) error // root's proof an unfinished create never reserved anything
+	State, Data     string
+	Timeout         time.Duration
+	Within          func(func(Update) error) error
+	Git             func(context.Context, string, ...string) (string, error)
+	Admit           func() error
+	Allocate        func(*model.Bench) error
+	Fresh           func(context.Context, *model.Bench) error
+	Retired, Absent func(context.Context, *model.Bench) error // root's proofs: an unfinished create's allocation is retired; it never reserved anything
 }
 
 // ValidateStage checks request shape without filesystem or repository effects.

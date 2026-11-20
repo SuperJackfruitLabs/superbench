@@ -83,16 +83,13 @@ func Retired(ctx context.Context, p hoststorage.Policy, approved Approval) error
 // own: with predecessor nil, the ledger has neither a row nor a Fresh marker
 // for the key; otherwise its row and marker are still exactly predecessor's
 // tombstone, which a later generation's allocation would have replaced. The
-// fixed leaf must be absent under the pinned benches parent, and absent, the
-// caller's own read-only check, must pass under the same lock. It holds the
+// fixed leaf must be absent under the pinned benches parent, and so must each
+// of the caller's absent paths, checked under the same lock. It holds the
 // allocation lock, which a Fresh Begin holds from its intent's first write
 // through its ledger save, so it never observes a reservation half-written,
 // and it writes nothing. Like Retired it admits the fixed helper's sudo caller: the
 // daemon asks it about a create refused before its bootstrap intent.
-func NeverAllocated(ctx context.Context, p hoststorage.Policy, key string, predecessor *hoststorage.Assignment, absent func() error) error {
-	if absent == nil {
-		return ErrRetirement
-	}
+func NeverAllocated(ctx context.Context, p hoststorage.Policy, key string, predecessor *hoststorage.Assignment, absent ...string) error {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	return holdSelected(ctx, p, key, true, func(raw []byte) (allocationledger.Ledger, hoststorage.Assignment, bool, error) {
@@ -104,8 +101,10 @@ func NeverAllocated(ctx context.Context, p hoststorage.Policy, key string, prede
 		if _, err := h.parent.Lstat(key); !errors.Is(err, syscall.ENOENT) {
 			return errors.Join(ErrRetirement, err)
 		}
-		if err := absent(); err != nil {
-			return errors.Join(ErrRetirement, err)
+		for _, path := range absent {
+			if _, err := os.Lstat(path); !errors.Is(err, syscall.ENOENT) {
+				return errors.Join(ErrRetirement, errors.New("the create's bootstrap evidence exists"), err)
+			}
 		}
 		return h.check()
 	})

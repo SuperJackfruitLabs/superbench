@@ -24,14 +24,7 @@ import (
 // Begin checks the same evidence again before it allocates.
 func InspectRetired(ctx context.Context, s payloadbootstrap.Spec) (quotahelper.RetiredResult, error) {
 	var zero quotahelper.RetiredResult
-	if s.Validate() != nil || os.Getuid() != 0 || os.Geteuid() != 0 {
-		return zero, ErrRecovery
-	}
-	storage, err := hoststorage.Load("/etc/superbench/storage.json")
-	if err != nil {
-		return zero, err
-	}
-	authority, err := storage.OperationAuthority(ctx)
+	storage, authority, err := inspection(ctx, s)
 	if err != nil {
 		return zero, err
 	}
@@ -52,4 +45,17 @@ func InspectRetired(ctx context.Context, s payloadbootstrap.Spec) (quotahelper.R
 	tombstone := plan.Storage.Assignment
 	tombstone.Bytes, tombstone.Inodes = 0, 0
 	return quotahelper.RetiredResult{Version: quotahelper.RetiredVersion, Key: s.Key, ID: s.ID, Generation: s.Generation, Allocation: tombstone}, nil
+}
+
+// inspection is a read-only inspection's direct-root storage and authority.
+func inspection(ctx context.Context, s payloadbootstrap.Spec) (hoststorage.Policy, string, error) {
+	if s.Validate() != nil || os.Getuid() != 0 || os.Geteuid() != 0 {
+		return hoststorage.Policy{}, "", ErrRecovery
+	}
+	storage, err := hoststorage.Load("/etc/superbench/storage.json")
+	if err != nil {
+		return storage, "", err
+	}
+	authority, err := storage.OperationAuthority(ctx)
+	return storage, authority, err
 }
