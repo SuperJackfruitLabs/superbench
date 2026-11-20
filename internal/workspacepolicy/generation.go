@@ -49,6 +49,21 @@ func Succeeds(previous string, generation uint32, b *model.Bench) bool {
 	return w.Phase == "materializing" && w.Generation == next && w.Previous == previous && b.ProjectID == 0
 }
 
+// Replaces reports whether b may replace old, the workspace of an unfinished
+// record owned by oldToken whose create root proved never allocated anything:
+// a different create (its own request and initialization owner) of the same
+// generation, following the same predecessor, under a new workspace ID,
+// recorded before any allocation or tree. The record it replaces never held a
+// project, so nothing of it outlives the replacement.
+func Replaces(old *model.Workspace, oldToken string, b *model.Bench) bool {
+	if old == nil || b == nil || b.Workspace == nil || b.Lease == nil {
+		return false
+	}
+	w := b.Workspace
+	return w.Phase == "materializing" && w.ID != old.ID && w.CreationID != old.CreationID && b.Lease.Token != oldToken &&
+		w.Generation == old.Generation && w.Previous == old.Previous && b.ProjectID == 0
+}
+
 // Follow makes candidate, a new create's first record under reclaimed's key,
 // the next generation after reclaimed.
 func Follow(candidate, reclaimed *model.Bench) error {
@@ -104,15 +119,24 @@ func Predecessor(b *model.Bench) bool {
 var ErrUnretired = errors.New("workspace creation conflicts with an existing bench: its create never completed and root has not retired or reclaimed its allocation")
 
 // Proof is a key's record that a new create may follow, as Prove found it.
-// Only Prove makes one; the zero value follows nothing.
-type Proof struct{ previous *model.Bench }
+// Only Prove makes one; the zero value follows nothing. A record root proved
+// never allocated is replaced in its own generation rather than followed.
+type Proof struct {
+	previous *model.Bench
+	replace  bool
+}
 
 // Prove decides, before any plan, whether a new create may follow previous,
 // its key's record: none needs nothing; a reclaimed record needs a Fresh
-// daemon; an unfinished or stalled create also needs retired: root's proof,
-// read-only for an unfinished one and root's own reclaim for a stalled one,
-// that its allocation is retired, never the daemon's own record alone.
-func Prove(ctx context.Context, previous *model.Bench, fresh bool, retired func(context.Context, *model.Bench) error) (Proof, error) {
+// daemon; an unfinished or stalled create also needs root's proof, never the
+// daemon's own record alone. retired is root's proof that the allocation is
+// retired: read-only for an unfinished create and root's own reclaim for a
+// stalled one. absent, asked only of an unfinished create that root has not
+// retired, is root's read-only proof that the create never reserved anything:
+// a refusal before its bootstrap intent, such as capacity_exhausted, or a
+// daemon that died before the helper wrote one. The new create then replaces
+// that record in its generation, as if it had never been written.
+func Prove(ctx context.Context, previous *model.Bench, fresh bool, retired, absent func(context.Context, *model.Bench) error) (Proof, error) {
 	if err := ctx.Err(); err != nil || previous == nil {
 		return Proof{}, err
 	}
@@ -124,17 +148,32 @@ func Prove(ctx context.Context, previous *model.Bench, fresh bool, retired func(
 			return Proof{}, ErrUnretired
 		}
 		if err := retired(ctx, previous); err != nil {
-			return Proof{}, errors.Join(ErrUnretired, err)
+			if !Unfinished(previous) || absent == nil {
+				return Proof{}, errors.Join(ErrUnretired, err)
+			}
+			if never := absent(ctx, previous); never != nil {
+				return Proof{}, errors.Join(ErrUnretired, err, never)
+			}
+			return Proof{previous: previous, replace: true}, nil
 		}
 	}
-	return Proof{previous}, nil
+	return Proof{previous: previous}, nil
 }
 
 // Follow makes candidate, a new create's first record, the next generation
-// after the proven record; with none it leaves candidate the key's first.
+// after the proven record, or, for a record root proved never allocated, that
+// record's own generation after the same predecessor. With none it leaves
+// candidate the key's first.
 func (p Proof) Follow(candidate *model.Bench) error {
 	if p.previous == nil {
 		return nil
+	}
+	if p.replace {
+		if candidate == nil || candidate.Workspace == nil || candidate.Key != p.previous.Key || candidate.Workspace.ID == p.previous.Workspace.ID {
+			return errors.New("a workspace replaces only a record under its own key")
+		}
+		candidate.Workspace.Generation, candidate.Workspace.Previous = p.previous.Workspace.Generation, p.previous.Workspace.Previous
+		return Validate(candidate)
 	}
 	return follow(candidate, p.previous)
 }

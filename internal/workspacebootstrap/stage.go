@@ -250,3 +250,53 @@ func retired(data string, b *model.Bench, inspect, reclaim func(payloadbootstrap
 	}
 	return nil
 }
+
+// NewAbsent supplies the workspace manager's proof that an unfinished create
+// never reserved anything (Absent).
+func NewAbsent(state, data string) func(context.Context, *model.Bench) error {
+	return func(ctx context.Context, b *model.Bench) error { return Absent(ctx, state, data, b) }
+}
+
+// Absent asks the fixed helper's read-only inspection whether root holds
+// nothing at all of b, an unfinished create: no bootstrap intent, no
+// allocation of its own and no leaf, as a create refused before its intent
+// (capacity_exhausted) leaves them. It sends the same canonical Spec b's
+// create sent. Only the helper's checked reply lets a new create on the key
+// replace b in its own generation; b itself never does.
+func Absent(ctx context.Context, state, data string, b *model.Bench) error {
+	return absent(data, b, func(spec payloadbootstrap.Spec, input []byte) error {
+		authority, err := serviceidentity.ResolveService()
+		if err != nil {
+			return errors.Join(ErrBootstrap, err)
+		}
+		p, err := authority.Policy()
+		if err != nil || p.StateRoot != state || p.DataRoot != data {
+			return ErrBootstrap
+		}
+		installed, err := (hoststorage.Worker{State: state, Data: data}).Config()
+		if err != nil || installed == nil || installed.PolicyOverride != "" {
+			return ErrBootstrap
+		}
+		c := quotahelper.Config{State: state, Data: data, Command: installed.QuotaHelper}
+		_, err = quotahelper.Absent(ctx, c, spec.Key, spec.ID, spec.Generation, input)
+		return errors.Join(err, authority.Recheck())
+	})
+}
+
+// absent asks root about unfinished b with its canonical Spec. A stalled or
+// any other record is refused before root is asked: only a create with no
+// project can have reserved nothing.
+func absent(data string, b *model.Bench, inspect func(payloadbootstrap.Spec, []byte) error) error {
+	if !workspacepolicy.Unfinished(b) || b.ProjectID != 0 {
+		return ErrBootstrap
+	}
+	spec, err := specification(data, b)
+	if err != nil {
+		return err
+	}
+	input, err := spec.Bytes()
+	if err != nil {
+		return err
+	}
+	return inspect(spec, input)
+}

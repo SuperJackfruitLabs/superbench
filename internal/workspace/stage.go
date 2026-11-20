@@ -36,6 +36,7 @@ type Manager struct {
 	Allocate    func(*model.Bench) error
 	Fresh       func(context.Context, *model.Bench) error
 	Retired     func(context.Context, *model.Bench) error // root's proof an unfinished create's allocation is retired
+	Absent      func(context.Context, *model.Bench) error // root's proof an unfinished create never reserved anything
 }
 
 // ValidateStage checks request shape without filesystem or repository effects.
@@ -177,7 +178,7 @@ func (m Manager) stage(ctx context.Context, request stagingRequest) (*model.Benc
 				return err
 			}
 			if b := rows[request.key]; request.successor && workspacepolicy.Predecessor(b) && !request.matches(b) {
-				predecessor = privateRecord(b) // A create on a reclaimed key, or one root retired, starts its next generation.
+				predecessor = privateRecord(b) // A create on a reclaimed key, or one root retired, starts its next generation; one root proved never allocated is replaced.
 			} else if b, ok := rows[request.key]; ok {
 				if b.Workspace != nil && (b.Workspace.Transfer != nil || b.Workspace.TransferredFrom != nil && request.transferID != b.Workspace.TransferredFrom.ID) {
 					return ErrTransfer
@@ -211,7 +212,7 @@ func (m Manager) stage(ctx context.Context, request stagingRequest) (*model.Benc
 		if found != nil && found.Workspace.Phase != "materializing" {
 			return nil
 		}
-		proof, err := workspacepolicy.Prove(ctx, predecessor, m.Fresh != nil, m.Retired)
+		proof, err := workspacepolicy.Prove(ctx, predecessor, m.Fresh != nil, m.Retired, m.Absent)
 		if err != nil {
 			return err
 		}

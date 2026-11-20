@@ -48,7 +48,7 @@ func TestAnUnfinishedCreateIsFollowedOnlyOnRootsProof(t *testing.T) {
 		"a ready bench":  {workspacepolicy.ReleasedRecord(t), true, proven},
 	} {
 		asked = nil
-		proof, err := workspacepolicy.Prove(ctx, c.previous, c.fresh, c.retired)
+		proof, err := workspacepolicy.Prove(ctx, c.previous, c.fresh, c.retired, nil)
 		if err == nil || proof != (workspacepolicy.Proof{}) || name != "root refuses" && len(asked) != 0 {
 			t.Errorf("%s: proven %v, root asked %d times", name, err, len(asked))
 		}
@@ -57,13 +57,13 @@ func TestAnUnfinishedCreateIsFollowedOnlyOnRootsProof(t *testing.T) {
 		}
 	}
 	asked = nil
-	if proof, err := workspacepolicy.Prove(ctx, reclaimed(t), true, proven); err != nil || proof == (workspacepolicy.Proof{}) || len(asked) != 0 {
+	if proof, err := workspacepolicy.Prove(ctx, reclaimed(t), true, proven, nil); err != nil || proof == (workspacepolicy.Proof{}) || len(asked) != 0 {
 		t.Fatalf("a reclaimed record needs no root proof: %v %d", err, len(asked))
 	}
-	if proof, err := workspacepolicy.Prove(ctx, nil, false, nil); err != nil || proof.Follow(old) != nil {
+	if proof, err := workspacepolicy.Prove(ctx, nil, false, nil, nil); err != nil || proof.Follow(old) != nil {
 		t.Fatalf("a first create: %v", err)
 	}
-	proof, err := workspacepolicy.Prove(ctx, old, true, proven)
+	proof, err := workspacepolicy.Prove(ctx, old, true, proven, nil)
 	if err != nil || len(asked) != 1 || asked[0].Workspace.ID != old.Workspace.ID {
 		t.Fatalf("proof: %v %d", err, len(asked))
 	}
