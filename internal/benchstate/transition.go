@@ -319,6 +319,9 @@ func ValidateTransition(before IdentitySnapshot, after Database) error {
 		if (old.phase == "reclaimed" || old.unfinished) && workspacepolicy.Succeeds(old.workspace.ID, old.workspace.Generation, b) {
 			continue // A create on a reclaimed key, or one root retired, starts its next generation.
 		}
+		if old.unfinished && old.project == 0 && old.lease != nil && workspacepolicy.Replaces(old.workspace, old.lease.Token, b) {
+			continue // A create root proved never allocated is replaced in its own generation.
+		}
 		w := *b.Workspace
 		w.Phase, w.IdleSince = "", ""
 		w.Pending = nil

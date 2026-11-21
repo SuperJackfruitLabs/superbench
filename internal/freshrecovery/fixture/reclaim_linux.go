@@ -367,14 +367,24 @@ func (e *env) reclaims() {
 		t.Fatalf("a create on a full volume: %v", err)
 	}
 	t.Logf("create refused: %v", err)
+	// The refused create left nothing; the daemon's next create on the key
+	// replaces its record in its own generation under a new workspace ID.
+	refused := e.template.Spec
+	refused.Key, refused.ID, refused.QuotaBytes = "reclaim-c", hash("reclaim-bid:reclaim-c")[:32], 0
+	e.capacityRefusedAbsent(refused, b)
 	got, err = e.reclaim(t.Context(), b)
 	if err != nil {
 		t.Fatal(err)
 	}
 	e.assertReclaimed(b, got)
-	c, err := e.bootstrap("reclaim-c")
+	replacement := refused
+	replacement.ID = hash("reclaim-bid:reclaim-c-replacement")[:32]
+	c, err := e.next(replacement, "reclaim-c-replacement")
 	if err != nil {
 		t.Fatal("the create after reclaim:", err)
+	}
+	if _, err = freshrecovery.InspectAbsent(t.Context(), refused); err == nil {
+		t.Fatal("root proved the key absent after its replacement allocated")
 	}
 	t.Log("FRESH_RECLAIM_CAPACITY_RETURNED_PASS")
 

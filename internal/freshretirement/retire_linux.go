@@ -79,6 +79,37 @@ func Retired(ctx context.Context, p hoststorage.Policy, approved Approval) error
 	})
 }
 
+// NeverAllocated proves, read-only, that key holds no Fresh allocation of its
+// own: with predecessor nil, the ledger has neither a row nor a Fresh marker
+// for the key; otherwise its row and marker are still exactly predecessor's
+// tombstone, which a later generation's allocation would have replaced. The
+// fixed leaf must be absent under the pinned benches parent, and so must each
+// of the caller's absent paths, checked under the same lock. It holds the
+// allocation lock, which a Fresh Begin holds from its intent's first write
+// through its ledger save, so it never observes a reservation half-written,
+// and it writes nothing. Like Retired it admits the fixed helper's sudo caller: the
+// daemon asks it about a create refused before its bootstrap intent.
+func NeverAllocated(ctx context.Context, p hoststorage.Policy, key string, predecessor *hoststorage.Assignment, absent ...string) error {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	return holdSelected(ctx, p, key, true, func(raw []byte) (allocationledger.Ledger, hoststorage.Assignment, bool, error) {
+		return unallocated(p, key, raw, predecessor)
+	}, false, func(h held) error {
+		if err := h.check(); err != nil {
+			return err
+		}
+		if _, err := h.parent.Lstat(key); !errors.Is(err, syscall.ENOENT) {
+			return errors.Join(ErrRetirement, err)
+		}
+		for _, path := range absent {
+			if _, err := os.Lstat(path); !errors.Is(err, syscall.ENOENT) {
+				return errors.Join(ErrRetirement, errors.New("the create's bootstrap evidence exists"), err)
+			}
+		}
+		return h.check()
+	})
+}
+
 func run(ctx context.Context, p hoststorage.Policy, key string, approved *Approval, helper bool) (Approval, hoststorage.Assignment, error) {
 	var zero Approval
 	var noAssignment hoststorage.Assignment
@@ -170,6 +201,14 @@ type held struct {
 // hold takes the allocation lock, selects the row through the Fresh rules, pins
 // the benches parent on the dedicated data mount and holds the data root open.
 func hold(ctx context.Context, p hoststorage.Policy, key string, original *hoststorage.Assignment, helper bool, action func(held) error) error {
+	return holdSelected(ctx, p, key, helper, func(raw []byte) (allocationledger.Ledger, hoststorage.Assignment, bool, error) {
+		return selected(p, key, raw, original)
+	}, true, action)
+}
+
+// holdSelected is hold with its row selection given: approval requires the
+// selected row to make a valid Approval, which an absent row cannot.
+func holdSelected(ctx context.Context, p hoststorage.Policy, key string, helper bool, sel func([]byte) (allocationledger.Ledger, hoststorage.Assignment, bool, error), approval bool, action func(held) error) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -201,7 +240,7 @@ func hold(ctx context.Context, p hoststorage.Policy, key string, original *hosts
 	if err != nil {
 		return err
 	}
-	l, a, retired, err := selected(p, key, raw, original)
+	l, a, retired, err := sel(raw)
 	if err != nil {
 		return err
 	}
@@ -224,7 +263,7 @@ func hold(ctx context.Context, p hoststorage.Policy, key string, original *hosts
 	if err != nil {
 		return err
 	}
-	if observed.Parent.Device != dataDevice || observed.validate(p) != nil {
+	if observed.Parent.Device != dataDevice || approval && observed.validate(p) != nil || !observed.Parent.valid() {
 		return ErrRetirement
 	}
 	data, err := os.OpenFile(p.Root, os.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)

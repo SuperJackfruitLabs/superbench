@@ -17,7 +17,33 @@ func Retired(ctx context.Context, c Config, key, id string, generation uint32, s
 }
 
 func retiredScoped(ctx context.Context, c Config, key, id string, generation uint32, spec []byte, uid int, trustedUID uint32) (RetiredResult, error) {
-	var zero RetiredResult
+	raw, err := inspectScoped(ctx, c, "inspect-retired-payload", key, id, spec, uid, trustedUID)
+	if err != nil {
+		return RetiredResult{}, err
+	}
+	return ParseRetiredResult(raw, c.Data, key, id, generation)
+}
+
+// Absent asks the fixed helper's read-only inspect-absent-payload step
+// whether root holds nothing of the daemon's create that never completed,
+// whose canonical bootstrap Spec is spec: no intent, no allocation of its
+// own and no leaf. It reserves no operation and has no effect.
+func Absent(ctx context.Context, c Config, key, id string, generation uint32, spec []byte) (AbsentResult, error) {
+	return absentScoped(ctx, c, key, id, generation, spec, os.Geteuid(), 0)
+}
+
+func absentScoped(ctx context.Context, c Config, key, id string, generation uint32, spec []byte, uid int, trustedUID uint32) (AbsentResult, error) {
+	raw, err := inspectScoped(ctx, c, "inspect-absent-payload", key, id, spec, uid, trustedUID)
+	if err != nil {
+		return AbsentResult{}, err
+	}
+	return ParseAbsentResult(raw, key, id, generation)
+}
+
+// inspectScoped runs one read-only inspection with only the key as argument
+// and the Spec on stdin, after checking the installed helper's identity.
+func inspectScoped(ctx context.Context, c Config, command, key, id string, spec []byte, uid int, trustedUID uint32) ([]byte, error) {
+	var zero []byte
 	if !reclaimKey.MatchString(key) || !workspaceID.MatchString(id) || len(spec) == 0 || len(spec) > MaxReply || c.PolicyOverride != "" {
 		return zero, operationcontrol.ErrAuthority
 	}
@@ -50,9 +76,5 @@ func retiredScoped(ctx context.Context, c Config, key, id string, generation uin
 		}
 		return nil
 	}
-	raw, err = helperCommandInput(ctx, c, uid, false, recheck, input, "inspect-retired-payload", key)
-	if err != nil {
-		return zero, err
-	}
-	return ParseRetiredResult(raw, c.Data, key, id, generation)
+	return helperCommandInput(ctx, c, uid, false, recheck, input, command, key)
 }
