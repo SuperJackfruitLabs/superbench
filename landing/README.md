@@ -24,9 +24,11 @@ Forgejo CI builds the site on pull requests that touch `landing/`.
 
 ## What is deliberate about the page
 
-**Follow, not try.** SuperBench is not released. The page says what it is and why it matters,
-says plainly that it is experimental and not released, and offers two ways to follow it: the
-GitHub repository and its release feed. No install command, no version number, no download.
+**Try, carefully.** SuperBench v0.0.1 is the first release, an experimental single-host release.
+The page says what it is and why it matters, says plainly that v0.0.1 is experimental, Linux
+amd64 only and for trusted repositories, and shows how to download and verify it from the GitHub
+release (`gh release download`, `sha256sum --check`, `gh attestation verify`). The docs' install
+page has the host steps. The release it offers is `DOCUMENTED` in `scripts/releases.mjs`.
 
 **It says only what the claims ledger allows.** Every capability sentence rests on a claim in the
 SuperBench section of the suite's claims ledger, and every claim the ledger marks `limited`
@@ -34,14 +36,18 @@ carries its caveat beside it on the page. Roadmap items appear only under "What'
 The comment at the top of `src/pages/index.astro` says how the copy maps to the claims.
 
 **The copy is checked.** `scripts/check-copy.mjs` fails the build when the page lacks
-"Experimental", "not released yet" or a link to the repository, or when it contains an install
-command, a version number, "production-ready", "secure isolation" or a local host or agent name.
+"Experimental", the release it names, "single-host release", a link to that release or a link
+to the repository, or when it contains a curl, npm or go install command, a version number that
+is not a released tag (stamped and dated in `CHANGELOG.md`; unreleased, future and pre-release
+versions fail), "production" or "production-ready", "secure isolation", a multi-host claim,
+pre-release wording such as "not released", or a local host or agent name. `llms.txt` must name
+the release and its limits.
 It scans `dist/index.html`, `dist/404.html` and `dist/llms.txt`; run it on other files with
 `node scripts/check-copy.mjs <file>…`.
 
-**It will fail on purpose at the first release.** Once SuperBench tags a release, the suite frame
-renders `Releases · vX.Y.Z` on this page and `check-copy` fails on the version number. That is
-the moment to revise the page from "follow" to "try", not to loosen the check.
+**The frame names the latest release.** The suite frame renders `Releases · vX.Y.Z` on this page.
+A version is allowed once the release-prep script stamps it in `CHANGELOG.md`; the page keeps
+naming `DOCUMENTED` until it is refreshed for that release.
 
 **Cyan is vibekit's.** SuperBench's colour is vibekit's cyan (OKLCH hue 173), named by
 `PRODUCT_ACCENTS.superbench`. `src/accent.ts` reads its Daylight tokens for light and dark from the

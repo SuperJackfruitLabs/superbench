@@ -1,6 +1,6 @@
 ---
 title: What SuperBench is
-description: One task, one git worktree on a host, kept warm between holders, with checkpoints the remote confirms. An experimental single-host prototype, not released yet.
+description: One task, one git worktree on a host, kept warm between holders, with checkpoints the remote confirms. SuperBench v0.0.1 is an experimental single-host release.
 status: wet paint
 ---
 
@@ -47,8 +47,8 @@ bench lease --holder second-agent fix-login
 bench status fix-login
 ```
 
-There is no supported installation yet: the loop above shows what the commands do, not a way to
-start using SuperBench.
+The loop above shows what the commands do. To get the commands, [Install v0.0.1](/start/install/)
+downloads and verifies the release archive; it is not a supported installation.
 
 The loop as written needs Linux. Whenever the repository has setup hooks or a supported lockfile,
 warm `create`, `recover`, `lease` and `setup` prepare the checkout in a fenced execution, which
@@ -58,8 +58,8 @@ needs Linux cgroup delegation. On a laptop the cooperative sequence is `create-c
 
 ## What it is not
 
-- **Not released.** There are no tags, no published binaries and no supported installation. Nothing
-  here is in production use.
+- **Not production software.** SuperBench v0.0.1 is an experimental single-host release for Linux
+  amd64. There is no supported installation, and nothing here is in production use.
 - **Not a sandbox.** Leases are cooperative, and supervised runs on Linux are fenced in a cgroup,
   which is process-tree fencing; there is no user or mount isolation. SuperBench is for trusted
   repositories. See the [Security model](/start/security-model/).
@@ -70,6 +70,7 @@ needs Linux cgroup delegation. On a laptop the cooperative sequence is `create-c
 
 ## Where to go next
 
-- [Status](/start/status/): what works on `main`, what is partial, what is not built.
+- [Status](/start/status/): what works in v0.0.1, what is partial, what is not built.
+- [Install v0.0.1](/start/install/): download, verify and stage the release.
 - [Benches and workspaces](/concepts/benches-and-workspaces/): the two shapes a bench takes.
 - [bench CLI](/reference/bench/): every command and flag as the source defines them.

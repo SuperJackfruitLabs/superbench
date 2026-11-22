@@ -1,14 +1,17 @@
 ---
-// The pre-release banner, on every page. It replaces Starlight's Banner, which shows only when a
+// The release-status line, on every page. It replaces Starlight's Banner, which shows only when a
 // page sets `banner:` in its frontmatter; here no page can leave it out. scripts/check-copy.mjs
-// fails the build when a built page lacks it. At the first release this banner is revised with
-// the rest of the docs, not deleted on its own.
+// fails the build when a built page lacks it, or when the release it names is not one
+// CHANGELOG.md has stamped. Refresh it with the rest of the docs at the next release, by changing
+// DOCUMENTED in scripts/releases.mjs and this wording together.
+import { DOCUMENTED, releaseUrl } from '../../scripts/releases.mjs';
 ---
 
-<div class="sl-banner sb-prerelease" role="note" aria-label="Not released yet" data-pagefind-ignore>
-  <strong>Not released yet.</strong> SuperBench is an experimental single-host prototype under
-  active development. Nothing is released or supported for use yet. These docs describe the
-  <code>main</code> branch and will be refreshed at the first release.
+<div class="sl-banner sb-release" role="note" aria-label="Release status" data-pagefind-ignore>
+  <strong>SuperBench {DOCUMENTED} is released</strong> as an experimental single-host release:
+  Linux amd64, for trusted repositories on one host, and not production software.
+  <a href={releaseUrl(DOCUMENTED)}>Release notes</a> ·
+  <a href="/start/install/">Install</a> · <a href="/start/status/">Status</a>
 </div>
 
 <style>
@@ -23,6 +26,11 @@
       text-align: center;
       text-wrap: balance;
       font-size: var(--sl-text-sm);
+    }
+    .sl-banner a {
+      color: inherit;
+      text-decoration: underline;
+      text-underline-offset: 0.15em;
     }
     .sl-banner code {
       font-size: 0.9em;

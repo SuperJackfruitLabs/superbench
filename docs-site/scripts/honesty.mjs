@@ -1,13 +1,25 @@
-// The honesty rules the docs share: what no page may say while SuperBench is not released. Both
-// checks use them: check-claims.mjs over the page sources before the build, check-copy.mjs over
-// everything the build publishes (HTML, the .md routes and llms*.txt) after it.
+// The honesty rules the docs share. Both checks use them: check-claims.mjs over the page sources
+// before the build, check-copy.mjs over everything the build publishes (HTML, the .md routes and
+// llms*.txt) after it.
 //
-// The rules follow the SuperBench section of the suite's claims ledger (SB-01 to SB-08): nothing
-// may be worded as released, production-ready or isolating untrusted code, and no page offers an
-// install. At the first release these rules are revised with the docs; do not loosen one to let a
-// page through.
+// The rules follow the SuperBench section of the suite's claims ledger (SB-01 to SB-08) and the
+// first release, v0.0.1, an experimental single-host release. A version number may name only a
+// release CHANGELOG.md has stamped (scripts/releases.mjs); a claim that something "is released"
+// must name one. Nothing may be worded as production-ready, multi-host or isolating untrusted
+// code, and nothing may still say SuperBench is unreleased. Install commands belong on the install
+// page alone (INSTALL_PAGES). Do not loosen a rule to let a page through.
+import { releasedVersions } from './releases.mjs';
 
-/** Install commands and ways to get the software. "There is no supported installation" is fine. */
+const RELEASED = releasedVersions();
+
+/**
+ * The pages, by path under dist/ or src/content/docs/, that may show install commands: the
+ * install page and its .md route, and the llms files, which carry every page. Every other page is
+ * still checked for them, as HTML and as its .md route.
+ */
+export const INSTALL_PAGES = ['start/install.md', 'start/install/index.html', 'llms-full.txt', 'llms-small.txt'];
+
+/** Install commands and ways to get the software, allowed only on INSTALL_PAGES. */
 export const INSTALL = [
   [/\bcurl\s+\S/i, 'a curl command'],
   [/\|\s*(?:ba|z)?sh\b/i, 'a pipe into a shell'],
@@ -28,15 +40,30 @@ export const LOCAL_NAMES = [
   [/\bdeveloper experience\b/i, 'a local board or team name'],
 ];
 
-/** A version number presented as a release (Go versions and the like are not named at all). */
-export const VERSIONS = [[/\bv?\d+\.\d+\.\d+\b/, 'a version number']];
+/**
+ * A version number. Only a released tag (with or without its "v") may appear: no unreleased,
+ * future or pre-release version, and no Go or other tool versions either.
+ */
+export const VERSION = /\bv?\d+(?:\.\d+){2,}(?:-[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)?/g;
+
+/** What SuperBench said before its first release, and what is no longer true. */
+export const STALE = [
+  [/\bnot (?:yet )?(?:been )?released\b/i, 'a stale claim that SuperBench is not released'],
+  [/\bnothing is released\b/i, 'a stale claim that nothing is released'],
+  [/\bpre-?release (?:docs|banner)\b/i, 'the pre-release docs'],
+  [/\bno (?:tags|published binaries)\b/i, 'a stale claim that there are no tags or binaries'],
+  [/\b(?:refreshed|revised) at the first release\b/i, 'a stale promise about the first release'],
+];
 
 /** Overclaims, matched anywhere. */
 export const OVERCLAIMS = [
   [/production[- ]ready/i, '"production-ready"'],
   [/secure isolation/i, '"secure isolation"'],
   [/\b(?:stable|supported) release\b/i, 'a claim of a release'],
-  [/\b(?:multi-host|cross-host)\s+(?:coordination|service|leases?)\b/i, 'a multi-host claim'],
+  [/\b(?:multi-host|cross-host)\s+(?:coordination|service|support|release|leases?)\b/i, 'a multi-host claim'],
+  [/\bgeneral(?:ly)? availab/i, 'a general-availability claim'],
+  [/\b(?:enterprise|production)[- ]grade\b/i, 'a production-grade claim'],
+  [/\bbattle[- ]tested\b/i, '"battle-tested"'],
 ];
 
 /**
@@ -48,8 +75,10 @@ export const NEGATED_ONLY = [
   [/\bsandbox(?:ed|ing)?\b/gi, 'the word "sandbox"'],
   [/\bisolat\w*\s+untrusted\b/gi, 'isolating untrusted code'],
   [/\bisolat(?:ed|ion|es|ing|e)\b/gi, 'the words "isolated" or "isolation"'],
-  [/\b(?:is|are|was|been|now|already)\s+released\b/gi, 'a claim that it is released'],
 ];
+
+/** A release claim must name a released tag in the same sentence: "v0.0.1 is released". */
+export const RELEASE_CLAIM = /\b(?:is|are|was|been|now|already)\s+released\b/gi;
 const NEGATION = /\b(?:not|no|nor|never|nothing|none|isn't|aren't|without|neither)\b/i;
 
 /** The ledger caveats that must travel with their claims: page, phrase, why. */
@@ -72,16 +101,39 @@ export const CAVEATS = [
   ['start/security-model.md', 'trusted repositories', 'the threat model: trusted repositories'],
   ['concepts/payload-identity.md', 'does not yet install and activate', 'the payload user is not active on main'],
   ['concepts/fresh-allocations.md', 'Fresh payload materialization remains disabled', 'Fresh materialization is disabled'],
-  ['start/status.md', 'not released', 'the status page says it is not released'],
+  ['start/status.md', 'experimental single-host release', 'the status page says what v0.0.1 is'],
+  ['start/status.md', 'not a supported installation', 'the status page says the installer is unsupported'],
+  ['start/install.md', 'experimental single-host release', 'the install page says what v0.0.1 is'],
+  ['start/install.md', 'Linux amd64 only', 'the release builds one platform'],
+  ['start/install.md', 'sha256sum --check SHA256SUMS', 'the install page verifies the download'],
+  ['start/install.md', 'disposable', 'install on a disposable or staging host'],
+  ['start/install.md', 'trusted repositories', 'the threat model travels with the install'],
 ];
 
-/** Every problem in `text`, as "what: context". */
-export function problems(text) {
+/** Is `name` (a path under dist/ or src/content/docs/) a page that may show install commands? */
+export const mayInstall = (name) => INSTALL_PAGES.includes(name.replace(/\\/g, '/'));
+
+/** The sentence around `index`: back to the last stop, on to the next. */
+const sentence = (text, index) => {
+  const start = Math.max(...['. ', '! ', '? ', '\n\n'].map((s) => text.lastIndexOf(s, index)), -1) + 1;
+  const ends = ['. ', '! ', '? ', '\n\n'].map((s) => text.indexOf(s, index)).filter((i) => i >= 0);
+  return text.slice(start, ends.length ? Math.min(...ends) : text.length);
+};
+
+/** Every problem in `text`, as "what: context". `install` allows install commands. */
+export function problems(text, { install = false } = {}) {
   const found = [];
   const ctx = (m) => text.slice(Math.max(0, m.index - 40), m.index + m[0].length + 40).replace(/\s+/g, ' ');
-  for (const [re, what] of [...INSTALL, ...LOCAL_NAMES, ...VERSIONS, ...OVERCLAIMS]) {
+  for (const [re, what] of [...(install ? [] : INSTALL), ...LOCAL_NAMES, ...STALE, ...OVERCLAIMS]) {
     const m = text.match(re);
     if (m) found.push(`${what}: "${ctx(m)}"`);
+  }
+  for (const m of text.matchAll(VERSION)) {
+    if (!RELEASED.has(m[0])) found.push(`a version number that is not a released tag (${m[0]}): "${ctx(m)}"`);
+  }
+  for (const m of text.matchAll(RELEASE_CLAIM)) {
+    const names = [...sentence(text, m.index).matchAll(VERSION)].some((v) => RELEASED.has(v[0]));
+    if (!names) found.push(`a claim that it is released, naming no released tag: "${ctx(m)}"`);
   }
   for (const [re, what] of NEGATED_ONLY) {
     for (const m of text.matchAll(re)) {

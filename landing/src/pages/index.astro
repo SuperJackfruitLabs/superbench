@@ -2,11 +2,12 @@
 /**
  * superbench.dev — the public page.
  *
- * One page, no framework; the suite frame owns the header, footer and theme toggle. Its job before
- * the first release is "follow, not try": say what SuperBench is and why it matters, say plainly
- * that it is not released, and give a developer two ways to follow it, the GitHub repository and
- * its release feed, plus the pre-release docs (docs.superbench.dev). There is nothing to install and no app to sign in to, so the page offers
- * neither: no install command, no version number, no download.
+ * One page, no framework; the suite frame owns the header, footer and theme toggle. Since the first
+ * release, v0.0.1, its job is "try, carefully": say what SuperBench is and why it matters, say
+ * plainly that v0.0.1 is an experimental single-host release for Linux amd64 and trusted
+ * repositories, and show how to download and verify it from the GitHub release, pointing at the
+ * docs' install page (docs.superbench.dev/start/install/) for the rest. There is no app to sign in
+ * to. The release it offers is DOCUMENTED in scripts/releases.mjs.
  *
  * This directory is deliberately outside the Go module and has its own npm lockfile: nothing in
  * `cmd/` or `internal/` shares a dependency tree with it.
@@ -14,10 +15,11 @@
  * Every capability sentence rests on one claim in the SuperBench section of the suite's claims
  * ledger (SB-01 to SB-08), and every claim that is `limited` there carries its caveat beside it
  * here. The comment beside each block names the claim. Roadmap items (payload isolation,
- * multi-host, release binaries, suite integration, the pilot) appear only under "What's not done
- * yet", worded as not done. scripts/check-copy.mjs fails the build on install commands, version
- * numbers, "production-ready", "secure isolation" and local names. If the product changes, this
- * page is wrong until the ledger and the copy change with it.
+ * multi-host, other platforms, suite integration, the pilot) appear only under "What's not done
+ * yet", worded as not done. scripts/check-copy.mjs fails the build on curl, npm or go install
+ * commands, a version number that is not a released tag, "production-ready", "secure isolation",
+ * multi-host claims, stale pre-release wording and local names. If the product changes, this page
+ * is wrong until the ledger and the copy change with it.
  *
  * No scenes on this first page. Cyan is SuperBench's own accent in vibekit (PRODUCT_ACCENTS:
  * cyan, hue 173), its Daylight tokens for light and dark, read from the package at build time
@@ -27,12 +29,16 @@ import ShareMeta from '../components/ShareMeta.astro';
 import { productAccent } from '../accent';
 import SuiteHead from '@superjackfruitlabs/vibekit-frame/components/SuiteHead.astro';
 import Frame from '@superjackfruitlabs/vibekit-frame/components/Frame.astro';
+import { DOCUMENTED, releaseUrl } from '../../scripts/releases.mjs';
 
 const SITE = 'https://superbench.dev';
 const REPO = 'https://github.com/SuperJackfruitLabs/superbench';
 const FEED = 'https://github.com/SuperJackfruitLabs/superbench/releases.atom';
-// The pre-release docs: they describe main and are refreshed at the first release.
+// The docs describe the release; the install page has the full steps.
 const DOCS = 'https://docs.superbench.dev';
+const INSTALL = `${DOCS}/start/install/`;
+const RELEASE = releaseUrl(DOCUMENTED);
+const VERSION = DOCUMENTED.slice(1);
 // vibekit's cyan: --cyan is the accent, --cyan-text body-size text, --cyan-tint its pale ground,
 // --cyan-ink text on the accent. The light set also answers the system when nothing is chosen.
 const { light: AL, dark: AD } = productAccent('superbench');
@@ -42,7 +48,7 @@ const ACCENT_CSS = `:root { ${vars(AD)} }
 @media (prefers-color-scheme: light) { :root:not([data-theme='dark']) { ${vars(AL)} } }`;
 const TITLE = 'SuperBench — one task, one bench';
 const DESCRIPTION =
-  'A bench is one task\'s git worktree, leased to one holder and checkpointed to the remote between turns. Experimental single-host prototype for trusted repositories; not released yet. MIT.';
+  `A bench is one task's git worktree, leased to one holder and checkpointed to the remote between turns. SuperBench ${DOCUMENTED} is an experimental single-host release for Linux amd64 and trusted repositories. MIT.`;
 
 // Structured data for search and agents; every value is one the page already states.
 const JSON_LD = {
@@ -53,6 +59,9 @@ const JSON_LD = {
   url: SITE,
   applicationCategory: 'DeveloperApplication',
   license: 'https://opensource.org/licenses/MIT',
+  softwareVersion: VERSION,
+  operatingSystem: 'Linux',
+  downloadUrl: RELEASE,
   sameAs: [REPO],
   publisher: { '@type': 'Organization', name: 'Super Jackfruit Labs', url: 'https://superjackfruit.com' },
 };
@@ -208,6 +217,12 @@ const STEPS = [
       .after { margin: 24px 0 0; color: var(--muted); font-size: 15.5px; max-width: 760px; }
       .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 36px 48px; margin-top: 56px; }
 
+      pre.cmd {
+        margin: 0 0 8px; padding: 16px 18px; max-width: 760px; overflow-x: auto;
+        background: var(--cyan-tint); border: 1px solid var(--line); border-radius: 10px;
+        font-size: 14px; line-height: 1.6;
+      }
+      pre.cmd code { font-size: 1em; color: var(--text); }
       ul.facts { list-style: none; margin: 22px 0 0; padding: 0; display: grid; gap: 12px; max-width: 720px; }
       ul.facts li { position: relative; padding-left: 22px; }
       ul.facts li::before {
@@ -240,7 +255,7 @@ const STEPS = [
       <section class="hero">
         <div class="wrap">
           <div>
-            <p class="status"><i aria-hidden="true"></i>Experimental · not released yet</p>
+            <p class="status"><i aria-hidden="true"></i>Experimental · {DOCUMENTED} · single-host release</p>
             <h1>One task, <em>one bench.</em></h1>
             <!-- SB-01, SB-02, SB-04, SB-07; their caveats follow in .limits and further down. -->
             <p class="lede">
@@ -249,13 +264,14 @@ const STEPS = [
               checks the work is on the remote before the next one picks it up.
             </p>
             <p class="limits">
-              It is an experimental prototype for one machine and trusted repositories. Leases are
-              cooperative, and nothing in it isolates untrusted code.
+              SuperBench {DOCUMENTED} is its first release: an experimental single-host release for
+              Linux amd64 and trusted repositories. Leases are cooperative, and nothing in it
+              isolates untrusted code.
             </p>
             <div class="cta">
-              <a class="btn btn-primary" href={REPO}>Watch on GitHub</a>
-              <a class="btn btn-ghost" href={DOCS}>Read the pre-release docs</a>
-              <a class="btn btn-ghost" href={FEED}>Release feed</a>
+              <a class="btn btn-primary" href="#try">Try {DOCUMENTED}</a>
+              <a class="btn btn-ghost" href={DOCS}>Read the docs</a>
+              <a class="btn btn-ghost" href={REPO}>Source on GitHub</a>
             </div>
           </div>
           <figure class="mark-wrap">
@@ -388,28 +404,44 @@ const STEPS = [
           <ul class="facts">
             <li><strong>Payload isolation.</strong> Running a task's payload as a separate user is in progress. Today there is no user or mount isolation, so SuperBench is for trusted repositories only.</li>
             <li><strong>One host.</strong> Leases are coordinated on a single machine. Moving a bench to another host is a reviewed administrative step, not network coordination.</li>
-            <li><strong>No release.</strong> There are no tags, no binaries and no installer yet.</li>
+            <li><strong>Linux amd64 only, and unsupported.</strong> {DOCUMENTED} is one archive for Linux amd64: no macOS, arm64 or package builds, no support commitment and no promise of compatibility between releases.</li>
             <li><strong>Linux for supervised runs and quotas.</strong> Fenced runs need Linux with cgroup v2, and enforced quotas need a managed Linux host with XFS.</li>
             <li><strong>No automatic lease expiry, no remote authentication, no web interface and no suite integration.</strong></li>
           </ul>
         </div>
       </section>
 
-      <section class="band" aria-labelledby="follow">
+      <section class="band" aria-labelledby="try">
         <div class="wrap">
-          <h2 id="follow">Follow along</h2>
+          <h2 id="try">Try {DOCUMENTED}</h2>
+          <!-- The release: one archive for Linux amd64, SHA256SUMS and a build-provenance attestation. -->
           <p class="sub">
-            There is nothing to install yet. Watch or star the repository on GitHub, or subscribe
-            to its release feed, and you will hear when the first release is out.
+            The <a href={RELEASE}>{DOCUMENTED} release on GitHub</a> holds one archive for Linux amd64 with
+            <code>bench</code>, <code>benchd</code>, <code>bench-quota</code> and
+            <code>bench-payload</code>, its <code>SHA256SUMS</code> and a build-provenance attestation.
+            Use a disposable or staging Linux host, not one you rely on. Download it, check it and
+            confirm the version:
+          </p>
+          <pre class="cmd"><code>{`gh release download ${DOCUMENTED} -R SuperJackfruitLabs/superbench \
+  -p superbench_linux_amd64.tar.gz -p SHA256SUMS
+sha256sum --check SHA256SUMS
+gh attestation verify superbench_linux_amd64.tar.gz -R SuperJackfruitLabs/superbench
+mkdir -p bin && tar -xzf superbench_linux_amd64.tar.gz -C bin
+bin/bench version    # bench ${VERSION}`}</code></pre>
+          <p class="after">
+            Installing the service needs systemd, delegated cgroup v2 and, for enforced quotas, a
+            dedicated XFS mount. <a href={INSTALL}>Install {DOCUMENTED}</a> in the docs stages the
+            installer from the tag for review and walks through the host steps. It is not a
+            supported installation.
           </p>
           <div class="cta">
-            <a class="btn btn-primary" href={REPO}>Watch on GitHub</a>
+            <a class="btn btn-primary" href={INSTALL}>Install {DOCUMENTED}</a>
+            <a class="btn btn-ghost" href={RELEASE}>Release notes</a>
             <a class="btn btn-ghost" href={FEED}>Release feed</a>
           </div>
           <p class="after">
-            MIT licensed. The source is on <a href={REPO}>GitHub</a>. The
-            <a href={DOCS}>pre-release docs</a> describe the main branch and will be refreshed at the
-            first release.
+            MIT licensed. The source is on <a href={REPO}>GitHub</a>; watch or star it to hear about
+            the next release. The <a href={DOCS}>docs</a> describe {DOCUMENTED}.
           </p>
         </div>
       </section>

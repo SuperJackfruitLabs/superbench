@@ -1,11 +1,19 @@
 ---
 title: Status
-description: What works on main, what is partial and what is not built, from the repository's implementation plan. SuperBench is not released.
+description: What SuperBench v0.0.1, an experimental single-host release, does, what is partial and what is not built, from the repository's changelog and implementation plan.
 status: wet paint
 ---
 
-SuperBench is not released. There are no tags, no published binaries, no supported installation and
-no production deployment. This page follows the phase table in the repository's
+SuperBench v0.0.1, tagged on 2026-11-22, is the first release. It is an experimental single-host
+release, not production software, and the changelog calls it a prototype: nothing in it has been
+proven beyond what the repository's docs describe. The
+[GitHub release](https://github.com/SuperJackfruitLabs/superbench/releases/tag/v0.0.1) carries one
+archive for Linux amd64 holding `bench`, `benchd`, `bench-quota` and `bench-payload`, with
+`SHA256SUMS` and a build-provenance attestation; [Install v0.0.1](/start/install/) shows how to
+verify and stage it. There is no build for macOS or arm64, no package, no promise of
+compatibility between releases and no support commitment.
+
+This page follows the phase table in the repository's
 [`docs/implementation.md`](https://github.com/SuperJackfruitLabs/superbench/blob/main/docs/implementation.md),
 which is the source of truth; when the two disagree, that file wins and this page is out of date.
 
@@ -22,7 +30,7 @@ host anyone relies on. Passing single-host drills are not evidence that a whole 
 | 2 | Suite adapters, a card panel, locality scoring, witness events; a read-only web view, terminal attach and MCP | Not built. Contracts come before consumers, and visual mockups before UI. Static mockups exist; no viewer ships. |
 | 3 | Remote editor launch or browser IDE; a second-host recovery drill; per-bench isolation (none yet); Salaam layout and execution-host integration | Not built. |
 
-## Works on `main`, with tests or recorded drills
+## Works in v0.0.1, with tests or recorded drills
 
 - **Create, lease, checkpoint and release a bench**, with cooperative leases and remote-confirmed
   checkpoints. See [Leases](/concepts/leases/) and
@@ -43,8 +51,9 @@ host anyone relies on. Passing single-host drills are not evidence that a whole 
   [Archive and reap](/concepts/archive-and-reap/).
 - **Reviewed log and history collection**, and an automatic log retention policy that stays off
   until an operator approves it.
-- **A staged Linux service installer**, checked with a disposable systemd unit. It is not a
-  supported installation.
+- **A staged Linux service installer**, checked with a disposable systemd unit. v0.0.1 publishes
+  the four executables it installs. It is not a supported installation: use it on a disposable or
+  staging host.
 
 ## Partial
 
@@ -78,7 +87,7 @@ single-host drills alone is not evidence that they are done.
 
 ## Not built
 
-- A release: tags, binaries, an installer anyone can rely on.
+- A supported installation: packages, builds for other platforms, an upgrade promise or support.
 - Automatic lease expiry. By design, time alone never ends a lease.
 - Remote authentication, a web interface and suite integrations.
 - No payload isolation under a separate user yet, enforced end to end.

@@ -1,6 +1,6 @@
 # SuperBench docs site
 
-The pre-release documentation published at `docs.superbench.dev`. Astro + Starlight, on the
+The documentation published at `docs.superbench.dev`, for SuperBench v0.0.1. Astro + Starlight, on the
 same structure and tooling as SuperDispatch's docs site.
 
 ```sh
@@ -16,13 +16,15 @@ Astro 7 needs Node 22.23.4 or newer.
 Like `landing/`, the site has its own `package.json` and `package-lock.json`. Nothing in `cmd/` or
 `internal/` shares a dependency tree with it, and the Go checks never read it.
 
-## Pre-release, on every page
+## The release, on every page
 
-SuperBench is not released. `src/components/Banner.astro` replaces Starlight's `Banner`, so every
-page, the home and the 404 included, carries the same notice: an experimental single-host
-prototype under active development, nothing released or supported for use yet, these docs describe
-`main` and will be refreshed at the first release. No page can opt out. At the first release the
-banner is revised with the rest of the docs.
+SuperBench v0.0.1 is the first release, an experimental single-host release.
+`src/components/Banner.astro` replaces Starlight's `Banner`, so every page, the home and the 404
+included, carries the same release-status line: v0.0.1 is released as an experimental
+single-host release, Linux amd64, for trusted repositories on one host and not production
+software, with links to the release notes, the install page and the status page. No page can opt
+out. The release it names is `DOCUMENTED` in `scripts/releases.mjs`; at the next release, refresh
+the docs and change it with the banner.
 
 ## Claims and copy are checked
 
@@ -36,15 +38,27 @@ banner is revised with the rest of the docs.
   also checks each page has a title and description, that the ledger caveats (SB-01 to SB-08) stay
   on their pages, and the honesty rules below.
 - `scripts/check-copy.mjs` runs **after** the build, over everything published: every HTML page,
-  every page's `.md` route and the `llms*.txt` files. Every HTML page must carry the banner and a
-  link to the repository, and `llms-full.txt` must exist and say SuperBench is not released yet.
+  every page's `.md` route and the `llms*.txt` files. Every HTML page must carry the
+  release-status line, a link to the release it names and a link to the repository, and
+  `llms-full.txt` must exist and state the release and its limits (experimental single-host
+  release, Linux amd64, trusted repositories, cooperative leases, one host).
   Adapted from `landing/scripts/check-copy.mjs`.
 - `scripts/check-links.mjs` checks every internal link and anchor in `dist/` resolves.
 
-The honesty rules live in `scripts/honesty.mjs`: no install commands, no version numbers, no local
-host, agent or team names, no "production-ready" or "secure isolation", and "production",
-"sandbox", "released", "isolates untrusted" and "isolated"/"isolation" only when negated. When a check fails, fix the page,
-not the rule.
+The honesty rules live in `scripts/honesty.mjs`:
+
+- A version number must be a released tag: one `CHANGELOG.md` has stamped as
+  `## vX.Y.Z — YYYY-MM-DD`, dated today or earlier (`scripts/releases.mjs`). An unreleased,
+  future or pre-release version fails, and so does any other three-part number.
+- "is released" must name a released tag in the same sentence.
+- Install commands appear only on `start/install.md` (and the `llms-full.txt` and
+  `llms-small.txt` that carry it).
+- Nothing may still say SuperBench is unreleased ("not released", "pre-release docs", "no tags").
+- No local host, agent or team names; no "production-ready", "secure isolation", "production-grade"
+  or multi-host claims; and "production", "sandbox", "isolates untrusted" and
+  "isolated"/"isolation" only when negated.
+
+When a check fails, fix the page, not the rule.
 
 ## What is deliberate about it
 
@@ -60,8 +74,10 @@ copy them here.
 (the concepts), Build on it (the local API) and Reference. The theme warns at build time when a
 top-level group is anything else.
 
-**It says only what `main` does.** Every page is written from the repository's README, `docs/`,
-the CLI help and the API code. `start/status.md` follows `docs/implementation.md`'s phase table.
+**It says only what the release and `main` do.** Every page is written from the repository's
+README, `docs/`, `CHANGELOG.md`, the CLI help and the API code. `start/status.md` follows
+`docs/implementation.md`'s phase table, and `start/install.md` the v0.0.1 release and
+`docs/pilot-installation.md`.
 
 **For agents**: `/llms.txt`, `/llms-full.txt` and `/llms-small.txt` (`starlight-llms-txt`).
 
