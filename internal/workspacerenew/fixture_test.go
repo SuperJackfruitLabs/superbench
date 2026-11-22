@@ -31,7 +31,7 @@ import (
 type backend struct {
 	mu        sync.Mutex
 	processes map[string]*os.Process
-	onStart   func()
+	onStart   func(*exec.Cmd) // every start, preparation hooks included
 	fences    int
 }
 
@@ -48,7 +48,7 @@ func (b *backend) Start(c *exec.Cmd, e *execution.Execution) error {
 	hook := b.onStart
 	b.mu.Unlock()
 	if hook != nil {
-		hook()
+		hook(c)
 	}
 	return nil
 }
@@ -65,6 +65,7 @@ func (b *backend) Fence(e *execution.Execution) error {
 	return nil
 }
 func (*backend) Empty(*execution.Execution) error { return nil }
+func (b *backend) fenceCount() int                { b.mu.Lock(); defer b.mu.Unlock(); return b.fences }
 
 type fixture struct {
 	t       *testing.T

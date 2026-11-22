@@ -5,8 +5,10 @@ import (
 	"database/sql"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -99,14 +101,31 @@ func TestRenewRefusesNonRootAndBusyOperationWithoutEffect(t *testing.T) {
 
 func TestRenewRefusesALiveExecution(t *testing.T) {
 	f := newFixture(t)
+	// Only the payload signals: the acquisition's preparation hook starts first.
+	const payload = "exec sleep 30"
 	started := make(chan struct{})
-	f.backend.onStart = func() { close(started) }
+	f.backend.onStart = func(c *exec.Cmd) {
+		if slices.Contains(c.Args, payload) {
+			close(started)
+		}
+	}
 	done := make(chan struct{})
-	go func() { _, _ = f.run(f.token, "/bin/sh", "-c", "exec sleep 30"); close(done) }()
+	go func() { _, _ = f.run(f.token, "/bin/sh", "-c", payload); close(done) }()
+	// Registered after newFixture's TempDir, so it runs first: the run never
+	// outlives the state it reads, even when the test fails early.
+	t.Cleanup(func() { _, _ = f.manager.Stop("card", "", true); <-done })
 	select {
 	case <-started:
 	case <-time.After(10 * time.Second):
 		t.Fatal("payload did not start")
+	}
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		if e := f.read().Lease.Execution; e != nil && e.Phase == "running" && e.PID != 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("payload never recorded running")
+		}
 	}
 	// A stop recorded before its fence: the execution is still running.
 	if err := f.update(func(rows benchstate.Database, _ *sql.Tx) error {
@@ -119,17 +138,16 @@ func TestRenewRefusesALiveExecution(t *testing.T) {
 	if live.Lease.Execution == nil || live.Lease.Execution.Phase != "running" {
 		t.Fatal("fixture execution is not live")
 	}
-	fences := f.backend.fences
+	fences := f.backend.fenceCount()
 	if _, err := (workspacerenew.Manager{Prep: f.manager}).Renew("card", 0); err != workspacerenew.ErrLive {
 		t.Fatal("renewal of a live execution", err)
 	}
-	if f.backend.fences != fences || !reflect.DeepEqual(f.read().Lease, live.Lease) {
+	if f.backend.fenceCount() != fences || !reflect.DeepEqual(f.read().Lease, live.Lease) {
 		t.Fatal("refused renewal acted on the live execution")
 	}
 	if _, err := f.manager.Stop("card", "", true); err != nil {
 		t.Fatal(err)
 	}
-	<-done
 }
 
 // Each refusal is a closed static error, decided before any write.
