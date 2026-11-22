@@ -9,7 +9,7 @@ export default defineConfig({
     starlight({
       title: 'SuperBench',
       description:
-        'Pre-release docs for SuperBench, an experimental single-host prototype: one task, one git worktree, leased to one holder and checkpointed to the remote. Not released yet.',
+        'Docs for SuperBench v0.0.1, an experimental single-host release: one task, one git worktree, leased to one holder and checkpointed to the remote.',
       // The suite's docs theme: vibekit's cyan, the faces, the street, status badges, the footers,
       // the 404, the edit link and llms.txt. See @superjackfruitlabs/vibekit-docs's README.
       // SuperBench is still `docs: null` in vibekit-frame, so the street, switchers and footer
@@ -21,9 +21,10 @@ export default defineConfig({
           // /llms.txt, /llms-full.txt and /llms-small.txt, for agents reading these docs.
           llms: {
             description:
-              'SuperBench is not released yet. It is an experimental single-host prototype under active ' +
-              'development, and nothing is released or supported for use. These docs describe the main ' +
-              'branch and will be refreshed at the first release. A bench is one task\'s git worktree on ' +
+              'SuperBench v0.0.1, released on 2026-11-22, is the first release: an experimental single-host ' +
+              'release, not production software. It ships one archive for Linux amd64 (bench, benchd, ' +
+              'bench-quota and bench-payload) with SHA256SUMS and a build-provenance attestation on the ' +
+              'GitHub release, and these docs describe it. A bench is one task\'s git worktree on ' +
               'one host, kept warm between holders: `bench create` makes it, `bench lease` hands it to one ' +
               'holder at a time, `bench checkpoint` pushes the existing HEAD without force and confirms the ' +
               'remote has exactly that commit, and `bench release` frees it. Leases are cooperative: they ' +
@@ -33,7 +34,7 @@ export default defineConfig({
           },
         }),
       ],
-      // Every page carries the pre-release banner: see src/components/Banner.astro.
+      // Every page carries the release-status line: see src/components/Banner.astro.
       components: { Banner: './src/components/Banner.astro' },
       favicon: '/favicon.svg',
       head: [
@@ -54,6 +55,7 @@ export default defineConfig({
           items: [
             { label: 'What SuperBench is', slug: 'start/what-it-is' },
             { label: 'Status', slug: 'start/status' },
+            { label: 'Install v0.0.1', slug: 'start/install' },
             { label: 'Security model', slug: 'start/security-model' },
             { label: 'Limits', slug: 'start/limits' },
           ],

@@ -13,7 +13,7 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CAVEATS, problems as honesty } from './honesty.mjs';
+import { CAVEATS, mayInstall, problems as honesty } from './honesty.mjs';
 
 const site = resolve(fileURLToPath(import.meta.url), '../..');
 const repo = resolve(site, '..');
@@ -50,7 +50,7 @@ for (const [name, text] of pages) {
   // The honesty rules, over the whole source (frontmatter, prose and code blocks). MDX imports
   // name package paths, not claims, so they are left out.
   const body = text.replace(/^import .*$/gm, '');
-  for (const p of honesty(body)) fail(`${name}: ${p}`);
+  for (const p of honesty(body, { install: mayInstall(name) })) fail(`${name}: ${p}`);
 }
 for (const [name, phrase, why] of CAVEATS) {
   if (!page(name).replace(/\*\*/g, '').replace(/\s+/g, ' ').toLowerCase().includes(phrase.toLowerCase())) fail(`${name} lost a caveat (${why}): "${phrase}"`);
@@ -205,5 +205,5 @@ if (problems.length > 0) {
 console.log(
   `check-claims: ${pages.size} pages; ${benchFlags.length + wsFlags.length} bench flags, ${commands.size} commands, ` +
     `${daemonFlags.length} benchd flags, ${shapes.size} v2 operations, ${errorMap.size} error codes and ${cacheKeys.length} cache keys ` +
-    `match the code; ${CAVEATS.length} ledger caveats in place; no install, version, local name or overclaim`,
+    `match the code; ${CAVEATS.length} ledger caveats in place; no stray install, unreleased version, local name or overclaim`,
 );

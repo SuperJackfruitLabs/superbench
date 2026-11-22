@@ -9,7 +9,8 @@ Output is JSON. With `--socket`, an operation goes to `benchd` and prints the ve
 without it, the command works directly on the local state and data directories and prints the
 engine's own format. This page is checked against `cmd/bench` when the docs build.
 
-There is no supported installation yet. `bench version` prints `dev` for a build from a branch.
+`bench version` prints `bench 0.0.1` for the v0.0.1 release build and `bench dev` for a build from a
+branch. [Install v0.0.1](/start/install/) gets the release build; it is not a supported installation.
 
 ## Bench lifecycle
 
