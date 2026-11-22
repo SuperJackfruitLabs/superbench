@@ -20,6 +20,7 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/protocolv2"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspaceapi"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspaceops"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspacerenew"
 )
 
 func workspaceCLI(args []string, stdout, stderr io.Writer) error {
@@ -30,20 +31,20 @@ func workspaceCLI(args []string, stdout, stderr io.Writer) error {
 
 func workspaceCLIContext(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	if len(args) == 0 {
-		return errors.New("usage: bench workspace <create|recover|lease|setup|run|checkpoint|release|stop|stop_admin|archive|reclaim|status|host_status|plan-reap|reap|inspect-history|reconcile-history|inspect-initialization|claim-initialization|continue-initialization|inspect-transfer|begin-transfer|continue-transfer|inspect-missing-transfer|begin-missing-transfer|continue-missing-transfer|inspect-root-removal|reconcile-root-removal> [flags] [key]; flags precede key")
+		return errors.New("usage: bench workspace <create|recover|lease|setup|run|checkpoint|release|stop|stop_admin|renew_admin|archive|reclaim|status|host_status|plan-reap|reap|inspect-history|reconcile-history|inspect-initialization|claim-initialization|continue-initialization|inspect-transfer|begin-transfer|continue-transfer|inspect-missing-transfer|begin-missing-transfer|continue-missing-transfer|inspect-root-removal|reconcile-root-removal> [flags] [key]; flags precede key")
 	}
 	op := args[0]
 	if op == "host-status" {
 		op = "host_status"
 	}
-	if op == "stop-admin" {
-		op = "stop_admin"
+	if op == "stop-admin" || op == "renew-admin" {
+		op = op[:len(op)-6] + "_admin"
 	}
 	repair := op == "inspect-initialization" || op == "claim-initialization" || op == "continue-initialization"
 	missingTransfer := op == "inspect-missing-transfer" || op == "begin-missing-transfer" || op == "continue-missing-transfer"
 	transfer := missingTransfer || op == "inspect-transfer" || op == "begin-transfer" || op == "continue-transfer"
 	rootRemoval := op == "inspect-root-removal" || op == "reconcile-root-removal"
-	localAdmin := rootRemoval || repair || transfer || op == "plan-reap" || op == "reap" || op == "inspect-history" || op == "reconcile-history"
+	localAdmin := op == "renew_admin" || rootRemoval || repair || transfer || op == "plan-reap" || op == "reap" || op == "inspect-history" || op == "reconcile-history"
 	if !protocolv2.Known(op) && !localAdmin {
 		return fmt.Errorf("unknown workspace operation %q", op)
 	}
@@ -154,6 +155,9 @@ func workspaceCLIContext(ctx context.Context, args []string, stdout, stderr io.W
 				return errors.New("initialization repair continuation requires explicit --token")
 			}
 			return workspaceInitialization(ctx, store, op, key, *plan, *approve, *repairID, *token, *rerunOnce, stdout)
+		}
+		if op == "renew_admin" {
+			return workspacerenew.Admin(store, key, stdout)
 		}
 		if op == "inspect-history" || op == "reconcile-history" {
 			return workspaceHistory(ctx, store, op, key, *plan, *approve, stdout)

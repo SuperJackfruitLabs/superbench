@@ -90,6 +90,30 @@ administrative stop can return the retained owner capability only after fencing
 has succeeded and continuation has been revoked. That capability does not revive
 the stopped writer or make stopped initialization restartable.
 
+A stopped ready owner whose tree holds files the checkpoint refuses can still
+checkpoint and release once they are gone, but it can never launch the run that
+removes them. `bench workspace renew_admin KEY` is root's local answer; it is
+not a socket operation. It requires real and effective UID 0, a ready workspace
+without archive, transfer, initialization repair or pending checkpoint, an owner
+stopped with its continuation revoked, a stopped and empty execution scope, and
+no active daemon operation on the key. It then retires the stopped token and
+saves a successor lease for the same holder with a new token and a fresh
+continuation, carrying the stopped execution and retained runs over unchanged.
+The state transition admits exactly that change and still never clears a stop on
+the same token. The successor's `grant_token` and `root_path` go to stdout only.
+The operator path for a dirty stopped lease:
+
+```sh
+bench workspace stop_admin KEY
+bench workspace renew_admin KEY
+BENCH_LEASE_TOKEN=NEW_TOKEN bench workspace run --holder HOLDER KEY -- COMMAND
+BENCH_LEASE_TOKEN=NEW_TOKEN bench workspace release KEY   # only if still held
+bench workspace reclaim KEY                                # optional
+```
+
+`COMMAND` commits or removes the files. `run` checkpoints and releases on exit
+zero unless `--checkpoint=false`.
+
 ## Preparation and completion
 
 Creation and recovery initialize the whole repository vector and confirm its

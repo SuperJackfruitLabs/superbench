@@ -41,6 +41,10 @@ harnesses working.
 - **A lost supervised token** is recovered with `bench stop --admin`: a local operator fences the
   recorded scope and gets the retained lease and token back. Cooperative shell leases still need
   manual inspection, because nothing fenced them.
+- **A stopped lease whose tree is dirty** cannot release, and a stopped owner never runs again.
+  Root's `bench workspace renew_admin` retires its token and gives the same holder a new one, which
+  can run the fix and release. See
+  [A stopped lease that cannot release](/reference/bench/#a-stopped-lease-that-cannot-release).
 - **Releasing twice** can fail after the first release cleared the lease. Check `status` rather than
   applying an old token to a new holder.
 
