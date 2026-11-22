@@ -105,7 +105,7 @@ func (s Files) Finish(c *Intent) (*model.Bench, error) {
 		if out, e := s.Git(b.Path, "status", "--porcelain", "--untracked-files=all"); e != nil {
 			return nil, e
 		} else if out != "" {
-			return nil, model.ErrDirty
+			return nil, model.DirtyStatus("", out)
 		}
 		return &b, nil
 	} else if !os.IsNotExist(err) {

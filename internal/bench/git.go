@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/gitcontrol"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
 )
 
 func (s Store) git(dir string, args ...string) (string, error) {
@@ -24,7 +25,7 @@ func (s Store) clean(b *Bench) error {
 		return err
 	}
 	if out != "" {
-		return ErrDirty
+		return model.DirtyStatus("", out)
 	}
 	return nil
 }

@@ -114,7 +114,7 @@ func (l Lifecycle) InspectTransferred(ctx context.Context, b *model.Bench, clean
 				return nil, err
 			}
 			if out != "" {
-				return nil, model.ErrDirty
+				return nil, model.DirtyMember(b, member.Name, out)
 			}
 		}
 		vector = append(vector, cp)

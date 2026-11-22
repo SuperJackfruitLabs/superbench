@@ -90,6 +90,23 @@ administrative stop can return the retained owner capability only after fencing
 has succeeded and continuation has been revoked. That capability does not revive
 the stopped writer or make stopped initialization restartable.
 
+A checkpoint or release refused because the tree has uncommitted or untracked
+files returns `409 conflict` with a message that names what to clean:
+
+```text
+workspace has uncommitted or untracked files; commit or remove them before checkpoint or release: api/src/__pycache__/app.cpython-312.pyc, .cache and 4 more
+```
+
+It names at most the first five offending paths, as `git status` reports them,
+and counts the rest; the whole message stays within 256 bytes. Paths are
+relative to the workspace root: a member's paths start with the member name
+when the workspace has several, and a stray top-level entry is named alone. Git
+quotes unusual names. Ignored files (`.gitignore`, the repository's
+`info/exclude`) are not offending. No file content and no absolute path is
+included. In a Fresh workspace the payload helper reports only that the root
+holds an unregistered entry, so a stray root entry there keeps the message
+without paths. The code and status are the ones clients already match.
+
 A stopped ready owner whose tree holds files the checkpoint refuses can still
 checkpoint and release once they are gone, but it can never launch the run that
 removes them. `bench workspace renew_admin KEY` is root's local answer; it is

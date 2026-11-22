@@ -59,10 +59,14 @@ func (i Inspector) Root(ctx context.Context, b *model.Bench, clean bool) error {
 		if err != nil {
 			return err
 		}
+		var stray []string
 		for _, entry := range entries {
 			if !names[entry.Name()] || !entry.IsDir() || entry.Type()&os.ModeSymlink != 0 {
-				return model.ErrDirty
+				stray = append(stray, entry.Name())
 			}
+		}
+		if len(stray) != 0 {
+			return model.Dirty(stray)
 		}
 	}
 	return nil
@@ -133,7 +137,7 @@ func (i Inspector) Member(ctx context.Context, b *model.Bench, member model.Work
 			return model.WorkspaceCommit{}, err
 		}
 		if status != "" {
-			return model.WorkspaceCommit{}, model.ErrDirty
+			return model.WorkspaceCommit{}, model.DirtyMember(b, member.Name, status)
 		}
 	}
 	head, err := checkout("rev-parse", "--verify", "HEAD^{commit}")
