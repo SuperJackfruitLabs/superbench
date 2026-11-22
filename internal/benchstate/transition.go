@@ -214,7 +214,10 @@ func leaseTransition(old *model.Lease, b *model.Bench) bool {
 	if next == nil {
 		return b.Workspace.Phase == "ready" && b.Workspace.Checkpoint != nil && b.Workspace.Pending == nil && (old.Execution == nil || old.Execution.Phase == "stopped")
 	}
-	if old.Token != next.Token || old.Holder != next.Holder || old.StopRequested && !next.StopRequested {
+	if old.Token != next.Token {
+		return renewal(old, b)
+	}
+	if old.Holder != next.Holder || old.StopRequested && !next.StopRequested {
 		return false
 	}
 	if old.Continuation != next.Continuation && !(next.StopRequested && next.Continuation == "") {
@@ -226,6 +229,16 @@ func leaseTransition(old *model.Lease, b *model.Bench) bool {
 	return executionTransition(old.Execution, next.Execution, next.RetainedRuns)
 }
 
+// renewal admits root's successor for an administratively stopped ready owner
+// (workspacerenew): a new token and fresh continuation for the same holder. The
+// old token stays stopped for good; its stopped execution and runs carry over.
+func renewal(old *model.Lease, b *model.Bench) bool {
+	w, next := b.Workspace, b.Lease
+	stopped := old.StopRequested && old.Continuation == "" && (old.Execution == nil || old.Execution.Phase == "stopped")
+	return stopped && w.Phase == "ready" && w.Pending == nil && w.Archive == nil && w.Transfer == nil && w.InitializationRepair == nil && b.ArchivedAt == "" &&
+		old.Holder != "initialization" && next.Holder == old.Holder && next.Token != "" && !next.StopRequested && next.Continuation != "" &&
+		slices.Equal(old.RetainedRuns, next.RetainedRuns) && reflect.DeepEqual(old.Execution, next.Execution)
+}
 func preparationTransition(old identityRecord, b *model.Bench) bool {
 	if slices.Equal(old.preparation, b.Workspace.Preparation) {
 		return true

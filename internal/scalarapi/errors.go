@@ -27,7 +27,9 @@ func ErrorStatus(e error) (int, string, string) {
 		return 403, "forbidden", "valid holder capability required"
 	case errors.Is(e, bench.ErrWorkspace):
 		return 409, "conflict", "aggregate workspace requires the workspace API"
-	case errors.Is(e, bench.ErrArchived) || errors.Is(e, bench.ErrBusy) || errors.Is(e, bench.ErrExists) || errors.Is(e, bench.ErrNotFenced) || errors.Is(e, bench.ErrCheckpoint) || errors.Is(e, bench.ErrDirty):
+	case errors.Is(e, bench.ErrDirty): // the one conflict the holder can fix in the tree
+		return 409, "conflict", "bench has uncommitted or untracked files; commit or remove them before checkpoint or release"
+	case errors.Is(e, bench.ErrArchived) || errors.Is(e, bench.ErrBusy) || errors.Is(e, bench.ErrExists) || errors.Is(e, bench.ErrNotFenced) || errors.Is(e, bench.ErrCheckpoint):
 		return 409, "conflict", "bench state conflicts with this operation"
 	}
 	return 422, "operation_failed", "operation failed; inspect retained bench state and local logs"

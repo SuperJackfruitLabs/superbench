@@ -48,3 +48,17 @@ func TestFreshCreateRefusalIsAnExplicitConflict(t *testing.T) {
 		t.Fatal(status, code, message)
 	}
 }
+
+// v1 keeps its code set; a dirty bench only gets a static message naming the cause.
+func TestDirtyBenchHasItsOwnStaticConflictMessage(t *testing.T) {
+	status, code, message := ErrorStatus(fmt.Errorf("private /data/benches/card: %w", bench.ErrDirty))
+	if status != 409 || code != "conflict" || message != "bench has uncommitted or untracked files; commit or remove them before checkpoint or release" {
+		t.Fatal(status, code, message)
+	}
+	if _, _, generic := ErrorStatus(bench.ErrBusy); generic != "bench state conflicts with this operation" {
+		t.Fatal("generic conflict changed:", generic)
+	}
+	if _, guarded, _ := ErrorStatus(errors.Join(bench.ErrDirty, bench.ErrLease)); guarded != "forbidden" {
+		t.Fatal("dirty diagnostic overrode capability refusal", guarded)
+	}
+}

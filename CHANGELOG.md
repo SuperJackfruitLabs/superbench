@@ -6,6 +6,22 @@ stamps the section `## vX.Y.Z — YYYY-MM-DD`, and the release notes quote it.
 
 ## Unreleased
 
+- A ready workspace whose owner was stopped with stray files in its tree could not be freed: the
+  checkpoint refused the files, and a stopped owner can never launch the run that removes them. New
+  root-only `bench workspace renew_admin KEY` retires the stopped token and prints a new one
+  (`grant_token`) for the same holder, with fresh launch authority. The old token stays stopped and
+  is refused. It requires real and effective UID 0, a stopped owner whose run is stopped, no
+  archive, transfer, initialization repair or pending checkpoint, and no active daemon operation on
+  the key; every refusal is a fixed message. It is local only, not a socket operation. The operator
+  path for a dirty stopped lease is: `stop_admin`, then `renew_admin`, then
+  `BENCH_LEASE_TOKEN=NEW_TOKEN bench workspace run --holder HOLDER KEY -- COMMAND`, where the command
+  commits or removes the files and the run checkpoints. Then `release` if the lease is still held,
+  and optionally `reclaim`.
+- A checkpoint or release refused because the tree has uncommitted or untracked files now says
+  so: `409 conflict` with "workspace has uncommitted or untracked files; commit or remove them
+  before checkpoint or release" (v1: "bench has …"), instead of the generic "workspace state
+  conflicts with this operation". The code and status are unchanged and the message stays static:
+  it names no path or file.
 - A Fresh create whose source commit the mirror held only under `refs/remotes/origin/*` failed
   with `bench-quota: exit status 128` and stayed at `materializing`. That was any branch already
   pushed past `main`: the next generation of a reclaimed key whose bench had pushed work, or a
