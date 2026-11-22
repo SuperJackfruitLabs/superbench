@@ -6,6 +6,24 @@ stamps the section `## vX.Y.Z — YYYY-MM-DD`, and the release notes quote it.
 
 ## Unreleased
 
+## v0.0.1 — 2026-11-22
+
+First release. SuperBench is an experimental single-host prototype, not a production system, and
+nothing here has been proven beyond what the repository's docs describe. A bench is one task's git
+worktree, kept warm between cooperating agents: the `bench` CLI and the local Unix-socket daemon
+`benchd` create it, hand it from one agent to the next under a cooperative lease, checkpoint its
+commits to the remote, and recover it into fresh host state. On Linux, managed storage adds
+per-bench byte and inode caps on a dedicated XFS mount, supervised runs in cgroups, and the
+default-off v2 workspace API, whose Fresh layout keeps each member's tree private to a separate
+payload account that benchd reaches only through the payload helper.
+
+The release carries the four commands the managed installer needs: `bench`, `benchd`,
+`bench-quota` and `bench-payload`, in one archive built for Linux amd64 with CGO off, so every
+binary is static (`bench-payload` must be). The archive is reproducible from the tag, and
+`SHA256SUMS` and a build-provenance attestation come with it. `bench version` and
+`benchd version` print the release version; a build from a branch prints `dev`. Read
+`docs/pilot-installation.md` before installing anything.
+
 - A ready workspace whose owner was stopped with stray files in its tree could not be freed: the
   checkpoint refused the files, and a stopped owner can never launch the run that removes them. New
   root-only `bench workspace renew_admin KEY` retires the stopped token and prints a new one
@@ -106,14 +124,6 @@ stamps the section `## vX.Y.Z — YYYY-MM-DD`, and the release notes quote it.
   initialized by an earlier revision is refused with a message that points to "Reinitialize the
   indexed ledger" in `docs/pilot-installation.md`. The data volume must not be mounted with
   `nouuid`.
-- First release, v0.0.1. SuperBench is an experimental single-host prototype, not a production
-  system, and nothing here has been proven beyond what the repository's docs describe. The
-  release carries the four commands the managed installer needs: `bench`, `benchd`,
-  `bench-quota` and `bench-payload`, built for Linux amd64 with CGO off, so every
-  binary is static (`bench-payload` must be). Each archive is reproducible from the tag, and
-  `SHA256SUMS` and a build-provenance attestation come with them. `bench version` and
-  `benchd version` print the release version; a build from a branch prints `dev`. Read
-  `docs/pilot-installation.md` before installing anything.
 - benchd reads the default-off v2 switches (Fresh payload layout, finite I/O, receipt lookup,
   cancellation, registration observation) only from the root-owned
   `/etc/superbench/activation.json`, and logs them at start. With the file absent nothing
