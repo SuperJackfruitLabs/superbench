@@ -104,12 +104,22 @@ the same token. The successor's `grant_token` and `root_path` go to stdout only.
 The operator path for a dirty stopped lease:
 
 ```sh
-bench workspace stop_admin KEY
-bench workspace renew_admin KEY
-BENCH_LEASE_TOKEN=NEW_TOKEN bench workspace run --holder HOLDER KEY -- COMMAND
-BENCH_LEASE_TOKEN=NEW_TOKEN bench workspace release KEY   # only if still held
-bench workspace reclaim KEY                                # optional
+bench workspace stop_admin --socket SOCKET KEY
+bench workspace renew_admin --state STATE --data DATA \
+  --cgroup-root CGROUP_ROOT --mirror-timeout TIMEOUT KEY
+BENCH_LEASE_TOKEN=NEW_TOKEN bench workspace run --socket SOCKET --holder HOLDER KEY -- COMMAND
+BENCH_LEASE_TOKEN=NEW_TOKEN bench workspace release --socket SOCKET KEY   # only if still held
+bench workspace reclaim --socket SOCKET KEY                                # optional
 ```
+
+`renew_admin` opens state directly rather than calling the daemon, so it has no
+`--socket` and must be given the `--state`, `--data`, `--cgroup-root` and
+`--mirror-timeout` that `benchd` runs with. Without them it reads the CLI's own
+default roots under the caller's config and cache directories, finds no such
+workspace there, and refuses with `unknown workspace`. That refusal always means
+the state it read has no workspace for `KEY`: the wrong `--state`, or a mistyped
+key. The other verbs go through the daemon with `--socket`; run locally instead,
+they need the same roots.
 
 `COMMAND` commits or removes the files. `run` checkpoints and releases on exit
 zero unless `--checkpoint=false`.

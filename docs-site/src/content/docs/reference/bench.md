@@ -142,13 +142,22 @@ A run can stop with files the checkpoint refuses, such as stray untracked files 
 stopped owner cannot run again: a stop revokes its launch authority for good. As root on the host:
 
 ```sh
-bench workspace stop_admin KEY       # fences the run; the lease stays held and stopped
-bench workspace renew_admin KEY      # retires that token; prints grant_token and root_path
-export BENCH_LEASE_TOKEN=NEW_TOKEN   # the grant_token renew_admin printed
-bench workspace run --holder HOLDER KEY -- COMMAND
-bench workspace release KEY          # only if the lease is still held
-bench workspace reclaim KEY          # optional, for a Fresh workspace
+bench workspace stop_admin --socket SOCKET KEY   # fences the run; the lease stays held and stopped
+bench workspace renew_admin --state STATE --data DATA \
+  --cgroup-root CGROUP_ROOT --mirror-timeout TIMEOUT KEY   # prints grant_token and root_path
+export BENCH_LEASE_TOKEN=NEW_TOKEN               # the grant_token renew_admin printed
+bench workspace run --socket SOCKET --holder HOLDER KEY -- COMMAND
+bench workspace release --socket SOCKET KEY      # only if the lease is still held
+bench workspace reclaim --socket SOCKET KEY      # optional, for a Fresh workspace
 ```
+
+`renew_admin` is a local verb, not a socket call: it opens state directly, so it has no `--socket`.
+Without `--state` and `--data` it uses the CLI's own defaults under the caller's config and cache
+directories, not the daemon's. Pass the same `--state`, `--data`, `--cgroup-root` and
+`--mirror-timeout` that `benchd` runs with; on a packaged host the state is
+`/var/lib/superbench/state` (see [Files and paths](/reference/files-and-paths/)) and the data root is
+the one the storage policy names. A refusal of `unknown workspace` means there is no workspace for
+`KEY` in the state it read: usually the wrong `--state`, otherwise a mistyped key.
 
 `renew_admin` issues a new token, with fresh launch authority, to the same holder. It takes no flags
 beyond `--state`, `--data`, `--cgroup-root` and `--mirror-timeout`, and it refuses with a fixed message
@@ -156,4 +165,5 @@ unless the caller's real and effective user IDs are 0, the workspace is ready wi
 transfer, initialization repair or pending checkpoint, its owner was stopped and its run is stopped,
 and no daemon operation is active on it. The old token stays stopped and is refused afterwards.
 `COMMAND` is the fix: commit the files or remove them. `run` checkpoints and releases on exit zero by
-default; otherwise `checkpoint` and `release` with the new token finish the job.
+default; otherwise `checkpoint` and `release` with the new token finish the job. The other verbs here
+go through the daemon with `--socket`; run locally instead, they need the same `--state` and `--data`.
