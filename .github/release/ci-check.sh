@@ -6,4 +6,10 @@
 set -eu
 # The ordinary checks, as CI runs them for an unprivileged user (the runner is not root).
 # scripts/check-ci.py is the forge CI conductor and needs a Linux host set up to switch users.
-sh scripts/check.sh
+#
+# The conductor starts scripts/check.sh through Python's subprocess, which closes every
+# descriptor above 2. A hosted runner can hand this job descriptors without close-on-exec, and
+# Go keeps those open across exec, so they reach the clean worker that internal/cleanworker's
+# tests launch, which rightly refuses anything but 0, 1 and 2. Start the checks the same way the
+# conductor does, so they see the same descriptors; the worker's check stays as strict as it is.
+exec python3 -c 'import subprocess, sys; sys.exit(subprocess.run(["sh", "scripts/check.sh"]).returncode)'
