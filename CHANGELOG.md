@@ -6,6 +6,11 @@ stamps the section `## vX.Y.Z — YYYY-MM-DD`, and the release notes quote it.
 
 ## Unreleased
 
+- The docs explain workspaces whose repositories a card chooses upstream ("Repositories chosen per
+  card" under Benches and workspaces): SuperBench creates a workspace with the 1 to 32 members it is
+  given, never changes an existing workspace to another set, and a hub that reclaims a settled
+  card's workspace needs the node's user in `--operator-uids`.
+
 - A checkpoint or release refused for a dirty tree now names what to clean. The `409 conflict`
   message ends with the first five offending paths and a count of the rest, for example
   "workspace has uncommitted or untracked files; commit or remove them before checkpoint or
