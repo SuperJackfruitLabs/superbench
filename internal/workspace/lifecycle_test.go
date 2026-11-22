@@ -73,7 +73,7 @@ func TestLifecycleCheckpointRejectsDirtySecondMemberBeforeAnyPush(t *testing.T) 
 		t.Fatal(err)
 	}
 	got, err := l.Checkpoint(context.Background(), b.Key, b.Lease.Token)
-	if !errors.Is(err, model.ErrDirty) || got == nil {
+	if !errors.Is(err, model.ErrDirty) || got == nil || !strings.HasSuffix(err.Error(), ": "+b.Workspace.Members[1].Name+"/private-output") {
 		t.Fatal(got, err)
 	}
 	if persisted := f.read(t); !reflect.DeepEqual(persisted, b) {
@@ -265,8 +265,8 @@ func TestLifecycleInspectRefusesChangedOriginAndUntrackedRootOutput(t *testing.T
 	if err := os.WriteFile(filepath.Join(b.Path, "root-output"), []byte("preserve"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := l.Checkpoint(context.Background(), b.Key, b.Lease.Token); !errors.Is(err, model.ErrDirty) {
-		t.Fatal("untracked root output ignored", err)
+	if _, err := l.Checkpoint(context.Background(), b.Key, b.Lease.Token); !errors.Is(err, model.ErrDirty) || !strings.HasSuffix(err.Error(), ": root-output") {
+		t.Fatal("untracked root output ignored or not named", err)
 	}
 	if !reflect.DeepEqual(f.read(t), b) {
 		t.Fatal("invalid checkout changed checkpoint state")

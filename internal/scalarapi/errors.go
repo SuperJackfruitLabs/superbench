@@ -28,7 +28,12 @@ func ErrorStatus(e error) (int, string, string) {
 	case errors.Is(e, bench.ErrWorkspace):
 		return 409, "conflict", "aggregate workspace requires the workspace API"
 	case errors.Is(e, bench.ErrDirty): // the one conflict the holder can fix in the tree
-		return 409, "conflict", "bench has uncommitted or untracked files; commit or remove them before checkpoint or release"
+		base := "bench has uncommitted or untracked files; commit or remove them before checkpoint or release"
+		var dirty interface{ Message(string, int) string } // model.DirtyError; scalarapi reads only bench
+		if errors.As(e, &dirty) {
+			return 409, "conflict", dirty.Message(base, 256)
+		}
+		return 409, "conflict", base
 	case errors.Is(e, bench.ErrArchived) || errors.Is(e, bench.ErrBusy) || errors.Is(e, bench.ErrExists) || errors.Is(e, bench.ErrNotFenced) || errors.Is(e, bench.ErrCheckpoint):
 		return 409, "conflict", "bench state conflicts with this operation"
 	}

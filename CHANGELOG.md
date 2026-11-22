@@ -6,6 +6,15 @@ stamps the section `## vX.Y.Z — YYYY-MM-DD`, and the release notes quote it.
 
 ## Unreleased
 
+- A checkpoint or release refused for a dirty tree now names what to clean. The `409 conflict`
+  message ends with the first five offending paths and a count of the rest, for example
+  "workspace has uncommitted or untracked files; commit or remove them before checkpoint or
+  release: src/__pycache__/app.cpython-312.pyc, .cache and 2 more" (v1: "bench has …"). Paths
+  are relative to the workspace root, prefixed with the member name when the workspace has
+  several; ignored files are not named and no file content is sent. The code and status are
+  unchanged, and the message stays within 256 bytes. A stray top-level entry in a Fresh
+  workspace is still refused without a path.
+
 ## v0.0.1 — 2026-11-22
 
 First release. SuperBench is an experimental single-host prototype, not a production system, and

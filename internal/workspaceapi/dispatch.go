@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/bench"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/protocolv2"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspaceops"
 )
@@ -25,7 +26,7 @@ func ErrorStatus(err error) (int, string, string) {
 	case errors.Is(err, bench.ErrLease):
 		return 403, "forbidden", "valid holder capability required"
 	case errors.Is(err, bench.ErrDirty): // the one conflict the holder can fix in the tree
-		return 409, "conflict", "workspace has uncommitted or untracked files; commit or remove them before checkpoint or release"
+		return 409, "conflict", dirtyMessage(err, "workspace has uncommitted or untracked files; commit or remove them before checkpoint or release")
 	case errors.Is(err, workspaceops.ErrConflict), errors.Is(err, bench.ErrScalar), errors.Is(err, bench.ErrWorkspace), errors.Is(err, bench.ErrArchived), errors.Is(err, bench.ErrBusy), errors.Is(err, bench.ErrExists), errors.Is(err, bench.ErrNotFenced), errors.Is(err, bench.ErrCheckpoint):
 		return 409, "conflict", "workspace state conflicts with this operation"
 	}
@@ -34,6 +35,17 @@ func ErrorStatus(err error) (int, string, string) {
 		return 422, "capacity_exhausted", capacity.Message()
 	}
 	return 422, "operation_failed", "operation failed; inspect retained workspace state and local logs"
+}
+
+// dirtyMessage names the offending paths a dirty check reported, relative to
+// the workspace root, within the protocol's 256-byte message bound. Any other
+// wrapping of ErrDirty keeps the static message: a private cause never leaks.
+func dirtyMessage(err error, base string) string {
+	var dirty *model.DirtyError
+	if errors.As(err, &dirty) {
+		return dirty.Message(base, 256)
+	}
+	return base
 }
 
 // Envelope verifies the complete projected response before it can reach stdout

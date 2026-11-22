@@ -139,8 +139,10 @@ Operations: `create`, `recover`, `lease`, `setup`, `run`, `checkpoint`, `release
 ### A stopped lease that cannot release
 
 A run can stop with files the checkpoint refuses, such as stray untracked files at the tree root.
-`release` then returns `409 conflict` ("workspace has uncommitted or untracked files"), and the
-stopped owner cannot run again: a stop revokes its launch authority for good. As root on the host:
+`release` then returns `409 conflict` ("workspace has uncommitted or untracked files; commit or
+remove them before checkpoint or release: PATH, PATH and N more", naming up to five offending paths
+relative to the workspace root), and the stopped owner cannot run again: a stop revokes its launch
+authority for good. As root on the host:
 
 ```sh
 bench workspace stop_admin --socket SOCKET KEY   # fences the run; the lease stays held and stopped
