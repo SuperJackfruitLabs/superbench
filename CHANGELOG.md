@@ -6,6 +6,11 @@ stamps the section `## vX.Y.Z — YYYY-MM-DD`, and the release notes quote it.
 
 ## Unreleased
 
+- A checkpoint or release refused because the tree has uncommitted or untracked files now says
+  so: `409 conflict` with "workspace has uncommitted or untracked files; commit or remove them
+  before checkpoint or release" (v1: "bench has …"), instead of the generic "workspace state
+  conflicts with this operation". The code and status are unchanged and the message stays static:
+  it names no path or file.
 - A Fresh create whose source commit the mirror held only under `refs/remotes/origin/*` failed
   with `bench-quota: exit status 128` and stayed at `materializing`. That was any branch already
   pushed past `main`: the next generation of a reclaimed key whose bench had pushed work, or a

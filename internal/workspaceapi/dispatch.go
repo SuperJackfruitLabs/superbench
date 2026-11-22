@@ -24,7 +24,9 @@ func ErrorStatus(err error) (int, string, string) {
 		return 404, "not_found", "unknown bench"
 	case errors.Is(err, bench.ErrLease):
 		return 403, "forbidden", "valid holder capability required"
-	case errors.Is(err, workspaceops.ErrConflict), errors.Is(err, bench.ErrScalar), errors.Is(err, bench.ErrWorkspace), errors.Is(err, bench.ErrArchived), errors.Is(err, bench.ErrBusy), errors.Is(err, bench.ErrExists), errors.Is(err, bench.ErrNotFenced), errors.Is(err, bench.ErrCheckpoint), errors.Is(err, bench.ErrDirty):
+	case errors.Is(err, bench.ErrDirty): // the one conflict the holder can fix in the tree
+		return 409, "conflict", "workspace has uncommitted or untracked files; commit or remove them before checkpoint or release"
+	case errors.Is(err, workspaceops.ErrConflict), errors.Is(err, bench.ErrScalar), errors.Is(err, bench.ErrWorkspace), errors.Is(err, bench.ErrArchived), errors.Is(err, bench.ErrBusy), errors.Is(err, bench.ErrExists), errors.Is(err, bench.ErrNotFenced), errors.Is(err, bench.ErrCheckpoint):
 		return 409, "conflict", "workspace state conflicts with this operation"
 	}
 	var capacity *bench.CapacityError
