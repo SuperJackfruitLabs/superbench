@@ -9,7 +9,7 @@ export default defineConfig({
     starlight({
       title: 'SuperBench',
       description:
-        'Docs for SuperBench v0.0.1, an experimental single-host release: one task, one git worktree, leased to one holder and checkpointed to the remote.',
+        'Docs for SuperBench v0.0.2, an experimental single-host release: one task, one git worktree, leased to one holder and checkpointed to the remote.',
       // The suite's docs theme: vibekit's cyan, the faces, the street, status badges, the footers,
       // the 404, the edit link and llms.txt. See @superjackfruitlabs/vibekit-docs's README.
       // SuperBench is still `docs: null` in vibekit-frame, so the street, switchers and footer
@@ -21,10 +21,12 @@ export default defineConfig({
           // /llms.txt, /llms-full.txt and /llms-small.txt, for agents reading these docs.
           llms: {
             description:
-              'SuperBench v0.0.1, released on 2026-11-22, is the first release: an experimental single-host ' +
+              'SuperBench v0.0.2, released on 2026-11-23, is the second release, after v0.0.1: an experimental single-host ' +
               'release, not production software. It ships one archive for Linux amd64 (bench, benchd, ' +
               'bench-quota and bench-payload) with SHA256SUMS and a build-provenance attestation on the ' +
-              'GitHub release, and these docs describe it. A bench is one task\'s git worktree on ' +
+              'GitHub release, and these docs describe it. Over v0.0.1, a checkpoint or release refused ' +
+              'for a dirty tree now names up to five of the paths to clean, and the docs explain workspaces ' +
+              'whose repositories a card chooses upstream. A bench is one task\'s git worktree on ' +
               'one host, kept warm between holders: `bench create` makes it, `bench lease` hands it to one ' +
               'holder at a time, `bench checkpoint` pushes the existing HEAD without force and confirms the ' +
               'remote has exactly that commit, and `bench release` frees it. Leases are cooperative: they ' +
@@ -55,7 +57,7 @@ export default defineConfig({
           items: [
             { label: 'What SuperBench is', slug: 'start/what-it-is' },
             { label: 'Status', slug: 'start/status' },
-            { label: 'Install v0.0.1', slug: 'start/install' },
+            { label: 'Install v0.0.2', slug: 'start/install' },
             { label: 'Security model', slug: 'start/security-model' },
             { label: 'Limits', slug: 'start/limits' },
           ],

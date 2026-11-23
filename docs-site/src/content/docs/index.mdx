@@ -1,6 +1,6 @@
 ---
 title: SuperBench
-description: Docs for SuperBench v0.0.1, an experimental single-host release. One task, one git worktree on a host, kept warm between holders and checkpointed to the remote.
+description: Docs for SuperBench v0.0.2, an experimental single-host release. One task, one git worktree on a host, kept warm between holders and checkpointed to the remote.
 template: splash
 status: wet paint
 ---
@@ -11,26 +11,26 @@ import WetPaint from '@superjackfruitlabs/vibekit-docs/components/WetPaint.astro
 
 <BentoHome
   claim="One task, one bench."
-  sub="A bench is one task's git worktree on one host, kept warm between holders. SuperBench creates it, leases it to one holder at a time, and will not let it go until the work is committed, pushed and confirmed on the remote. SuperBench v0.0.1 is its first release: an experimental single-host release for trusted repositories, on Linux amd64."
+  sub="A bench is one task's git worktree on one host, kept warm between holders. SuperBench creates it, leases it to one holder at a time, and will not let it go until the work is committed, pushed and confirmed on the remote. SuperBench v0.0.2 is its latest release: an experimental single-host release for trusted repositories, on Linux amd64."
   actions={[
     { text: 'What SuperBench is', link: '/start/what-it-is/' },
-    { text: 'Install v0.0.1', link: '/start/install/', variant: 'secondary' },
+    { text: 'Install v0.0.2', link: '/start/install/', variant: 'secondary' },
     { text: 'Status', link: '/start/status/', variant: 'secondary' },
   ]}
-  quickstart={{ label: 'Quick start: install v0.0.1' }}
+  quickstart={{ label: 'Quick start: install v0.0.2' }}
   ask={false}
   agent={{
     prompt:
-      "I'm reading about SuperBench v0.0.1, its first release, an experimental single-host release. Read https://docs.superbench.dev/llms.txt to see what its docs cover, and https://docs.superbench.dev/llms-full.txt for every page in one file.\n\nThen explain what a bench is and what its leases do and do not protect against.\n\nName the docs page each answer comes from, and tell me when the docs do not cover something.",
+      "I'm reading about SuperBench v0.0.2, its latest release, an experimental single-host release. Read https://docs.superbench.dev/llms.txt to see what its docs cover, and https://docs.superbench.dev/llms-full.txt for every page in one file.\n\nThen explain what a bench is and what its leases do and do not protect against.\n\nName the docs page each answer comes from, and tell me when the docs do not cover something.",
   }}
   flowTitle="A bench's life (step through it; it waits for you)"
 >
   <div slot="quickstart">
     <p>
-      v0.0.1 ships one archive for Linux amd64, with <code>SHA256SUMS</code> and a
+      v0.0.2 ships one archive for Linux amd64, with <code>SHA256SUMS</code> and a
       build-provenance attestation, on the
-      <a href="https://github.com/SuperJackfruitLabs/superbench/releases/tag/v0.0.1">GitHub release</a>.
-      <a href="/start/install/">Install v0.0.1</a> shows how to download, verify and stage it on a
+      <a href="https://github.com/SuperJackfruitLabs/superbench/releases/tag/v0.0.2">GitHub release</a>.
+      <a href="/start/install/">Install v0.0.2</a> shows how to download, verify and stage it on a
       disposable or staging Linux host. It is not a supported installation, and
       <a href="/start/status/">Status</a> lists what is done, what is partial and what is not built.
     </p>
@@ -48,13 +48,15 @@ import WetPaint from '@superjackfruitlabs/vibekit-docs/components/WetPaint.astro
 
 ## What these docs are
 
-These docs describe SuperBench v0.0.1, the first release, tagged on 2026-11-22. They are written
+These docs describe SuperBench v0.0.2, the second release, tagged on 2026-11-23. They are written
 from the repository's own README, its `docs/` folder, its changelog, the `bench` and `benchd`
 help and the API code at that tag, and the build checks them against the source on `main`. Where
-the repository says something is partial or unverified, so do these pages.
+the repository says something is partial or unverified, so do these pages. Over v0.0.1, a
+checkpoint or release refused for a dirty tree now names the paths to clean, and the docs explain
+[repositories chosen per card](/concepts/benches-and-workspaces/#repositories-chosen-per-card).
 
 <WetPaint>
-  SuperBench v0.0.1 is an experimental single-host release for trusted repositories, not
+  SuperBench v0.0.2 is an experimental single-host release for trusted repositories, not
   production software. Leases are cooperative, nothing in it isolates untrusted code, and it runs
   on one host. [Status](/start/status/) lists what is done, what is partial and what is not built.
 </WetPaint>

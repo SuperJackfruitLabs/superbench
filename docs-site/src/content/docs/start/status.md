@@ -1,17 +1,24 @@
 ---
 title: Status
-description: What SuperBench v0.0.1, an experimental single-host release, does, what is partial and what is not built, from the repository's changelog and implementation plan.
+description: What SuperBench v0.0.2, an experimental single-host release, does, what is partial and what is not built, from the repository's changelog and implementation plan.
 status: wet paint
 ---
 
-SuperBench v0.0.1, tagged on 2026-11-22, is the first release. It is an experimental single-host
-release, not production software, and the changelog calls it a prototype: nothing in it has been
-proven beyond what the repository's docs describe. The
-[GitHub release](https://github.com/SuperJackfruitLabs/superbench/releases/tag/v0.0.1) carries one
+SuperBench v0.0.2, tagged on 2026-11-23, is the second release, after v0.0.1. It is an
+experimental single-host release, not production software, and the changelog calls it a
+prototype: nothing in it has been proven beyond what the repository's docs describe. The
+[GitHub release](https://github.com/SuperJackfruitLabs/superbench/releases/tag/v0.0.2) carries one
 archive for Linux amd64 holding `bench`, `benchd`, `bench-quota` and `bench-payload`, with
-`SHA256SUMS` and a build-provenance attestation; [Install v0.0.1](/start/install/) shows how to
+`SHA256SUMS` and a build-provenance attestation; [Install v0.0.2](/start/install/) shows how to
 verify and stage it. There is no build for macOS or arm64, no package, no promise of
 compatibility between releases and no support commitment.
+
+Over v0.0.1, v0.0.2 adds two things. A checkpoint or release refused for a dirty tree now names up
+to five of the paths to clean, relative to the workspace root, with a count of the rest; the
+`409 conflict` code and status are unchanged. And the docs explain
+[repositories chosen per card](/concepts/benches-and-workspaces/#repositories-chosen-per-card):
+SuperBench creates a workspace with the members it is given and never changes an existing
+workspace to another set. Neither changes a limit on this page.
 
 This page follows the phase table in the repository's
 [`docs/implementation.md`](https://github.com/SuperJackfruitLabs/superbench/blob/main/docs/implementation.md),
@@ -30,7 +37,7 @@ host anyone relies on. Passing single-host drills are not evidence that a whole 
 | 2 | Suite adapters, a card panel, locality scoring, witness events; a read-only web view, terminal attach and MCP | Not built. Contracts come before consumers, and visual mockups before UI. Static mockups exist; no viewer ships. |
 | 3 | Remote editor launch or browser IDE; a second-host recovery drill; per-bench isolation (none yet); Salaam layout and execution-host integration | Not built. |
 
-## Works in v0.0.1, with tests or recorded drills
+## Works in v0.0.2, with tests or recorded drills
 
 - **Create, lease, checkpoint and release a bench**, with cooperative leases and remote-confirmed
   checkpoints. See [Leases](/concepts/leases/) and
@@ -51,7 +58,7 @@ host anyone relies on. Passing single-host drills are not evidence that a whole 
   [Archive and reap](/concepts/archive-and-reap/).
 - **Reviewed log and history collection**, and an automatic log retention policy that stays off
   until an operator approves it.
-- **A staged Linux service installer**, checked with a disposable systemd unit. v0.0.1 publishes
+- **A staged Linux service installer**, checked with a disposable systemd unit. v0.0.2 publishes
   the four executables it installs. It is not a supported installation: use it on a disposable or
   staging host.
 
