@@ -24,10 +24,10 @@ Forgejo CI builds the site on pull requests that touch `landing/`.
 
 ## What is deliberate about the page
 
-**Try, carefully.** SuperBench v0.0.1 is the first release, an experimental single-host release.
-The page says what it is and why it matters, says plainly that v0.0.1 is experimental, Linux
-amd64 only and for trusted repositories, and shows how to download and verify it from the GitHub
-release (`gh release download`, `sha256sum --check`, `gh attestation verify`). The docs' install
+**Try, carefully.** SuperBench v0.0.2, the second release after v0.0.1, is an experimental
+single-host release. The page says what it is and why it matters, says plainly that v0.0.2 is
+experimental, Linux amd64 only and for trusted repositories, and shows how to download and
+verify it from the GitHub release (`gh release download`, `sha256sum --check`, `gh attestation verify`). The docs' install
 page has the host steps. The release it offers is `DOCUMENTED` in `scripts/releases.mjs`.
 
 **It says only what the claims ledger allows.** Every capability sentence rests on a claim in the
