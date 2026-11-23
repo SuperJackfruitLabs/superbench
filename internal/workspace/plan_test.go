@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -140,21 +141,64 @@ func TestInvalidSpecHasNoMirrorEffects(t *testing.T) {
 	}
 }
 
+// expiringContext is a caller context whose expiry the test triggers once the
+// step under test is reached. A wall-clock deadline short enough to fire there
+// also fires during the real git and database setup before it when the host is
+// loaded, so it cannot prove which step the deadline covered.
+type expiringContext struct {
+	context.Context
+	done chan struct{}
+	once sync.Once
+}
+
+func newExpiringContext() *expiringContext {
+	return &expiringContext{Context: context.Background(), done: make(chan struct{})}
+}
+
+func (c *expiringContext) Deadline() (time.Time, bool) { return time.Now().Add(time.Hour), true }
+func (c *expiringContext) Done() <-chan struct{}       { return c.done }
+func (c *expiringContext) Err() error {
+	select {
+	case <-c.done:
+		return context.DeadlineExceeded
+	default:
+		return nil
+	}
+}
+func (c *expiringContext) expire() { c.once.Do(func() { close(c.done) }) }
+
+// boundedBy fails unless ctx carries the deadline timeout after a moment
+// between from and to: the bound under test, rather than the caller's distant
+// one, none at all, or a fresh one started later.
+func boundedBy(t *testing.T, ctx context.Context, from, to time.Time, timeout time.Duration) {
+	t.Helper()
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		t.Fatal("unbounded context")
+	}
+	if deadline.Before(from.Add(timeout)) || deadline.After(to.Add(timeout)) {
+		t.Fatalf("deadline %v is not %v after a moment between %v and %v", deadline, timeout, from, to)
+	}
+}
+
 func TestSourceObservationInheritsBoundedMemberContext(t *testing.T) {
 	root := t.TempDir()
 	a := remote(t, root, "a", "")
 	p := planner(t, root)
-	p.Mirrors.Timeout = time.Second
+	// Long enough for the real mirror clone on a loaded host, and below the
+	// two-minute default so the deadline check proves this bound applies.
+	p.Mirrors.Timeout = time.Minute
+	caller := newExpiringContext()
+	start := time.Now()
 	called := false
 	p.Git = func(ctx context.Context, _ string, _ ...string) (string, error) {
 		called = true
-		if _, ok := ctx.Deadline(); !ok {
-			t.Fatal("source observation has no deadline")
-		}
+		boundedBy(t, ctx, start, time.Now(), p.Mirrors.Timeout)
+		caller.expire()
 		<-ctx.Done()
 		return "", ctx.Err()
 	}
-	plan, err := p.Select(context.Background(), Spec{Key: "card", CheckpointRepository: "a", Repositories: []Repository{{Name: "a", Repository: a}}})
+	plan, err := p.Select(caller, Spec{Key: "card", CheckpointRepository: "a", Repositories: []Repository{{Name: "a", Repository: a}}})
 	if !called || !errors.Is(err, context.DeadlineExceeded) || len(plan.Members) != 0 {
 		t.Fatalf("deadline did not cover source observation: %v, %v", called, err)
 	}
