@@ -1,5 +1,5 @@
 // Run after `astro build`: everything the site publishes may say only what is true today. Adapted
-// from landing/scripts/check-copy.mjs. SuperBench's first release is v0.0.1, an experimental
+// from landing/scripts/check-copy.mjs. SuperBench's latest release is v0.0.2, an experimental
 // single-host release, so every HTML page must carry the release-status line
 // (src/components/Banner.astro), naming the release these docs describe (DOCUMENTED in
 // scripts/releases.mjs) and linking to its release page, plus a link to the repository. Nothing

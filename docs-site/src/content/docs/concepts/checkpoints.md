@@ -20,7 +20,8 @@ checkpointed commit.
   committed. There is no implicit `git add`.
 - **It never force-pushes.**
 - **A dirty or untracked tree is refused.** Untracked files block checkpoint and release; ignored
-  build files do not.
+  build files do not. The refusal names up to five of the paths to clean, relative to the
+  workspace root, and counts the rest.
 - **A rejected push fails the checkpoint and keeps the lease**, and release stays blocked.
 - **Release requires it.** `bench release` needs a clean worktree, the current HEAD checkpointed,
   and the remote still matching.

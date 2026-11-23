@@ -1,6 +1,6 @@
 # SuperBench docs site
 
-The documentation published at `docs.superbench.dev`, for SuperBench v0.0.1. Astro + Starlight, on the
+The documentation published at `docs.superbench.dev`, for SuperBench v0.0.2. Astro + Starlight, on the
 same structure and tooling as SuperDispatch's docs site.
 
 ```sh
@@ -18,9 +18,9 @@ Like `landing/`, the site has its own `package.json` and `package-lock.json`. No
 
 ## The release, on every page
 
-SuperBench v0.0.1 is the first release, an experimental single-host release.
+SuperBench v0.0.2, the second release after v0.0.1, is an experimental single-host release.
 `src/components/Banner.astro` replaces Starlight's `Banner`, so every page, the home and the 404
-included, carries the same release-status line: v0.0.1 is released as an experimental
+included, carries the same release-status line: v0.0.2 is released as an experimental
 single-host release, Linux amd64, for trusted repositories on one host and not production
 software, with links to the release notes, the install page and the status page. No page can opt
 out. The release it names is `DOCUMENTED` in `scripts/releases.mjs`; at the next release, refresh
@@ -76,7 +76,7 @@ top-level group is anything else.
 
 **It says only what the release and `main` do.** Every page is written from the repository's
 README, `docs/`, `CHANGELOG.md`, the CLI help and the API code. `start/status.md` follows
-`docs/implementation.md`'s phase table, and `start/install.md` the v0.0.1 release and
+`docs/implementation.md`'s phase table, and `start/install.md` the v0.0.2 release and
 `docs/pilot-installation.md`.
 
 **For agents**: `/llms.txt`, `/llms-full.txt` and `/llms-small.txt` (`starlight-llms-txt`).

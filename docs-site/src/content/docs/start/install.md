@@ -1,18 +1,32 @@
 ---
-title: Install v0.0.1
-description: Download SuperBench v0.0.1 from its GitHub release, verify it and stage the Linux service for review. An experimental single-host release for Linux amd64, on a disposable or staging host.
+title: Install v0.0.2
+description: Download SuperBench v0.0.2 from its GitHub release, verify it and stage the Linux service for review. An experimental single-host release for Linux amd64, on a disposable or staging host.
 status: wet paint
 ---
 
-SuperBench v0.0.1 is the first release, tagged on 2026-11-22. It is an experimental single-host
-release, not production software: install it on a disposable or staging Linux host, for trusted
-repositories only. It is not a supported installation, and there is no promise of compatibility
-between releases. Read [Status](/start/status/), the [Security model](/start/security-model/) and
-[Limits](/start/limits/) first.
+SuperBench v0.0.2 is the second release, tagged on 2026-11-23, after v0.0.1. It is an
+experimental single-host release, not production software: install it on a disposable or staging
+Linux host, for trusted repositories only. It is not a supported installation, and there is no
+promise of compatibility between releases. Read [Status](/start/status/), the
+[Security model](/start/security-model/) and [Limits](/start/limits/) first.
+
+## What v0.0.2 adds
+
+- **A dirty refusal names the paths.** A checkpoint or release refused because the tree has
+  uncommitted or untracked files still returns `409 conflict`, and its message now ends with up to
+  five of the offending paths, relative to the workspace root, and a count of the rest. Ignored
+  files are not named and no file content is sent. See the [bench CLI](/reference/bench/).
+- **Repositories chosen per card.** The docs explain workspaces whose repositories a card chooses
+  upstream: SuperBench creates a workspace with the 1 to 32 members it is given and never changes
+  an existing workspace to another set. See
+  [Benches and workspaces](/concepts/benches-and-workspaces/#repositories-chosen-per-card).
+
+The changelog lists nothing else: the same four commands, the same platform and the same limits
+as v0.0.1.
 
 ## What the release contains
 
-The [GitHub release](https://github.com/SuperJackfruitLabs/superbench/releases/tag/v0.0.1) has
+The [GitHub release](https://github.com/SuperJackfruitLabs/superbench/releases/tag/v0.0.2) has
 two files:
 
 | File | What it is |
@@ -40,7 +54,7 @@ With the GitHub CLI:
 
 ```sh
 mkdir -p /absolute/build && cd /absolute/build
-gh release download v0.0.1 -R SuperJackfruitLabs/superbench \
+gh release download v0.0.2 -R SuperJackfruitLabs/superbench \
   -p superbench_linux_amd64.tar.gz -p SHA256SUMS
 sha256sum --check SHA256SUMS
 gh attestation verify superbench_linux_amd64.tar.gz -R SuperJackfruitLabs/superbench
@@ -49,8 +63,8 @@ gh attestation verify superbench_linux_amd64.tar.gz -R SuperJackfruitLabs/superb
 Or with curl, and the same `sha256sum --check SHA256SUMS`:
 
 ```sh
-curl -fLO https://github.com/SuperJackfruitLabs/superbench/releases/download/v0.0.1/superbench_linux_amd64.tar.gz
-curl -fLO https://github.com/SuperJackfruitLabs/superbench/releases/download/v0.0.1/SHA256SUMS
+curl -fLO https://github.com/SuperJackfruitLabs/superbench/releases/download/v0.0.2/superbench_linux_amd64.tar.gz
+curl -fLO https://github.com/SuperJackfruitLabs/superbench/releases/download/v0.0.2/SHA256SUMS
 sha256sum --check SHA256SUMS
 ```
 
@@ -59,7 +73,7 @@ Stop if either check fails. Then unpack the four commands and confirm the versio
 ```sh
 mkdir -p /absolute/build/bin
 tar -xzf superbench_linux_amd64.tar.gz -C /absolute/build/bin
-/absolute/build/bin/bench version     # bench 0.0.1
+/absolute/build/bin/bench version     # bench 0.0.2
 ```
 
 ## Stage the service for review
@@ -69,8 +83,8 @@ private directory. Staging writes only below that root, creates no account and s
 service:
 
 ```sh
-git clone --depth 1 --branch v0.0.1 https://github.com/SuperJackfruitLabs/superbench.git /absolute/superbench-v0.0.1
-cd /absolute/superbench-v0.0.1
+git clone --depth 1 --branch v0.0.2 https://github.com/SuperJackfruitLabs/superbench.git /absolute/superbench-v0.0.2
+cd /absolute/superbench-v0.0.2
 python3 deploy/linux/install.py --bin-dir /absolute/build/bin \
   --root /absolute/private/staging --managed
 ```
@@ -82,7 +96,7 @@ helper nor its sudo grant.
 ## Install on the host
 
 The live installation is the repository's
-[pilot installation guide](https://github.com/SuperJackfruitLabs/superbench/blob/v0.0.1/docs/pilot-installation.md)
+[pilot installation guide](https://github.com/SuperJackfruitLabs/superbench/blob/v0.0.2/docs/pilot-installation.md)
 at the tag, with `/absolute/build/bin` as `--bin-dir`. Read it before installing anything. In
 outline:
 
@@ -94,13 +108,15 @@ outline:
 4. Start the service yourself with every switch off, and turn on a switch only after the guide's
    checks for it pass.
 
-A ledger initialized by an earlier, unreleased revision is refused; the message points to the
+To move a host from v0.0.1 to v0.0.2, follow the guide's "Upgrade the executables" with the
+v0.0.1 `SHA256SUMS` as `--previous`. A ledger initialized by an earlier, unreleased revision is
+refused; the message points to the
 guide's "Reinitialize the indexed ledger". To replace the four executables later, the guide's
 "Upgrade the executables" uses the installer's `--upgrade` with `--previous`, `--sums` and
 `--backup`. A successful install and matching digests are not evidence that a task works end to
 end.
 
-## What v0.0.1 does not do
+## What v0.0.2 does not do
 
 - It runs on one host. Moving a bench to another host is a reviewed administrative step, not
   network coordination.

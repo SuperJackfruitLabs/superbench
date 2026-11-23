@@ -1,5 +1,5 @@
-// Run after `npm run build`: the site may say only what is true today. SuperBench's first release is
-// v0.0.1, an experimental single-host release, so the home page must say so, link to that release
+// Run after `npm run build`: the site may say only what is true today. SuperBench's latest release is
+// v0.0.2, an experimental single-host release, so the home page must say so, link to that release
 // and to the source, and nothing it publishes may offer a curl, npm or go install, name a version
 // that is not a released tag (scripts/releases.mjs: stamped and dated in CHANGELOG.md), claim more
 // than the claims ledger allows, still say it is unreleased, or name a local host or agent.

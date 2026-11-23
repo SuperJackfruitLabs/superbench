@@ -3,7 +3,7 @@
 // llms*.txt) after it.
 //
 // The rules follow the SuperBench section of the suite's claims ledger (SB-01 to SB-08) and the
-// first release, v0.0.1, an experimental single-host release. A version number may name only a
+// releases since v0.0.1, each an experimental single-host release. A version number may name only a
 // release CHANGELOG.md has stamped (scripts/releases.mjs); a claim that something "is released"
 // must name one. Nothing may be worded as production-ready, multi-host or isolating untrusted
 // code, and nothing may still say SuperBench is unreleased. Install commands belong on the install
@@ -101,9 +101,9 @@ export const CAVEATS = [
   ['start/security-model.md', 'trusted repositories', 'the threat model: trusted repositories'],
   ['concepts/payload-identity.md', 'does not yet install and activate', 'the payload user is not active on main'],
   ['concepts/fresh-allocations.md', 'Fresh payload materialization remains disabled', 'Fresh materialization is disabled'],
-  ['start/status.md', 'experimental single-host release', 'the status page says what v0.0.1 is'],
+  ['start/status.md', 'experimental single-host release', 'the status page says what the release is'],
   ['start/status.md', 'not a supported installation', 'the status page says the installer is unsupported'],
-  ['start/install.md', 'experimental single-host release', 'the install page says what v0.0.1 is'],
+  ['start/install.md', 'experimental single-host release', 'the install page says what the release is'],
   ['start/install.md', 'Linux amd64 only', 'the release builds one platform'],
   ['start/install.md', 'sha256sum --check SHA256SUMS', 'the install page verifies the download'],
   ['start/install.md', 'disposable', 'install on a disposable or staging host'],

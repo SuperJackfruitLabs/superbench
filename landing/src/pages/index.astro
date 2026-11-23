@@ -4,7 +4,7 @@
  *
  * One page, no framework; the suite frame owns the header, footer and theme toggle. Since the first
  * release, v0.0.1, its job is "try, carefully": say what SuperBench is and why it matters, say
- * plainly that v0.0.1 is an experimental single-host release for Linux amd64 and trusted
+ * plainly that the release it offers (v0.0.2 now) is an experimental single-host release for Linux amd64 and trusted
  * repositories, and show how to download and verify it from the GitHub release, pointing at the
  * docs' install page (docs.superbench.dev/start/install/) for the rest. There is no app to sign in
  * to. The release it offers is DOCUMENTED in scripts/releases.mjs.
@@ -264,7 +264,7 @@ const STEPS = [
               checks the work is on the remote before the next one picks it up.
             </p>
             <p class="limits">
-              SuperBench {DOCUMENTED} is its first release: an experimental single-host release for
+              SuperBench {DOCUMENTED} is its latest release: an experimental single-host release for
               Linux amd64 and trusted repositories. Leases are cooperative, and nothing in it
               isolates untrusted code.
             </p>
@@ -428,6 +428,11 @@ sha256sum --check SHA256SUMS
 gh attestation verify superbench_linux_amd64.tar.gz -R SuperJackfruitLabs/superbench
 mkdir -p bin && tar -xzf superbench_linux_amd64.tar.gz -C bin
 bin/bench version    # bench ${VERSION}`}</code></pre>
+          <p class="after">
+            New in {DOCUMENTED}: a checkpoint or release refused for a dirty tree names the paths to
+            clean, and the docs explain workspaces whose repositories a card chooses. The limits
+            above are unchanged.
+          </p>
           <p class="after">
             Installing the service needs systemd, delegated cgroup v2 and, for enforced quotas, a
             dedicated XFS mount. <a href={INSTALL}>Install {DOCUMENTED}</a> in the docs stages the

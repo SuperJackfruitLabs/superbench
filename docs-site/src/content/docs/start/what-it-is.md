@@ -1,6 +1,6 @@
 ---
 title: What SuperBench is
-description: One task, one git worktree on a host, kept warm between holders, with checkpoints the remote confirms. SuperBench v0.0.1 is an experimental single-host release.
+description: One task, one git worktree on a host, kept warm between holders, with checkpoints the remote confirms. SuperBench v0.0.2 is an experimental single-host release.
 status: wet paint
 ---
 
@@ -47,7 +47,7 @@ bench lease --holder second-agent fix-login
 bench status fix-login
 ```
 
-The loop above shows what the commands do. To get the commands, [Install v0.0.1](/start/install/)
+The loop above shows what the commands do. To get the commands, [Install v0.0.2](/start/install/)
 downloads and verifies the release archive; it is not a supported installation.
 
 The loop as written needs Linux. Whenever the repository has setup hooks or a supported lockfile,
@@ -58,7 +58,7 @@ needs Linux cgroup delegation. On a laptop the cooperative sequence is `create-c
 
 ## What it is not
 
-- **Not production software.** SuperBench v0.0.1 is an experimental single-host release for Linux
+- **Not production software.** SuperBench v0.0.2 is an experimental single-host release for Linux
   amd64. There is no supported installation, and nothing here is in production use.
 - **Not a sandbox.** Leases are cooperative, and supervised runs on Linux are fenced in a cgroup,
   which is process-tree fencing; there is no user or mount isolation. SuperBench is for trusted
@@ -70,7 +70,7 @@ needs Linux cgroup delegation. On a laptop the cooperative sequence is `create-c
 
 ## Where to go next
 
-- [Status](/start/status/): what works in v0.0.1, what is partial, what is not built.
-- [Install v0.0.1](/start/install/): download, verify and stage the release.
+- [Status](/start/status/): what works in v0.0.2, what is partial, what is not built.
+- [Install v0.0.2](/start/install/): download, verify and stage the release.
 - [Benches and workspaces](/concepts/benches-and-workspaces/): the two shapes a bench takes.
 - [bench CLI](/reference/bench/): every command and flag as the source defines them.
