@@ -99,13 +99,62 @@ class UpgradeMode(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "symlink"):
             apply(self.args(self.new), run=no_commands)
 
-    def test_upgrade_never_replaces_configuration(self):
+    def test_upgrade_keeps_the_operators_edited_environment(self):
+        # A host whose AgentPod node reclaims benches lists the node's uid as an operator.
         env = self.root / "etc/superbench/benchd.env"
+        edited = env.read_bytes().replace(b"BENCHD_OPERATOR_UIDS=0\n", b"BENCHD_OPERATOR_UIDS=0,993\n")
+        self.assertNotEqual(edited, env.read_bytes())
+        env.write_bytes(edited + b"# operator change\n")
+        apply(self.args(self.new), run=no_commands)
+        self.assertEqual(self.installed("usr/local/bin/benchd"), (self.new / "benchd").read_bytes())
+        self.assertEqual(env.read_bytes(), edited + b"# operator change\n")
+        self.assertEqual(env.stat().st_mode & 0o777, 0o644)
+        self.assertTrue((self.top / "backup").is_dir())
+        apply(self.args(self.new, upgrade=False), run=no_commands)  # a plain rerun keeps it too
+        self.assertEqual(env.read_bytes(), edited + b"# operator change\n")
+
+    def test_upgrade_still_refuses_every_other_changed_file(self):
+        for relative in ("etc/systemd/system/superbench.service", "usr/local/libexec/superbench-start",
+                         "etc/sudoers.d/superbench", "usr/lib/tmpfiles.d/superbench.conf",
+                         "usr/lib/sysusers.d/superbench.conf"):
+            path = self.root / relative
+            original, mode = path.read_bytes(), path.stat().st_mode & 0o777
+            path.chmod(0o644)
+            path.write_bytes(original + b"\n# local change\n")
+            path.chmod(mode)
+            with self.assertRaisesRegex(ValueError, "existing file differs", msg=relative):
+                apply(self.args(self.new), run=no_commands)
+            self.assertEqual(self.installed("usr/local/bin/bench"), (self.old / "bench").read_bytes(), relative)
+            self.assertFalse((self.top / "backup").exists(), relative)
+            path.chmod(0o644)
+            path.write_bytes(original)
+            path.chmod(mode)
+
+    def test_upgrade_refuses_an_invalid_environment_before_any_effect(self):
+        env = self.root / "etc/superbench/benchd.env"
+        packaged = env.read_bytes()
+        for name, text, mode in [
+                ("misspelt name", packaged + b"BENCHD_OPERATOR_UID=993\n", 0o644),
+                ("unknown name", packaged + b"PATH=/tmp\n", 0o644),
+                ("set twice", packaged + b"BENCHD_OPERATOR_UIDS=993\n", 0o644),
+                ("uid list", packaged.replace(b"UIDS=0\n", b"UIDS=0, 993\n"), 0o644),
+                ("uid range", packaged.replace(b"UIDS=0\n", b"UIDS=4294967296\n"), 0o644),
+                ("quoted", packaged.replace(b"UIDS=0\n", b'UIDS="0,993"\n'), 0o644),
+                ("duration", packaged.replace(b"TIMEOUT=2m", b"TIMEOUT=2 minutes"), 0o644),
+                ("group writable", packaged, 0o664)]:
+            env.chmod(0o644)
+            env.write_bytes(text)
+            env.chmod(mode)
+            with self.assertRaisesRegex(ValueError, "operator configuration", msg=name):
+                apply(self.args(self.new), run=no_commands)
+            self.assertEqual(self.installed("usr/local/bin/bench"), (self.old / "bench").read_bytes(), name)
+            self.assertFalse((self.top / "backup").exists(), name)
         env.chmod(0o644)
-        env.write_bytes(env.read_bytes() + b"# operator change\n")
-        with self.assertRaisesRegex(ValueError, "existing file differs"):
+        env.unlink()
+        env.symlink_to(self.top / "elsewhere.env")
+        (self.top / "elsewhere.env").write_bytes(packaged)
+        with self.assertRaisesRegex(ValueError, "symlink"):
             apply(self.args(self.new), run=no_commands)
-        self.assertEqual(self.installed("usr/local/bin/bench"), (self.old / "bench").read_bytes())
 
     def test_upgrade_refuses_an_executable_missing_from_previous_sums(self):
         self.previous = sums(self.old, names=("bench", "benchd"))

@@ -6,6 +6,18 @@ stamps the section `## vX.Y.Z — YYYY-MM-DD`, and the release notes quote it.
 
 ## Unreleased
 
+- `deploy/linux/install.py --upgrade` no longer refuses a host whose operator edited
+  `/etc/superbench/benchd.env`. The file is operator configuration: the installer writes it only
+  when it is missing and afterwards validates it, never comparing or replacing it, so
+  `BENCHD_OPERATOR_UIDS=0,993` (the AgentPod node's uid, for operator reclaim) survives an upgrade.
+  v0.0.2 refused with `existing file differs; refusing replacement: /etc/superbench/benchd.env`,
+  and the operator had to swap the packaged file in and restore theirs by hand. Validation refuses
+  a symlink, a file that is not root-owned or is writable beyond 0644, an unknown or misspelt
+  name, a setting given twice, and a value benchd would not accept, before anything is written.
+  The four executables keep their reviewed-digest checks, and every other installed file must
+  still be byte-identical. On a v0.0.2 host, leave the edited file in place and run the new
+  revision's installer with `--upgrade` (docs/pilot-installation.md, "From v0.0.2").
+
 ## v0.0.2 — 2026-11-23
 
 - The docs explain workspaces whose repositories a card chooses upstream ("Repositories chosen per

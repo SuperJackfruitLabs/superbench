@@ -90,6 +90,8 @@ filter that prevents that helper from doing its work without retesting managed
 allocation. This remains a trusted coding-agent account, not tenant isolation.
 
 Edit root-owned `/etc/superbench/benchd.env` with explicit operator/read-only uids.
+The installer writes it only when missing and afterwards validates it without
+replacing it, so the edit survives reruns and `--upgrade`.
 Root is the only initial operator. Add approved socket clients to the service
 group for filesystem access; group membership alone confers no API authority.
 The socket parent is 0750 and socket 0660, while state stays private 0700.

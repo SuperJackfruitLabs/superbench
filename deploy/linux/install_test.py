@@ -76,14 +76,33 @@ class InstallationGuards(unittest.TestCase):
         self.root = Path(self.tmp.name).resolve()
 
     def test_conflicting_config_prevents_any_binary_update(self):
-        config = self.root / "etc/superbench/benchd.env"
+        config = self.root / "etc/systemd/system/superbench.service"
         config.parent.mkdir(parents=True)
-        config.write_bytes(b"reviewed operator configuration")
+        config.write_bytes(b"locally edited unit")
         with self.assertRaises(ValueError):
             install(self.root, {"usr/local/bin/benchd": (b"new", 0o755),
-                                "etc/superbench/benchd.env": (b"other", 0o644)})
+                                "etc/systemd/system/superbench.service": (b"other", 0o644)})
         self.assertFalse((self.root / "usr/local/bin/benchd").exists())
-        self.assertEqual(config.read_bytes(), b"reviewed operator configuration")
+        self.assertEqual(config.read_bytes(), b"locally edited unit")
+
+    def test_operator_environment_is_created_once_then_kept(self):
+        packaged = (Path(__file__).resolve().parent / "benchd.env").read_bytes()
+        entries = {"usr/local/bin/benchd": (b"new", 0o755), "etc/superbench/benchd.env": (packaged, 0o644)}
+        install(self.root, entries)
+        env = self.root / "etc/superbench/benchd.env"
+        self.assertEqual(env.read_bytes(), packaged)
+        self.assertEqual(env.stat().st_mode & 0o777, 0o644)
+        edited = packaged.replace(b"BENCHD_OPERATOR_UIDS=0\n", b"BENCHD_OPERATOR_UIDS=0,993\n").replace(
+            b"BENCHD_READER_UIDS=\n", b"BENCHD_READER_UIDS=1001\n")
+        env.write_bytes(edited)
+        env.chmod(0o600)  # stricter than packaged is fine; systemd reads it as root
+        install(self.root, entries)
+        self.assertEqual(env.read_bytes(), edited)
+        # An existing edited file is kept even before the executables are installed.
+        (self.root / "usr/local/bin/benchd").unlink()
+        install(self.root, entries)
+        self.assertEqual(env.read_bytes(), edited)
+        self.assertEqual((self.root / "usr/local/bin/benchd").read_bytes(), b"new")
 
     def test_created_directories_are_0755_under_any_umask(self):
         # 002 would make /etc/superbench group-writable; 077 would hide it from benchd.

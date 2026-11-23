@@ -109,7 +109,9 @@ outline:
    checks for it pass.
 
 To move a host from v0.0.1 to v0.0.2, follow the guide's "Upgrade the executables" with the
-v0.0.1 `SHA256SUMS` as `--previous`. A ledger initialized by an earlier, unreleased revision is
+v0.0.1 `SHA256SUMS` as `--previous`. The v0.0.2 installer refuses a `benchd.env` the operator edited
+(for example a node uid added to `BENCHD_OPERATOR_UIDS`); the next release's installer keeps that
+file and only validates it, and the guide's "From v0.0.2" note covers a host already on v0.0.2. A ledger initialized by an earlier, unreleased revision is
 refused; the message points to the
 guide's "Reinitialize the indexed ledger". To replace the four executables later, the guide's
 "Upgrade the executables" uses the installer's `--upgrade` with `--previous`, `--sums` and
