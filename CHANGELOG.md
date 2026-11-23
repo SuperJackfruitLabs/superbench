@@ -6,6 +6,8 @@ stamps the section `## vX.Y.Z — YYYY-MM-DD`, and the release notes quote it.
 
 ## Unreleased
 
+## v0.0.2 — 2026-11-23
+
 - The docs explain workspaces whose repositories a card chooses upstream ("Repositories chosen per
   card" under Benches and workspaces): SuperBench creates a workspace with the 1 to 32 members it is
   given, never changes an existing workspace to another set, and a hub that reclaims a settled
