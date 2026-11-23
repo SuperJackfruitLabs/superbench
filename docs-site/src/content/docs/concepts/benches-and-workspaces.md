@@ -75,3 +75,27 @@ reviewed transfer.
 
 The grouped request and response shapes are proposed contract data. They are implemented and
 tested here, but no suite consumer uses them yet.
+
+## Repositories chosen per card
+
+A pipeline stage can serve several repositories and let each card choose the ones its work needs.
+The stage holds an allow-list; the card's choice, a subset of it with one start repository, is made
+and checked upstream, in the pipeline and the hub, before any request reaches SuperBench. A
+workspace can therefore hold fewer repositories than the stage allows.
+
+SuperBench takes no part in the choice. It creates a workspace with the members it is given, 1 to
+32, and the checkpoint repository among them, as for any other workspace. It does not know about
+cards, stages or allow-lists.
+
+An existing workspace is never changed to a different set of repositories. Members are fixed when a
+workspace is created; nothing adds, drops or swaps one later. The hub's node refuses a card whose
+workspace already holds another set or another start repository, and names what the workspace
+holds. To start over with a new set, reclaim the workspace; the next create on its key makes a new
+one.
+
+Recent hubs reclaim a card's workspace themselves once its checkpoint settles, so a settled card
+does not hold its quota until the daemon's own idle reclaim (Fresh workspaces only, and only when
+that is on; see [Operations](/api/operations/)). `reclaim` is an operator operation: the user the
+node runs as must be listed in benchd's `--operator-uids` (see [benchd](/reference/benchd/)).
+Otherwise every such reclaim is refused as forbidden, the hub only logs it, and the workspace keeps
+its quota until something else frees it.
