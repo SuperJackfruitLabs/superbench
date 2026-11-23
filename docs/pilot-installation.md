@@ -339,7 +339,8 @@ python3 deploy/linux/install.py --bin-dir /absolute/build/bin --root / \
 This prepares the stable `superbench` account, the separate `superbench-payload`
 system account (nologin, its own group, no members, and no other account's
 primary group) and the directories, and reloads systemd; it does not start or
-enable the service. Existing conflicting files, unsafe paths, an existing account
+enable the service. Existing conflicting files (other than an operator's valid
+`/etc/superbench/benchd.env`, which is kept), unsafe paths, an existing account
 of either name that does not match that description, and an active installation
 refuse before anything is written. This is not an upgrade or
 legacy-adoption procedure. See [installer details](install.md) for preflight and
@@ -382,10 +383,20 @@ python3 deploy/linux/install.py --bin-dir /absolute/build/bin --root / --managed
 ```
 
 - **What it replaces.** Only `bench`, `benchd`, `bench-quota` and
-  `bench-payload`. Every other installed file (the unit, sudo rule, environment,
+  `bench-payload`. Every other installed file (the unit, sudo rule, wrapper,
   sysusers, tmpfiles and the configuration documents) must still be byte-identical,
   or the run refuses before it writes anything. A newer revision that changes one
   of those files needs its own reviewed procedure.
+- **What it keeps.** `/etc/superbench/benchd.env` is the operator's: the
+  installer writes it only when it is missing, and never compares or replaces
+  it, so an edited `BENCHD_OPERATOR_UIDS` (for example `0,993`, with the
+  AgentPod node's uid for operator reclaim) survives the upgrade. The installer
+  still validates it, before it writes anything, and refuses a symlink, a
+  hard-linked file, one that is not root-owned, mode beyond 0644, a name other
+  than the five `BENCHD_` settings below, a setting given twice, or a value
+  benchd would not accept (uid lists are numbers separated by commas, with no
+  spaces or quotes). A misspelt name would otherwise leave the default in force
+  without a word. Fix the file and rerun.
 - **What it refuses.** It replaces an installed executable only if it is a plain
   root-owned file, mode 0755 with one link, whose SHA-256 is the one `--previous`
   lists for it. `--previous` is the previous build's `sha256sum` output. A locally
@@ -411,6 +422,18 @@ python3 deploy/linux/install.py --bin-dir /absolute/build/bin --root / --managed
 - **Other flags.** `--upgrade` combines with the flags of the original install
   (`--prepare`, `--identity`, `--activation`, `--storage`). They keep their own
   rules, and only the executables get upgrade semantics.
+
+**From v0.0.2.** The v0.0.2 installer compared `benchd.env` with its packaged
+copy, so on a host whose operator added a uid (`BENCHD_OPERATOR_UIDS=0,993`)
+`--upgrade` refused with `existing file differs; refusing replacement:
+/etc/superbench/benchd.env`, and the file had to be swapped out and restored by
+hand. Use the newer revision's `deploy/linux/install.py`, which reads the file
+instead of comparing it: leave the edited `benchd.env` in place, stop the unit
+and run the `--upgrade` command above. Nothing is migrated or moved, and the
+packaged defaults are not merged in (unset settings keep `superbench-start`'s
+defaults). If you restored the file by hand after an earlier upgrade, check it
+holds the uids you expect before starting the service. If the installer refuses
+the file, the message names the line; correct it and rerun.
 
 ### Indexed storage
 
@@ -585,7 +608,9 @@ sudo -u superbench /usr/local/bin/bench configure-host \
   --min-data-free 1073741824 --min-state-free 536870912
 ```
 
-Edit root-owned `/etc/superbench/benchd.env`:
+Edit root-owned `/etc/superbench/benchd.env`. It is operator configuration:
+the installer creates it once and afterwards only validates it, so your edits
+survive reruns and `--upgrade` (see [Upgrade the executables](#upgrade-the-executables)):
 
 ```ini
 BENCHD_OPERATOR_UIDS=0

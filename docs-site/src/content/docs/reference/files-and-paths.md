@@ -51,7 +51,7 @@ It is not a supported installation.
 | `/usr/local/libexec/bench-payload` | Managed hosts only: the static payload helper. |
 | `/usr/local/libexec/superbench-start` | The root-owned wrapper that starts `benchd` with its delegated cgroup. |
 | `/etc/superbench/storage.json` | Root-owned managed storage policy: data root, ledger, owner uid and gid, byte and inode caps, reserves. |
-| `/etc/superbench/benchd.env` | Root-owned daemon settings: operator and reader uids, active limit, intervals. |
+| `/etc/superbench/benchd.env` | Root-owned daemon settings: operator and reader uids, active limit, intervals. Written once by the installer, then the operator's: validated, never replaced, kept across upgrades. |
 | `/etc/sudoers.d/superbench` | Managed hosts only: sudo for the quota helper and the argument-free payload helper, nothing else. |
 | `/var/lib/superbench/state` | The service account's private state. |
 | `/run/superbench/benchd.sock` | The service socket (parent 0750, socket 0660). |

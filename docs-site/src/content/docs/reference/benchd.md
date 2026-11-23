@@ -57,6 +57,8 @@ the socket's uid policy. The core's OS lock still serializes git and state mutat
 The repository's staged installer (used in drills on disposable hosts, not a supported installation)
 runs `benchd` as a stable `superbench` account with `Delegate=yes`, reads `/etc/superbench/benchd.env`
 for `BENCHD_OPERATOR_UIDS`, `BENCHD_READER_UIDS`, `BENCHD_MAX_ACTIVE`, `BENCHD_RETENTION_INTERVAL`
-and `BENCHD_MIRROR_TIMEOUT`, and serves `/run/superbench/benchd.sock`. It never starts or enables
-the service by itself. Systemd stops the whole service cgroup on shutdown, with 45 seconds for
+and `BENCHD_MIRROR_TIMEOUT`, and serves `/run/superbench/benchd.sock`. `benchd.env` is the
+operator's file: the installer writes it only when it is missing, then validates it (known names,
+each once, values benchd accepts) but never replaces it, so an edited `BENCHD_OPERATOR_UIDS` survives
+`--upgrade`. It never starts or enables the service by itself. Systemd stops the whole service cgroup on shutdown, with 45 seconds for
 reconciliation; never infer release from systemd status alone.
