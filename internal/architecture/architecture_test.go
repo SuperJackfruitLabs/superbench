@@ -135,7 +135,7 @@ func TestArchitecture(t *testing.T) {
 				"internal/operationreceipts":           {"internal/operationcontrol", "internal/finiteio"},
 				"internal/operationbody":               {"internal/protocolv2"},                                                         // Body bound and profile classification only.
 				"internal/receiptlookup":               {"internal/operationbody", "internal/operationreceipts", "internal/protocolv2"}, // Read-only historical evidence.
-				"internal/service":                     {"internal/activation", "internal/failurelog", "internal/freshreadiness", "internal/scalarapi", "internal/operationbody", "internal/receiptlookup", "internal/registrationobserve", "internal/serviceidentity", "internal/operationreceipts", "internal/operationcontrol", "internal/protocolv2", "internal/workspaceops", "internal/workspaceapi", "internal/autoarchive", "internal/bench", "internal/protocol", "internal/maintenance"},
+				"internal/service":                     {"internal/activation", "internal/failurelog", "internal/freshreadiness", "internal/scalarapi", "internal/operationbody", "internal/receiptlookup", "internal/registrationobserve", "internal/serviceidentity", "internal/operationreceipts", "internal/operationcontrol", "internal/protocolv2", "internal/workspaceops", "internal/workspaceapi", "internal/autoarchive", "internal/bench", "internal/protocol", "internal/maintenance", "internal/peercred"},
 				"internal/workspacetransfer":           {"internal/freshtree", "internal/history", "internal/reap", "internal/retention", "internal/hoststorage", "internal/bench", "internal/benchstate", "internal/execution", "internal/gitcontrol", "internal/model", "internal/quotapolicy", "internal/reftransfer", "internal/repository", "internal/workspace", "internal/workspacepolicy", "internal/workspacerepair", "internal/worktreetransfer"},
 				"cmd/bench":                            {"internal/workspacerenew", "internal/buildinfo", "internal/localprep", "internal/crosshostflow", "internal/crosshost", "internal/handoffjournal", "internal/mirroradmin", "internal/mirrorstage", "internal/workspacetransfer", "internal/workspacerepair", "internal/workspaceprep", "internal/protocolv2", "internal/workspaceops", "internal/workspaceapi", "internal/workspacearchive", "internal/autoarchive", "internal/bench", "internal/client", "internal/protocol", "internal/reap", "internal/retention", "internal/history", "internal/maintenance"},
 				"cmd/benchd":                           {"internal/activation", "internal/buildinfo", "internal/bench", "internal/service"},
@@ -149,6 +149,7 @@ func TestArchitecture(t *testing.T) {
 				"internal/quotaoperationjournal": {"internal/quotaoperation"},
 				"internal/quotaoperationcontrol": {"internal/hoststorage", "internal/quotaoperationjournal", "internal/payloadexec", "internal/serviceidentity", "internal/storagebootstrap", "internal/storagecustody"},
 				"internal/storagebootstrap":      {"internal/hoststorage", "internal/quotaoperationjournal", "internal/storagecustody"},
+				"internal/peercred":              {}, // Kernel peer credential lookup; no other authority.
 			}
 			allowed := !strings.Contains(strings.Split(p, "/")[0], ".")
 			for _, target := range edges[rel] {
@@ -162,7 +163,7 @@ func TestArchitecture(t *testing.T) {
 			if p == "github.com/pelletier/go-toml/v2" && rel == "internal/setup" && filepath.Base(path) == "config.go" {
 				allowed = true
 			}
-			if p == "golang.org/x/sys/unix" && (rel == "internal/service" && filepath.Base(path) == "peer_darwin.go" || rel == "internal/retainedfile" && filepath.Base(path) == "publish_linux.go" || rel == "internal/freshretirement" && filepath.Base(path) == "retire_linux.go" || rel == "internal/cleanworker" && filepath.Base(path) == "purge_linux.go" || rel == "internal/freshliveness" && (filepath.Base(path) == "liveness_linux.go" || filepath.Base(path) == "adapter_unix.go") || rel == "internal/freshrecovery" && strings.HasSuffix(path, "_linux.go")) {
+			if p == "golang.org/x/sys/unix" && (rel == "internal/peercred" && filepath.Base(path) == "peer_darwin.go" || rel == "internal/retainedfile" && filepath.Base(path) == "publish_linux.go" || rel == "internal/freshretirement" && filepath.Base(path) == "retire_linux.go" || rel == "internal/cleanworker" && filepath.Base(path) == "purge_linux.go" || rel == "internal/freshliveness" && (filepath.Base(path) == "liveness_linux.go" || filepath.Base(path) == "adapter_unix.go") || rel == "internal/freshrecovery" && strings.HasSuffix(path, "_linux.go")) {
 				allowed = true
 			}
 			if !allowed {
