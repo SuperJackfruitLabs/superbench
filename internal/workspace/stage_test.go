@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/benchstate"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/deadlinetest"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/statestore"
 )
@@ -312,20 +313,15 @@ func TestStagePureNamespaceConflictRefusesBeforeAdmission(t *testing.T) {
 
 func TestStageSourceSelectionUsesWholeOperationDeadline(t *testing.T) {
 	f := newStaging(t)
-	// Long enough for the state migration and mirror clone on a loaded host;
-	// the deadline check proves selection runs under this whole-operation bound,
-	// not a fresh one, and the caller's expiry ends it once selection is reached.
-	f.manager.Timeout = time.Minute
-	caller := newExpiringContext()
-	var start, entered time.Time
-	within := f.manager.Within
+	f.manager.Timeout = time.Minute // enough for the real setup under load
+	caller, within, start, entered := deadlinetest.New(), f.manager.Within, time.Time{}, time.Time{}
 	f.manager.Within = func(fn func(Update) error) error {
 		entered = time.Now() // after Stage set its deadline, before any state or source work
 		return within(fn)
 	}
 	f.manager.Git = func(ctx context.Context, _ string, _ ...string) (string, error) {
-		boundedBy(t, ctx, start, entered, f.manager.Timeout)
-		caller.expire()
+		deadlinetest.Bounded(t, ctx, start, entered, f.manager.Timeout) // the whole operation's bound, not a fresh one
+		caller.Expire()
 		<-ctx.Done()
 		return "", ctx.Err()
 	}
