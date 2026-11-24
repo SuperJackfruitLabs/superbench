@@ -146,21 +146,22 @@ func TestArchitecture(t *testing.T) {
 				"cmd/bench-payload":                    {"internal/payloadexec"},
 				"cmd/bench-quota":                      {"internal/projectscan", "internal/cleanworker", "internal/freshrecovery", "internal/payloadbootstrap", "internal/hoststorage", "internal/quotahelper", "internal/quotaoperation", "internal/quotaoperationcontrol"},
 
-				"internal/quotaoperationjournal": {"internal/quotaoperation"},
-				"internal/quotaoperationcontrol": {"internal/hoststorage", "internal/quotaoperationjournal", "internal/payloadexec", "internal/serviceidentity", "internal/storagebootstrap", "internal/storagecustody"},
-				"internal/storagebootstrap":      {"internal/hoststorage", "internal/quotaoperationjournal", "internal/storagecustody"},
-				"internal/peercred":              {}, // Kernel peer credential lookup; no other authority.
-				"internal/remoteschema":          {"internal/model"},
-				"internal/remoteca":              {}, // benchd's SSH CA and host key; the only x/crypto/ssh user.
-				"internal/remotestate":           {"internal/bench", "internal/benchstate", "internal/execution", "internal/model", "internal/operationcontrol", "internal/remoteca", "internal/remoteschema", "internal/workspaceprep"},
-				"internal/remotesftp":            {}, // SFTP confined to one os.Root; no other authority.
-				"cmd/bench-sftp":                 {"internal/remotesftp"},
-				"internal/remoteproto":           {}, // Wire types for /v2/remote/*; no authority.
-				"internal/remoteapi":             {"internal/bench", "internal/remoteca", "internal/remoteproto", "internal/remoteschema", "internal/remotestate"},
-				"internal/remotecli":             {"internal/client", "internal/remoteproto"},
-				"internal/payloadsession":        {"internal/payloadconfine", "internal/payloadpolicy", "internal/payloadwire", "internal/registeredinspection"}, // Session-mode leaves of the fixed helper.
-				"internal/remotessh":             {},
-				"internal/remotesession":         {"internal/execution", "internal/payloadexec", "internal/payloadwire", "internal/remotessh", "internal/remotestate", "internal/serviceidentity"},
+				"internal/quotaoperationjournal":   {"internal/quotaoperation"},
+				"internal/quotaoperationcontrol":   {"internal/hoststorage", "internal/quotaoperationjournal", "internal/payloadexec", "internal/serviceidentity", "internal/storagebootstrap", "internal/storagecustody"},
+				"internal/storagebootstrap":        {"internal/hoststorage", "internal/quotaoperationjournal", "internal/storagecustody"},
+				"internal/peercred":                {}, // Kernel peer credential lookup; no other authority.
+				"internal/remoteschema":            {"internal/model"},
+				"internal/remoteca":                {}, // benchd's SSH CA and host key; with remotessh, the only x/crypto/ssh users.
+				"internal/remotestate":             {"internal/bench", "internal/benchstate", "internal/execution", "internal/model", "internal/operationcontrol", "internal/remoteca", "internal/remoteschema", "internal/workspaceprep"},
+				"internal/remotesftp":              {}, // SFTP confined to one os.Root; no other authority.
+				"cmd/bench-sftp":                   {"internal/remotesftp"},
+				"internal/remoteproto":             {}, // Wire types for /v2/remote/*; no authority.
+				"internal/remoteapi":               {"internal/bench", "internal/remoteca", "internal/remoteproto", "internal/remoteschema", "internal/remotestate"},
+				"internal/remotecli":               {"internal/client", "internal/remoteproto"},
+				"internal/payloadsession":          {"internal/payloadconfine", "internal/payloadpolicy", "internal/payloadwire", "internal/registeredinspection"}, // Session-mode leaves of the fixed helper.
+				"internal/remotessh":               {"internal/remoteca", "internal/remoteschema", "internal/remotestate"},                                         // The SSH door; x/crypto/ssh below.
+				"internal/remotessh/remotesshtest": {"internal/remotesftp", "internal/remotessh", "internal/remotestate"},                                          // Test-only launcher.
+				"internal/remotesession":           {"internal/execution", "internal/payloadexec", "internal/payloadwire", "internal/remotessh", "internal/remotestate", "internal/serviceidentity"},
 			}
 			allowed := !strings.Contains(strings.Split(p, "/")[0], ".")
 			for _, target := range edges[rel] {
@@ -171,7 +172,7 @@ func TestArchitecture(t *testing.T) {
 			if p == "modernc.org/sqlite" && (rel == "internal/statestore" && filepath.Base(path) == "sqlite.go" || rel == "internal/operationreceipts" && filepath.Base(path) == "receipts.go" || rel == "internal/quotaoperationjournal" && filepath.Base(path) == "store.go") {
 				allowed = true
 			}
-			if p == "golang.org/x/crypto/ssh" && rel == "internal/remoteca" {
+			if p == "golang.org/x/crypto/ssh" && (rel == "internal/remoteca" || rel == "internal/remotessh") {
 				allowed = true
 			}
 			// pkg/sftp stays out of the privileged helper: it runs only in
