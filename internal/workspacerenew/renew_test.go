@@ -74,6 +74,21 @@ func TestRenewedOwnerRunsTheFixThenCheckpointsAndReleases(t *testing.T) {
 	}
 }
 
+func TestRenewAdvancesGenerationAndKeepsID(t *testing.T) {
+	f := newFixture(t)
+	prior := f.stopped().Lease
+	if prior.ID == "" || prior.Generation != 1 {
+		t.Fatal("acquisition did not assign lease identity", prior.ID, prior.Generation)
+	}
+	renewed, err := workspacerenew.Manager{Prep: f.manager}.Renew("card", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := f.read().Lease; got.ID != prior.ID || got.Generation != prior.Generation+1 || renewed.Lease.Generation != got.Generation {
+		t.Fatal("renewal identity", got.ID, got.Generation, "from", prior.ID, prior.Generation)
+	}
+}
+
 func TestRenewRefusesNonRootAndBusyOperationWithoutEffect(t *testing.T) {
 	f := newFixture(t)
 	stopped := f.stopped()

@@ -105,7 +105,7 @@ func TestArchitecture(t *testing.T) {
 				"internal/quotahelper":                 {"internal/quotapolicy", "internal/quotaoperation", "internal/operationcontrol"},
 				"internal/operationcancel":             {"internal/statepath", "internal/statestore", "internal/gitcontrol", "internal/quotahelper", "internal/benchstate", "internal/history", "internal/model", "internal/operationcontrol", "internal/reap", "internal/retention"},
 				"internal/operationcontrol":            {"internal/quotaoperation", "internal/history", "internal/model"},
-				"internal/benchstate":                  {"internal/handoffguard", "internal/handoffjournal", "internal/operationcontrol", "internal/reftransfer", "internal/initrepair", "internal/workspacepolicy", "internal/model", "internal/archivepolicy", "internal/history", "internal/quotapolicy", "internal/setup"},
+				"internal/benchstate":                  {"internal/handoffguard", "internal/handoffjournal", "internal/operationcontrol", "internal/reftransfer", "internal/initrepair", "internal/workspacepolicy", "internal/model", "internal/archivepolicy", "internal/history", "internal/quotapolicy", "internal/setup", "internal/remoteschema"},
 				"internal/gitcontrol":                  {"internal/operationcontrol", "internal/execution", "internal/gitpolicy"},
 				"internal/archivepolicy":               {"internal/gitcontrol", "internal/model", "internal/reap", "internal/repository", "internal/setup"},
 				"internal/setup":                       {"internal/gitcontrol", "internal/cachepolicy", "internal/quotapolicy"},
@@ -150,6 +150,7 @@ func TestArchitecture(t *testing.T) {
 				"internal/quotaoperationcontrol": {"internal/hoststorage", "internal/quotaoperationjournal", "internal/payloadexec", "internal/serviceidentity", "internal/storagebootstrap", "internal/storagecustody"},
 				"internal/storagebootstrap":      {"internal/hoststorage", "internal/quotaoperationjournal", "internal/storagecustody"},
 				"internal/peercred":              {}, // Kernel peer credential lookup; no other authority.
+				"internal/remoteschema":          {"internal/model"},
 			}
 			allowed := !strings.Contains(strings.Split(p, "/")[0], ".")
 			for _, target := range edges[rel] {

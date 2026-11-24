@@ -248,7 +248,7 @@ func TestOldScalarSchemaStillMigratesThroughMutation(t *testing.T) {
 		db.Close()
 		t.Fatal(err)
 	}
-	if _, err = db.Exec("UPDATE benches SET record=json_remove(record,'$.RegistrationID'); DROP TABLE IF EXISTS workspace_handoff_imports; DROP TABLE IF EXISTS workspace_handoff_exports; DROP TABLE IF EXISTS workspace_handoff_offers; DROP TABLE IF EXISTS workspace_handoff_identity; DROP TABLE initialization_repair_operations; DROP TABLE workspace_operation_cancellations; DROP TABLE workspace_operation_runs; DROP TABLE workspace_operations; PRAGMA user_version=13"); err != nil {
+	if _, err = db.Exec("UPDATE benches SET record=json_remove(record,'$.RegistrationID'); DROP TABLE IF EXISTS workspace_handoff_imports; DROP TABLE IF EXISTS workspace_handoff_exports; DROP TABLE IF EXISTS workspace_handoff_offers; DROP TABLE IF EXISTS workspace_handoff_identity; DROP TABLE initialization_repair_operations; DROP TABLE workspace_operation_cancellations; DROP TABLE workspace_operation_runs; DROP TABLE workspace_operations; DROP TABLE remote_certificates; DROP TABLE remote_sessions; PRAGMA user_version=13"); err != nil {
 		db.Close()
 		t.Fatal(err)
 	}

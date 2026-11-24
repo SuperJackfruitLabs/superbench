@@ -56,7 +56,7 @@ func TestSchema29Preserves28AndRejectsFutureJournalOrMarker(t *testing.T) {
 			t.Fatal(err)
 		}
 		assertVersion(t, db, SchemaVersion)
-		if err := db.QueryRow(`SELECT record FROM benches`).Scan(&after); err != nil || before != after {
+		if err := db.QueryRow(`SELECT json_remove(record,'$.Lease.ID','$.Lease.Generation') FROM benches`).Scan(&after); err != nil || before != after {
 			t.Fatal("changed old row", err)
 		}
 		if _, err := handoffjournal.StateID(db); err != nil {

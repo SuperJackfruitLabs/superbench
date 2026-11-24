@@ -59,7 +59,7 @@ func TestRegistrationMigrationPreservesAggregateAndOtherTables(t *testing.T) {
 		t.Fatal(err)
 	}
 	var after, receipt, afterHistory string
-	if err := db.QueryRow("SELECT record FROM benches").Scan(&after); err != nil || before != after {
+	if err := db.QueryRow(`SELECT json_remove(record,'$.Lease.ID','$.Lease.Generation') FROM benches`).Scan(&after); err != nil || before != after {
 		t.Fatal("aggregate changed", err)
 	}
 	if err := db.QueryRow("SELECT record FROM receipts").Scan(&receipt); err != nil || receipt != "replay-protection" {

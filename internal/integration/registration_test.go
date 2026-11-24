@@ -62,7 +62,7 @@ func TestRegistrationMigrationRollbackIsWholeDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = db.Exec(`UPDATE benches SET record=json_remove(record,'$.RegistrationID'); PRAGMA user_version=29`); err != nil {
+	if _, err = db.Exec(`UPDATE benches SET record=json_remove(record,'$.RegistrationID'); DROP TABLE remote_certificates; DROP TABLE remote_sessions; PRAGMA user_version=29`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = db.Exec(`INSERT INTO benches(key,record) VALUES ('zother',?)`, string(raw)); err != nil {
