@@ -20,7 +20,7 @@ func TestParseAcceptsExplicitSwitchesAndDefaultsOmittedOnesToFalse(t *testing.T)
 	if err != nil || got != (Switches{}) || got.Any() {
 		t.Fatal(got, err)
 	}
-	if got.String() != "fresh_payload=false finite_io=false receipt_lookup=false cancellation=false registration_observation=false fresh_reclaim_idle=0s remote_access=false remote_fleet_address=invalid AddrPort" {
+	if got.String() != "fresh_payload=false finite_io=false receipt_lookup=false cancellation=false registration_observation=false fresh_reclaim_idle=0s remote_access=false remote_fleet_address=-" {
 		t.Fatal(got.String())
 	}
 }

@@ -32,7 +32,7 @@ func TestRemoteAccessParses(t *testing.T) {
 }
 
 func TestRemoteFleetAddressRefusals(t *testing.T) {
-	for _, value := range []string{`"0.0.0.0:2222"`, `"[::]:2222"`, `"host:2222"`, `"100.64.0.7:0"`,
+	for _, value := range []string{`"0.0.0.0:2222"`, `"[::]:2222"`, `"[::ffff:0.0.0.0]:2222"`, `"host:2222"`, `"100.64.0.7:0"`,
 		`"100.64.0.7"`, `2222`, `null`, `"[fe80::1%eth0]:22"`, `""`, `true`} {
 		_, err := Parse([]byte(remoteHead + `,"remote_access":true,"remote_fleet_address":` + value + `}`))
 		if !errors.Is(err, ErrActivation) {

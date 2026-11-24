@@ -71,7 +71,7 @@ func (s Switches) ReclaimIdle() time.Duration {
 func (s Switches) String() string {
 	return fmt.Sprintf("fresh_payload=%t finite_io=%t receipt_lookup=%t cancellation=%t registration_observation=%t fresh_reclaim_idle=%s remote_access=%t remote_fleet_address=%s",
 		s.FreshPayload, s.FiniteIO, s.ReceiptLookup, s.Cancellation, s.RegistrationObservation, s.ReclaimIdle(),
-		s.RemoteAccess, s.RemoteFleetAddress)
+		s.RemoteAccess, fleetAddressText(s.RemoteFleetAddress))
 }
 
 // validIdleHours is the accepted range of fresh_reclaim_idle_hours: 0 turns the
@@ -246,8 +246,17 @@ func fleetAddress(value json.Token) (netip.AddrPort, bool) {
 		return netip.AddrPort{}, false
 	}
 	addr, err := netip.ParseAddrPort(text)
-	if err != nil || addr.Port() == 0 || addr.Addr().IsUnspecified() || addr.Addr().Zone() != "" {
+	if err != nil || addr.Port() == 0 || addr.Addr().Unmap().IsUnspecified() || addr.Addr().Zone() != "" {
 		return netip.AddrPort{}, false
 	}
 	return addr, true
+}
+
+// fleetAddressText prints "-" for an unset address instead of netip's
+// "invalid AddrPort".
+func fleetAddressText(a netip.AddrPort) string {
+	if !a.IsValid() {
+		return "-"
+	}
+	return a.String()
 }
