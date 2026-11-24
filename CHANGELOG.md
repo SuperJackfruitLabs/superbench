@@ -6,6 +6,21 @@ stamps the section `## vX.Y.Z — YYYY-MM-DD`, and the release notes quote it.
 
 ## Unreleased
 
+- Remote access to a bench, off by default: a certificate-only SSH door for the holder of a
+  lease (exec, a shell with a PTY, and SFTP), with no forwarding of any kind. `remote_access` and
+  `remote_fleet_address` in `/etc/superbench/activation.json` turn it on; it requires
+  `fresh_payload`, a kernel of Linux 5.12 or later, a `/var/tmp` that is not a symlink, a
+  `/dev/shm`, and data and state roots outside `/tmp`, `/var/tmp` and `/dev/shm`. benchd's own CA
+  issues 30-minute writer certificates through `bench workspace remote-credential`; `bench
+  workspace remote-status` shows sessions and the audit. Sessions are the lease's remote
+  execution, so checkpoint, release, stop and stop_admin cut them first. Each session sees only
+  its bench, but this is not isolation of untrusted code: supervised runs can still reach a live
+  session through `/proc`, and there is no per-bench connection cap or rate limit yet. With the
+  switch off benchd opens no TCP listener. A remote-access failure at start stops benchd.
+  **Upgrade step:** remote access adds state schema 31, and an activated daemon never migrates, so
+  start benchd once with activation off to migrate, then turn it on. `bench-sftp` is a new
+  installed executable (`/usr/local/libexec/bench-sftp`). See docs-site "Remote access".
+
 - `deploy/linux/install.py --upgrade` no longer refuses a host whose operator edited
   `/etc/superbench/benchd.env`. The file is operator configuration: the installer writes it only
   when it is missing and afterwards validates it, never comparing or replacing it, so

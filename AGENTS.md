@@ -15,7 +15,8 @@
   allows (`landing/scripts/check-copy.mjs`).
 - Run `sh scripts/check.sh` before publishing. External runtime imports are the pinned SQLite driver in storage adapters and
   x/sys/unix in the macOS peer-credential adapter and the pinned TOML parser only
-  in internal/setup/config.go. Protocol/client/service layers
+  in internal/setup/config.go. golang.org/x/crypto/ssh is allowed only in internal/remoteca and
+  internal/remotessh, and github.com/pkg/sftp only in internal/remotesftp. Protocol/client/service layers
   follow the edges in the architecture test; the engine never imports the service. The reap layer owns filesystem snapshots,
   verified permission transitions and deletion of approved entries; the engine
   owns lifecycle and durable intent authority.

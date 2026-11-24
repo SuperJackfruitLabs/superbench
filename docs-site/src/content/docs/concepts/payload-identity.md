@@ -51,3 +51,12 @@ Until then, supervised commands run with the launching account's authority, insi
 cgroup. That is the boundary described in [Supervised runs and setup](/concepts/supervised-runs/) and
 the [Security model](/start/security-model/): lifecycle fencing for trusted commands, with no uid,
 mount or network isolation per bench.
+
+## Session mode and bench-sftp
+
+When [remote access](/concepts/remote-access/) is on, the payload helper also has a session mode
+that starts a remote SSH session as the payload user, in a private mount namespace that shows only
+its bench, with its own PID, IPC and temporary directories. `bench-sftp`, installed as
+`/usr/local/libexec/bench-sftp`, serves SFTP for those sessions and is confined to the bench's
+workspace root. Both are part of remote access, which is off by default; neither changes what the
+paragraph above says about the payload-user path on `main`.

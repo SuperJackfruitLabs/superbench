@@ -663,8 +663,8 @@ managed readiness or proof that a previous execution has stopped.
 benchd reads the default-off v2 switches only from
 `/etc/superbench/activation.json`. No request, environment variable, `benchd.env`
 entry or command-line flag can set them. The file is a JSON object with the exact
-version, any of five switches, each a literal `true` or `false`, and one
-setting:
+version, any of six switches, each a literal `true` or `false`, and two
+settings:
 
 ```json
 {
@@ -673,7 +673,8 @@ setting:
   "finite_io": false,
   "receipt_lookup": false,
   "cancellation": false,
-  "registration_observation": false
+  "registration_observation": false,
+  "remote_access": false
 }
 ```
 
@@ -684,10 +685,12 @@ setting:
 | `receipt_lookup` | `POST /v2/receipts/lookup` ([receipt lookup](receipt-lookup.md)) |
 | `cancellation` | v2 `cancel` and the operation reconciler ([cancellation](operation-cancellation.md)) |
 | `registration_observation` | `POST /v2/registrations/observe` |
+| `remote_access` | The certificate-only SSH listener on `remote_fleet_address`, the `/v2/remote/*` socket routes and `bench-sftp` sessions (the "Remote access" docs page). Off, benchd opens no TCP listener. |
 
 | Setting | Means |
 | --- | --- |
 | `fresh_reclaim_idle_hours` | How long a released Fresh bench stays idle before benchd reclaims it: a whole number of hours, `0` (never: reclaim by hand) or `1` to `8760`, for example `"fresh_reclaim_idle_hours": 72`. Omitted, it is `24`. It applies only while `fresh_payload` is on, and is refused without it. |
+| `remote_fleet_address` | The one address the remote listener binds: an `ip:port` string such as `"100.64.0.7:2222"`, a specific address with a nonzero port, no zone, never a wildcard. Required with `remote_access` and refused without it. |
 
 An omitted switch is off. An unknown, duplicated or non-boolean key, a
 `fresh_reclaim_idle_hours` that is not a whole number from 0 to 8760, a missing or
@@ -708,10 +711,25 @@ the socket, and refuses a file that breaks one:
 | `finite_io` | `fresh_payload` | A finite run executes only on a Fresh payload tree. |
 | `registration_observation` | `fresh_payload` | Observation reads only a Fresh payload tree. |
 | `fresh_reclaim_idle_hours` | `fresh_payload` | Only Fresh benches are reclaimed. Present without it, the file is refused. |
+| `remote_access` | `fresh_payload` and `remote_fleet_address` | Sessions run in the Fresh payload layout. The address is refused without `remote_access`. |
 | `receipt_lookup`, `cancellation` | nothing | |
 
 So the registered launch, which needs all five, sets every switch to `true`, and
 `receipt_lookup` or `cancellation` may run alone.
+
+**Remote access: deploy requirements.** `remote_access` needs Linux 5.12 or later
+(`mount_setattr`); `/var/tmp` must not be a symlink and `/dev/shm` must exist; and the data root
+and state root must not sit under `/tmp`, `/var/tmp` or `/dev/shm`, because sessions mount private
+tmpfs over those. `bench-sftp` is a new installed executable, `/usr/local/libexec/bench-sftp`; the
+installer places it with the others. A remote-access failure at start (the address cannot be
+bound, a requirement above is missing) stops benchd rather than leaving it up without the door;
+see the unit's ordering for when the address exists, and keep the listener's interface up before
+the service starts.
+
+**Schema 31 upgrade step.** Remote access adds a state schema (31). An activated daemon never
+migrates state. On a host that is upgrading, start benchd **once with activation off** (no
+`activation.json`, or every switch false), let it migrate and stop it, then add `remote_access`
+and `remote_fleet_address` and start it again.
 
 While `fresh_payload` is on, benchd refuses a v1 `create` or `recover` before any
 bench effect (no creation intent, allocation or bench record), with `409 conflict`

@@ -136,6 +136,20 @@ Operations: `create`, `recover`, `lease`, `setup`, `run`, `checkpoint`, `release
 | `--mirror-timeout` | Local managed git deadline (default `2m0s`). |
 | `--state`, `--data` | Local state and data, with the same defaults as above. |
 
+### Remote access operations
+
+`remote-credential` and `remote-status` talk to the daemon's `/v2/remote/*` routes and need
+`--socket`; see [Remote access](/concepts/remote-access/).
+
+```sh
+bench workspace remote-credential --socket SOCKET --public-key FILE [--certificate-out FILE] [--token TOKEN] KEY
+bench workspace remote-status --socket SOCKET [KEY]
+```
+
+`remote-credential` takes the lease token from `--token` or `BENCH_LEASE_TOKEN`, writes the
+certificate to `--certificate-out` (mode 0644) when given, and prints the certificate, address and
+host key as JSON. `remote-status` prints the listener, the live remote executions and the audit.
+
 ### A stopped lease that cannot release
 
 A run can stop with files the checkpoint refuses, such as stray untracked files at the tree root.

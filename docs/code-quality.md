@@ -20,6 +20,9 @@ External runtime imports are pinned in go.mod/go.sum and restricted by adapter:
 - modernc.org/sqlite v1.62.0: engine SQL adapter and service receipt adapter only.
 - golang.org/x/sys/unix: Darwin Unix-peer credentials only.
 - github.com/pelletier/go-toml/v2 v2.4.3: setup configuration decoder only.
+- golang.org/x/crypto v0.58.0 (ssh): the certificate authority in internal/remoteca and the SSH
+  server in internal/remotessh only.
+- github.com/pkg/sftp v1.13.12: the SFTP server in internal/remotesftp only.
 
 Other runtime code uses the standard library. No dependency version floats in
 CI. Schema 8 protects setup receipts and preparation handoffs; older supported state upgrades retain

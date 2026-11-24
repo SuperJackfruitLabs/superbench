@@ -97,7 +97,7 @@ export const CAVEATS = [
   ['concepts/supervised-runs.md', 'Linux only', 'SB-07: Linux only'],
   ['concepts/supervised-runs.md', 'not a sandbox', 'SB-07: fencing, not isolation'],
   ['concepts/supervised-runs.md', 'payload run under a separate user is not done', 'SB-07: no separate payload user'],
-  ['start/security-model.md', 'no test asserts the absence of a TCP socket', 'SB-08: read from source only'],
+  ['start/security-model.md', 'no TCP listener unless remote access is enabled', 'SB-08: off by default, read from source'],
   ['start/security-model.md', 'trusted repositories', 'the threat model: trusted repositories'],
   ['concepts/payload-identity.md', 'does not yet install and activate', 'the payload user is not active on main'],
   ['concepts/fresh-allocations.md', 'Fresh payload materialization remains disabled', 'Fresh materialization is disabled'],
