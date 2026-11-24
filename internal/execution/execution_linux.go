@@ -134,6 +134,25 @@ func (Host) Empty(e *Execution) error {
 	}
 	return errors.New("unable to read execution cgroup population")
 }
+
+// Present reports whether e's scope exists on this boot. A scope from an
+// earlier boot is gone; one recorded on another host is an error, as in Fence.
+func (Host) Present(e *Execution) (bool, error) {
+	current, err := sameBoot(e)
+	if err != nil || !current {
+		return false, err
+	}
+	path, err := scopePath(e)
+	if err != nil {
+		return false, err
+	}
+	if _, err = os.Stat(path); os.IsNotExist(err) {
+		return false, nil
+	} else if err != nil {
+		return false, err
+	}
+	return true, nil
+}
 func (h Host) Fence(e *Execution) error {
 	current, err := sameBoot(e)
 	if err != nil {

@@ -19,3 +19,4 @@ func (Host) Create(string, string) (Identity, error) {
 func (Host) Start(*exec.Cmd, *Execution) error { return errNoFencing }
 func (Host) Fence(*Execution) error            { return errNoFencing }
 func (Host) Empty(*Execution) error            { return errNoFencing }
+func (Host) Present(*Execution) (bool, error)  { return false, errNoFencing }

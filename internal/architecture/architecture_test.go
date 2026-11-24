@@ -117,7 +117,7 @@ func TestArchitecture(t *testing.T) {
 				"internal/buildinfo":                   {}, // Release version stamp; no dependencies.
 				"internal/finiteio":                    {},
 				"internal/protocolv2":                  {"internal/checkpointset", "internal/model", "internal/finiteio"},
-				"internal/workspacepolicy":             {"internal/freshgeneration", "internal/checkpointset", "internal/model", "internal/quotapolicy", "internal/repository"},
+				"internal/workspacepolicy":             {"internal/execution", "internal/freshgeneration", "internal/checkpointset", "internal/model", "internal/quotapolicy", "internal/repository"},
 				"internal/workspace":                   {"internal/freshtree", "internal/memberinspect", "internal/hostidentity", "internal/handoffjournal", "internal/crosshost", "internal/workspacematerialize", "internal/operationcontrol", "internal/workspacecopy", "internal/transferguard", "internal/workspaceplan", "internal/worktreetransfer", "internal/reftransfer", "internal/workspacepolicy", "internal/benchstate", "internal/statepath", "internal/creation", "internal/checkpointset", "internal/model", "internal/quotapolicy", "internal/repository", "internal/setup"},
 				"internal/workspaceplan":               {"internal/checkpointset", "internal/model", "internal/quotapolicy", "internal/repository", "internal/setup"},
 				"internal/execution":                   {"internal/cachepolicy"},
@@ -129,7 +129,7 @@ func TestArchitecture(t *testing.T) {
 				"internal/maintenance":                 {"internal/retention", "internal/reap"},
 				"internal/workspacereclaim":            {"internal/benchstate", "internal/freshtree", "internal/hoststorage", "internal/model", "internal/operationcontrol", "internal/payloadbootstrap", "internal/quotahelper", "internal/serviceidentity", "internal/workspace", "internal/workspacepolicy"},
 				"internal/workspaceidle":               {"internal/benchstate", "internal/freshtree", "internal/model", "internal/workspace", "internal/workspacepolicy"},
-				"internal/workspaceops":                {"internal/workspaceidle", "internal/workspacereclaim", "internal/finiteio", "internal/payloadstage", "internal/workspaceprep", "internal/bench", "internal/execution", "internal/model", "internal/protocolv2", "internal/workspace", "internal/archivepolicy"},
+				"internal/workspaceops":                {"internal/remotestate", "internal/workspaceidle", "internal/workspacereclaim", "internal/finiteio", "internal/payloadstage", "internal/workspaceprep", "internal/bench", "internal/execution", "internal/model", "internal/protocolv2", "internal/workspace", "internal/archivepolicy"},
 				"internal/workspaceapi":                {"internal/bench", "internal/model", "internal/protocolv2", "internal/workspaceops"},
 				"internal/workspacerenew":              {"internal/bench", "internal/benchstate", "internal/model", "internal/operationcontrol", "internal/workspace", "internal/workspaceprep"}, // Root's successor owner for a stopped workspace.
 				"internal/operationreceipts":           {"internal/operationcontrol", "internal/finiteio"},
@@ -152,6 +152,7 @@ func TestArchitecture(t *testing.T) {
 				"internal/peercred":              {}, // Kernel peer credential lookup; no other authority.
 				"internal/remoteschema":          {"internal/model"},
 				"internal/remoteca":              {}, // benchd's SSH CA and host key; the only x/crypto/ssh user.
+				"internal/remotestate":           {"internal/bench", "internal/benchstate", "internal/execution", "internal/model", "internal/operationcontrol", "internal/remoteca", "internal/remoteschema", "internal/workspaceprep"},
 			}
 			allowed := !strings.Contains(strings.Split(p, "/")[0], ".")
 			for _, target := range edges[rel] {
