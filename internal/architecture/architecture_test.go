@@ -151,6 +151,7 @@ func TestArchitecture(t *testing.T) {
 				"internal/storagebootstrap":      {"internal/hoststorage", "internal/quotaoperationjournal", "internal/storagecustody"},
 				"internal/peercred":              {}, // Kernel peer credential lookup; no other authority.
 				"internal/remoteschema":          {"internal/model"},
+				"internal/remoteca":              {}, // benchd's SSH CA and host key; the only x/crypto/ssh user.
 			}
 			allowed := !strings.Contains(strings.Split(p, "/")[0], ".")
 			for _, target := range edges[rel] {
@@ -159,6 +160,9 @@ func TestArchitecture(t *testing.T) {
 				}
 			}
 			if p == "modernc.org/sqlite" && (rel == "internal/statestore" && filepath.Base(path) == "sqlite.go" || rel == "internal/operationreceipts" && filepath.Base(path) == "receipts.go" || rel == "internal/quotaoperationjournal" && filepath.Base(path) == "store.go") {
+				allowed = true
+			}
+			if p == "golang.org/x/crypto/ssh" && rel == "internal/remoteca" {
 				allowed = true
 			}
 			if p == "github.com/pelletier/go-toml/v2" && rel == "internal/setup" && filepath.Base(path) == "config.go" {
