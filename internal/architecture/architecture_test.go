@@ -153,6 +153,8 @@ func TestArchitecture(t *testing.T) {
 				"internal/remoteschema":          {"internal/model"},
 				"internal/remoteca":              {}, // benchd's SSH CA and host key; the only x/crypto/ssh user.
 				"internal/remotestate":           {"internal/bench", "internal/benchstate", "internal/execution", "internal/model", "internal/operationcontrol", "internal/remoteca", "internal/remoteschema", "internal/workspaceprep"},
+				"internal/remotesftp":            {}, // SFTP confined to one os.Root; no other authority.
+				"cmd/bench-sftp":                 {"internal/remotesftp"},
 			}
 			allowed := !strings.Contains(strings.Split(p, "/")[0], ".")
 			for _, target := range edges[rel] {
@@ -164,6 +166,11 @@ func TestArchitecture(t *testing.T) {
 				allowed = true
 			}
 			if p == "golang.org/x/crypto/ssh" && rel == "internal/remoteca" {
+				allowed = true
+			}
+			// pkg/sftp stays out of the privileged helper: it runs only in
+			// bench-sftp, after the drop to the payload account.
+			if p == "github.com/pkg/sftp" && rel == "internal/remotesftp" {
 				allowed = true
 			}
 			if p == "github.com/pelletier/go-toml/v2" && rel == "internal/setup" && filepath.Base(path) == "config.go" {

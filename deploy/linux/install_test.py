@@ -11,8 +11,8 @@ import unittest
 
 import subprocess
 
-from install import (ACTIVATION_FILE, ACTIVATION_SWITCHES, CGROUP_ROOT, POLICY_FILE, REGISTRY_FILE,
-                     DATA_ROOT, QUOTA_HELPER, STORAGE_FILE, UNIT_FILE, MissingAccount, account_ids,
+from install import (ACTIVATION_FILE, ACTIVATION_SWITCHES, CGROUP_ROOT, EXECUTABLES, POLICY_FILE,
+                     REGISTRY_FILE, DATA_ROOT, QUOTA_HELPER, STORAGE_FILE, UNIT_FILE, MissingAccount, account_ids,
                      check_data_mount,
                      activation_document, apply, checked_path, identity_documents, install,
                      installed_identity, main, payload, preflight_identity, read_budgets, static_helper,
@@ -53,6 +53,7 @@ def binaries(directory):
     for name in ["bench", "benchd", "bench-quota"]:
         (directory / name).write_bytes(b"\x7fELF\x02\x01" + bytes(12) + bytes([62, 0]))
     (directory / "bench-payload").write_bytes(helper_elf())
+    (directory / "bench-sftp").write_bytes(helper_elf())
     return directory
 
 
@@ -148,6 +149,7 @@ class InstallationGuards(unittest.TestCase):
             (binaries / name).write_bytes(b"\x7fELF\x02\x01" + bytes(12) + bytes([62, 0]))
         helper = binaries / "bench-payload"
         helper.write_bytes(helper_elf())
+        (binaries / "bench-sftp").write_bytes(helper_elf())
         unmanaged = payload(binaries, False)
         managed = payload(binaries, True)
         self.assertNotIn("etc/sudoers.d/superbench", unmanaged)
@@ -176,6 +178,25 @@ class InstallationGuards(unittest.TestCase):
         (binaries / "benchd").write_bytes(b"not a Linux binary")
         with self.assertRaises(ValueError):
             payload(binaries, True)
+
+    def test_managed_payload_installs_the_static_sftp_server(self):
+        bins = binaries(self.root / "bin")
+        server = bins / "bench-sftp"
+        self.assertNotIn("usr/local/libexec/bench-sftp", payload(bins, False))
+        self.assertEqual(payload(bins, True)["usr/local/libexec/bench-sftp"], (server.read_bytes(), 0o755))
+        self.assertIn("usr/local/libexec/bench-sftp", EXECUTABLES)
+        # Never in the sudo rule: bench-payload execs it after the drop, as the payload account.
+        self.assertNotIn(b"bench-sftp", payload(bins, True)["etc/sudoers.d/superbench"][0])
+        server.write_bytes(helper_elf(kind=3))
+        with self.assertRaisesRegex(ValueError, "bench-sftp must not use a dynamic interpreter"):
+            payload(bins, True)
+        server.write_bytes(helper_elf(machine=183))
+        with self.assertRaisesRegex(ValueError, "one supported architecture"):
+            payload(bins, True)
+        server.unlink()
+        with self.assertRaises(FileNotFoundError):
+            payload(bins, True)
+        payload(bins, False)
 
     def test_payload_helper_refuses_dynamic_and_malformed_binaries(self):
         static_helper(helper_elf())
@@ -301,6 +322,7 @@ class PayloadIdentity(unittest.TestCase):
         for name in ["bench", "benchd", "bench-quota"]:
             (binaries / name).write_bytes(b"\x7fELF\x02\x01" + bytes(12) + bytes([62, 0]))
         (binaries / "bench-payload").write_bytes(helper_elf())
+        (binaries / "bench-sftp").write_bytes(helper_elf())
         self.assertNotIn("usr/lib/sysusers.d/superbench-payload.conf", payload(binaries, False))
         rule, mode = payload(binaries, True)["usr/lib/sysusers.d/superbench-payload.conf"]
         self.assertEqual(mode, 0o644)

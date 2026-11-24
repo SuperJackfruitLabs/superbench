@@ -171,13 +171,14 @@ GOMAXPROCS=8 go build -p 8 -o /absolute/build/bin/bench ./cmd/bench
 GOMAXPROCS=8 go build -p 8 -o /absolute/build/bin/benchd ./cmd/benchd
 GOMAXPROCS=8 go build -p 8 -o /absolute/build/bin/bench-quota ./cmd/bench-quota
 CGO_ENABLED=0 GOMAXPROCS=8 go build -p 8 -o /absolute/build/bin/bench-payload ./cmd/bench-payload
+CGO_ENABLED=0 GOMAXPROCS=8 go build -p 8 -o /absolute/build/bin/bench-sftp ./cmd/bench-sftp
 python3 deploy/linux/install.py --bin-dir /absolute/build/bin \
   --root /absolute/private/staging --managed
 ```
 
-These are the four binaries required by the managed installer. The payload
-helper must be a static Linux executable for the target architecture; do not
-omit it or substitute a dynamically linked build. Review the staged files,
+These are the five binaries required by the managed installer. The payload
+helper and `bench-sftp` must be static Linux executables for the target
+architecture; do not omit either or substitute a dynamically linked build. Review the staged files,
 owners, modes, systemd unit, wrapper and sudo rule before applying anything.
 Staging writes only below the supplied physical absolute root.
 
@@ -382,8 +383,8 @@ python3 deploy/linux/install.py --bin-dir /absolute/build/bin --root / --managed
   --backup /var/lib/superbench-upgrade/<previous-revision>
 ```
 
-- **What it replaces.** Only `bench`, `benchd`, `bench-quota` and
-  `bench-payload`. Every other installed file (the unit, sudo rule, wrapper,
+- **What it replaces.** Only `bench`, `benchd`, `bench-quota`, `bench-payload`
+  and `bench-sftp` (installed new when the previous revision lacked it). Every other installed file (the unit, sudo rule, wrapper,
   sysusers, tmpfiles and the configuration documents) must still be byte-identical,
   or the run refuses before it writes anything. A newer revision that changes one
   of those files needs its own reviewed procedure.

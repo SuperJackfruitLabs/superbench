@@ -17,6 +17,7 @@ go build -o /absolute/build/bin/bench ./cmd/bench
 go build -o /absolute/build/bin/benchd ./cmd/benchd
 go build -o /absolute/build/bin/bench-quota ./cmd/bench-quota
 CGO_ENABLED=0 go build -o /absolute/build/bin/bench-payload ./cmd/bench-payload
+CGO_ENABLED=0 go build -o /absolute/build/bin/bench-sftp ./cmd/bench-sftp
 python3 deploy/linux/install.py --bin-dir /absolute/build/bin \
   --root /absolute/private/staging --managed
 ```
@@ -28,10 +29,11 @@ root-owned sticky temporary directory is permitted). On macOS, `/tmp` itself is
 a symlink; use its physical `/private/tmp` path when inspecting a Linux image.
 The binaries must be 64-bit Linux ELF files. Build on the host or explicitly
 cross-compile for its architecture; the installer does not download executables.
-Managed packaging requires the dedicated `bench-payload` executable, built with
-`CGO_ENABLED=0` for the same architecture. Its ELF program headers must contain
+Managed packaging requires the dedicated `bench-payload` executable and the
+`bench-sftp` server it starts as the payload account, both built with
+`CGO_ENABLED=0` for the same architecture. Their ELF program headers must contain
 neither a dynamic interpreter nor a shared-library dependency. Unmanaged packaging
-does not install that privileged executable or its sudo grant.
+does not install either executable or the sudo grant.
 
 Inspect the service, environment, sysusers/tmpfiles rules, wrapper and, for a
 managed host, sudo policy. Existing identical files are accepted. A different
@@ -127,7 +129,7 @@ reconciliation on restart. Never infer release from systemd status alone. See
 To upgrade, stop the service, reconcile outstanding executions with the installed
 binary, back up state and review schema compatibility. A plain rerun refuses
 differing installed files. `--upgrade --previous SHA256SUMS --sums SHA256SUMS --backup DIR`
-replaces only the four executables, with the bytes the new build's `--sums` lists. Each must be the previous reviewed build, as a plain
+replaces only the five executables, with the bytes the new build's `--sums` lists. Each must be the previous reviewed build, as a plain
 root-owned file. It is backed up to the new directory and then replaced
 atomically, while the unit is stopped. Every other installed file must stay
 identical ([pilot installation](pilot-installation.md#upgrade-the-executables)).
