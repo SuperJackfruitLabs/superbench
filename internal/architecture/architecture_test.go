@@ -96,7 +96,7 @@ func TestArchitecture(t *testing.T) {
 				"internal/serviceidentity":             {"internal/payloadpolicy"},
 				"internal/payloadwire":                 {"internal/gitpolicy", "internal/registeredinspection"},
 				"internal/payloadinput":                {"internal/finiteio"}, // Sealed memfd stdin leaf; no authority.
-				"internal/payloadexec":                 {"internal/payloadconfine", "internal/payloadinput", "internal/payloadwire", "internal/registeredinspection", "internal/registeredinspection/layout", "internal/payloadpolicy", "internal/serviceidentity", "internal/gitpolicy"},
+				"internal/payloadexec":                 {"internal/payloadconfine", "internal/payloadinput", "internal/payloadsession", "internal/payloadwire", "internal/registeredinspection", "internal/registeredinspection/layout", "internal/payloadpolicy", "internal/serviceidentity", "internal/gitpolicy"},
 				"internal/payloadlaunch":               {"internal/payloadexec", "internal/execution"},
 				"internal/registrationobserve":         {"internal/bench", "internal/gitcontrol", "internal/execution", "internal/localprep", "internal/model", "internal/payloadexec", "internal/payloadpolicy", "internal/serviceidentity", "internal/protocolv2"},
 				"internal/stageexec":                   {"internal/execution", "internal/output"},
@@ -158,6 +158,9 @@ func TestArchitecture(t *testing.T) {
 				"internal/remoteproto":           {}, // Wire types for /v2/remote/*; no authority.
 				"internal/remoteapi":             {"internal/bench", "internal/remoteca", "internal/remoteproto", "internal/remoteschema", "internal/remotestate"},
 				"internal/remotecli":             {"internal/client", "internal/remoteproto"},
+				"internal/payloadsession":        {"internal/payloadpolicy", "internal/payloadwire", "internal/registeredinspection"}, // Session-mode leaves of the fixed helper.
+				"internal/remotessh":             {},
+				"internal/remotesession":         {"internal/execution", "internal/payloadexec", "internal/payloadwire", "internal/remotessh", "internal/remotestate", "internal/serviceidentity"},
 			}
 			allowed := !strings.Contains(strings.Split(p, "/")[0], ".")
 			for _, target := range edges[rel] {

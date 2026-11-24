@@ -11,6 +11,12 @@ type refusalError struct {
 	cause error
 }
 
+// refuse tags a returned error with the phase it was returned from.
+func refuse(phase *string, err *error) {
+	if *err != nil {
+		*err = &refusalError{phase: *phase, cause: *err}
+	}
+}
 func (e *refusalError) Error() string { return "managed payload refused: " + RefusalCode(e) }
 func (e *refusalError) Unwrap() error { return e.cause }
 

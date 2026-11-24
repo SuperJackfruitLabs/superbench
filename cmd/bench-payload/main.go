@@ -15,9 +15,19 @@ func main() {
 		fmt.Fprintln(os.Stderr, "managed payload refused: arguments")
 		os.Exit(2)
 	}
-	// Exec may have irreversibly dropped credentials before returning. Never
-	// retry, restore privileges, print private inputs, or continue this process.
-	err := payloadexec.Exec()
+	// Exec and Session may have irreversibly dropped credentials before
+	// returning. Never retry, restore privileges, print private inputs, or
+	// continue this process. A socket on fd 0 selects session mode; no frame
+	// kind falls back to the other. A session's PID 1 stage is this binary
+	// re-executed by Session itself, never reachable through sudo.
+	var err error
+	if payloadexec.SessionChild() {
+		err = payloadexec.SessionInit()
+	} else if payloadexec.SessionStdin() {
+		err = payloadexec.Session()
+	} else {
+		err = payloadexec.Exec()
+	}
 	if err == nil {
 		// Only read-only layout or preparation-input inspections return successfully.
 		return

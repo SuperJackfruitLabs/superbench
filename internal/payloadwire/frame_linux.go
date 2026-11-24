@@ -38,63 +38,85 @@ func ReadInvocation(input *os.File, timeout time.Duration) (*InspectionRequest, 
 	return inspection, request, err
 }
 func ReadAnyInvocation(input *os.File, timeout time.Duration) (inspection *InspectionRequest, preparation *registeredinspection.PreparationRequest, request Request, err error) {
+	err = readFramed(input, timeout, MaxRequest, func(raw []byte, reader *os.File) error {
+		if candidate, parseErr := ParseInspectionRequest(raw); parseErr == nil {
+			inspection = &candidate
+		} else if candidate, parseErr := registeredinspection.ParsePreparationRequest(raw); parseErr == nil {
+			preparation = &candidate
+		} else if request, parseErr = ParseRequest(raw); parseErr != nil {
+			return errors.Join(ErrFrame, parseErr)
+		}
+		if inspection != nil || preparation != nil || request.Kind == "payload" {
+			var extra [1]byte
+			n, err := reader.Read(extra[:])
+			if n != 0 || err != io.EOF {
+				return errors.Join(ErrFrame, err)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, nil, Request{}, err
+	}
+	return inspection, preparation, request, nil
+}
+
+// ReadSessionFrame accepts only a session frame. It stops at the frame's last
+// byte: the descriptor message that follows on the socket stays unread.
+func ReadSessionFrame(input *os.File, timeout time.Duration) (request SessionRequest, err error) {
+	err = readFramed(input, timeout, MaxSessionRequest, func(raw []byte, _ *os.File) error {
+		var parseErr error
+		if request, parseErr = ParseSessionRequest(raw); parseErr != nil {
+			return errors.Join(ErrFrame, parseErr)
+		}
+		return nil
+	})
+	if err != nil {
+		return SessionRequest{}, err
+	}
+	return request, nil
+}
+
+// readFramed reads exactly a four-byte length and that many bytes, never more,
+// under a deadline, and hands after a reader positioned at the frame's end.
+func readFramed(input *os.File, timeout time.Duration, limit uint32, after func(raw []byte, reader *os.File) error) (err error) {
 	if timeout <= 0 || timeout > FrameTimeout {
-		return nil, nil, Request{}, ErrFrame
+		return ErrFrame
 	}
 	fd := input.Fd()
 	flags, _, errno := syscall.Syscall(syscall.SYS_FCNTL, fd, syscall.F_GETFL, 0)
 	if errno != 0 {
-		return nil, nil, Request{}, errors.Join(ErrFrame, errno)
+		return errors.Join(ErrFrame, errno)
 	}
 	if _, _, errno := syscall.Syscall(syscall.SYS_FCNTL, fd, syscall.F_SETFL, flags|syscall.O_NONBLOCK); errno != 0 {
-		return nil, nil, Request{}, errors.Join(ErrFrame, errno)
+		return errors.Join(ErrFrame, errno)
 	}
 	defer func() {
 		_, _, errno := syscall.Syscall(syscall.SYS_FCNTL, fd, syscall.F_SETFL, flags)
 		if errno != 0 {
-			inspection = nil
-			preparation = nil
-			request = Request{}
 			err = errors.Join(ErrFrame, err, errno)
 		}
 	}()
 	duplicate, _, errno := syscall.Syscall(syscall.SYS_FCNTL, fd, syscall.F_DUPFD_CLOEXEC, 3)
 	if errno != 0 {
-		return nil, nil, Request{}, errors.Join(ErrFrame, errno)
+		return errors.Join(ErrFrame, errno)
 	}
 	reader := os.NewFile(duplicate, "payload request frame")
 	defer reader.Close()
 	if err := reader.SetReadDeadline(time.Now().Add(timeout)); err != nil {
-		return nil, nil, Request{}, errors.Join(ErrFrame, err)
+		return errors.Join(ErrFrame, err)
 	}
 	var header [4]byte
 	if _, err := io.ReadFull(reader, header[:]); err != nil {
-		return nil, nil, Request{}, errors.Join(ErrFrame, err)
+		return errors.Join(ErrFrame, err)
 	}
 	length := binary.BigEndian.Uint32(header[:])
-	if length == 0 || length > MaxRequest {
-		return nil, nil, Request{}, ErrFrame
+	if length == 0 || length > limit {
+		return ErrFrame
 	}
 	raw := make([]byte, int(length))
 	if _, err := io.ReadFull(reader, raw); err != nil {
-		return nil, nil, Request{}, errors.Join(ErrFrame, err)
+		return errors.Join(ErrFrame, err)
 	}
-	if candidate, parseErr := ParseInspectionRequest(raw); parseErr == nil {
-		inspection = &candidate
-	} else if candidate, parseErr := registeredinspection.ParsePreparationRequest(raw); parseErr == nil {
-		preparation = &candidate
-	} else {
-		request, err = ParseRequest(raw)
-		if err != nil {
-			return nil, nil, Request{}, errors.Join(ErrFrame, err)
-		}
-	}
-	if inspection != nil || preparation != nil || request.Kind == "payload" {
-		var extra [1]byte
-		n, err := reader.Read(extra[:])
-		if n != 0 || err != io.EOF {
-			return nil, nil, Request{}, errors.Join(ErrFrame, err)
-		}
-	}
-	return inspection, preparation, request, nil
+	return after(raw, reader)
 }

@@ -41,6 +41,12 @@ TESTS = (
         'FINITE_INPUT_IMMUTABLE_READ_ONLY_REFUSALS',
         'FINITE_INPUT_EXACT_BYTES_EOF_NO_DESCRIPTOR_LEAK',
         'FINITE_INPUT_EMPTY_KEEPS_INHERITED_STDIN')),
+    ('payloadsession', 'TestInstalledRemoteSessionFixture', (
+        'SESSION_NAMESPACE_SHOWS_ONLY_ITS_BENCH', 'SESSION_TMPFS_READ_ONLY',
+        'SESSION_CANNOT_UNMOUNT_TO_REVEAL', 'SESSION_PAYLOAD_UID_AND_SECCOMP',
+        'SESSION_STAYS_IN_REMOTE_SCOPE', 'SESSION_PTY_CONTROLLING_TERMINAL',
+        'SESSION_DESCRIPTOR_REFUSALS_NO_EXEC', 'SESSION_PROC_SHOWS_ONLY_ITS_SESSION',
+        'SESSION_ENDS_WITH_ITS_ROOT_STAGE')),
     ('execution', 'TestHostStartPreservesActualChildCredentials', (
         'ACTUAL_SCOPED_CHILD_CREDENTIALS_PRESERVED',)),
     ('bench-quota', 'TestInstalledIndexedPolicyRefusesMissingHistory', (
@@ -196,6 +202,8 @@ def inside(binary, selector):
                'SUPERBENCH_IDENTITY_ORIGINAL_NET': os.readlink('/proc/1/ns/net')}
     if selector == 'TestHostStartPreservesActualChildCredentials':
         environment['SUPERBENCH_EXECUTION_CREDENTIAL_FIXTURE'] = '1'
+        environment['SUPERBENCH_EXECUTION_CGROUP_ROOT'] = os.environ.get('SUPERBENCH_EXECUTION_CGROUP_ROOT', '')
+    if selector == 'TestInstalledRemoteSessionFixture':
         environment['SUPERBENCH_EXECUTION_CGROUP_ROOT'] = os.environ.get('SUPERBENCH_EXECUTION_CGROUP_ROOT', '')
     if selector in ('TestInstalledIndexedPolicyRefusesMissingHistory',
                     'TestInstalledIndexedPolicyDescriptorContinuity'):

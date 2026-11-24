@@ -109,3 +109,36 @@ func TestPayloadConfinementAndLeafChecksStayWired(t *testing.T) {
 		t.Fatal("checkpoint export must verify managed storage first")
 	}
 }
+
+// Session mode reaches the payload uid through the one reviewed drop, only in
+// the session's PID 1 stage, after the bench's mount namespace exists and its
+// own /proc is mounted; the target starts only after the drop.
+func TestSessionReachesPayloadUIDOnlyThroughDropCredentials(t *testing.T) {
+	read := func(path string) string {
+		raw, err := os.ReadFile(filepath.Join("..", "..", path))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(raw)
+	}
+	session := read("internal/payloadexec/session_linux.go")
+	if n := strings.Count(session, "dropCredentials("); n != 1 || strings.Contains(session, "syscall.Exec(") {
+		t.Fatalf("Session must reach the payload uid only through one dropCredentials and exec nothing itself, found %d calls", n)
+	}
+	enter, run, begin, drop, start := strings.Index(session, "payloadsession.Enter("), strings.Index(session, "payloadsession.Run("), strings.Index(session, "payloadsession.Begin("), strings.Index(session, "dropCredentials("), strings.Index(session, "payloadsession.Init(")
+	if enter < 0 || run < enter || begin < run || drop < begin || start < drop {
+		t.Fatal("Session must enter the mount namespace, then fork PID 1, which mounts its /proc, drops, then starts the target")
+	}
+	pidns := read("internal/payloadsession/pidns_linux.go")
+	for _, pin := range []string{"Cloneflags: syscall.CLONE_NEWPID, Pdeathsig: syscall.SIGKILL", `syscall.Mount("proc", "/proc", "proc", syscall.MS_NOSUID|syscall.MS_NODEV|syscall.MS_NOEXEC, "hidepid=2")`, "syscall.PR_SET_PDEATHSIG"} {
+		if !strings.Contains(pidns, pin) {
+			t.Fatalf("the session's PID namespace lost %s", pin)
+		}
+	}
+	if strings.Count(pidns, "syscall.ForkExec(") != 2 || strings.Count(pidns, "syscall.Exec(") != 0 {
+		t.Fatal("payloadsession forks exactly PID 1 and the target")
+	}
+	if lines := strings.Count(session, "\n"); lines > 150 {
+		t.Fatalf("session_linux.go is %d lines; payloadexec's budget allows 150", lines)
+	}
+}
