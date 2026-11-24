@@ -29,11 +29,11 @@ func TestReclaimIdleDefaultsAndExplicitValues(t *testing.T) {
 		}
 	}
 	s, _ := Parse([]byte(fresh + `,"fresh_reclaim_idle_hours":0}`))
-	if !s.ReclaimIdleSet || !strings.HasSuffix(s.String(), "fresh_reclaim_idle=0s") {
+	if !s.ReclaimIdleSet || !strings.Contains(s.String(), "fresh_reclaim_idle=0s") {
 		t.Fatal(s, s.String())
 	}
 	s, _ = Parse([]byte(fresh + `}`))
-	if s.ReclaimIdleSet || !strings.HasSuffix(s.String(), "fresh_reclaim_idle=24h0m0s") {
+	if s.ReclaimIdleSet || !strings.Contains(s.String(), "fresh_reclaim_idle=24h0m0s") {
 		t.Fatal(s.String())
 	}
 }

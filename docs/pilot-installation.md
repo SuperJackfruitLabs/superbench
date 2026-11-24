@@ -734,7 +734,7 @@ and the daemon behaves exactly as without this feature. benchd runs as the
 installer creates it with mode 0755). If it cannot, benchd cannot tell whether
 the file exists and refuses to start. At start
 benchd logs one line with the effective switches, for example
-`activation: fresh_payload=false finite_io=false receipt_lookup=false cancellation=false registration_observation=false fresh_reclaim_idle=0s`
+`activation: fresh_payload=false finite_io=false receipt_lookup=false cancellation=false registration_observation=false fresh_reclaim_idle=0s remote_access=false remote_fleet_address=invalid AddrPort`
 (with `fresh_payload` on and the setting omitted, `fresh_reclaim_idle=24h0m0s`).
 
 **Existing non-Fresh workspaces.** `fresh_payload` changes only new v2 `create`
