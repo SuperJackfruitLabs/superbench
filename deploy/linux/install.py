@@ -11,7 +11,9 @@ Starting or enabling the service is a separate operator action after configurati
 An installed file that differs is refused, except in --upgrade mode: then only the
 four executables may differ, only from the previous revision's reviewed
 SHA256SUMS, and only to the bytes the new build's --sums lists. Each is backed up first and replaced atomically while the unit is
-stopped. Every other installed file must still be identical.
+stopped. Every other installed file must still be identical, except the
+operator's /etc/superbench/benchd.env: it is created once from the package and
+afterwards only validated, never compared or replaced, in every mode.
 """
 import argparse
 import grp
@@ -506,6 +508,10 @@ def install(root, entries, upgrade=None):
         path = checked_path(root, relative)
         if path.exists():
             st = path.stat()
+            if relative == ENV_FILE:
+                # Operator configuration: validated, kept, never compared or replaced.
+                check_env(path, st)
+                continue
             if (stat.S_ISREG(st.st_mode) and path.read_bytes() != data and upgrade is not None
                     and upgrade.accept(relative, path, st, mode)):
                 continue
@@ -528,6 +534,59 @@ def install(root, entries, upgrade=None):
         make_parents(path.parent)
         # Publish complete files without replacing anything created concurrently.
         publish(path, data, mode, replace=False)
+
+
+ENV_FILE = "etc/superbench/benchd.env"
+UID_LIST = re.compile(r"([0-9]{1,10}(,[0-9]{1,10})*)?")
+DURATION = re.compile(r"(0|([0-9]+(\.[0-9]+)?(ns|us|ms|s|m|h))+)?")
+# The settings superbench-start passes to benchd, each with the syntax benchd's
+# flag parser accepts. An unset or empty one takes superbench-start's default.
+ENV_SETTINGS = {
+    "BENCHD_OPERATOR_UIDS": UID_LIST,
+    "BENCHD_READER_UIDS": UID_LIST,
+    "BENCHD_MAX_ACTIVE": re.compile(r"([1-9][0-9]{0,8})?"),
+    "BENCHD_RETENTION_INTERVAL": DURATION,
+    "BENCHD_MIRROR_TIMEOUT": DURATION,
+}
+
+
+def check_env(path, st):
+    """Validate the operator's benchd.env without comparing it to the package.
+
+    The file is operator configuration (operator reclaim needs the node's uid in
+    BENCHD_OPERATOR_UIDS), so the installer creates it once and never replaces
+    it. It must still be a plain root-owned file nobody else can write, holding
+    only known settings, each once, with values benchd accepts: a misspelt name
+    would otherwise be ignored silently and leave the default in force.
+    """
+    if not stat.S_ISREG(st.st_mode) or st.st_nlink != 1:
+        raise ValueError("operator configuration must be a plain file with one link: " + str(path))
+    if stat.S_IMODE(st.st_mode) & ~0o644:
+        raise ValueError("operator configuration must be mode 0644 or stricter: " + str(path))
+    if os.geteuid() == 0 and st.st_uid != 0:
+        raise ValueError("existing file is not root owned: " + str(path))
+    raw = path.read_bytes()
+    if len(raw) > 64 << 10:
+        raise ValueError("operator configuration exceeds 64 KiB: " + str(path))
+    try:
+        text = raw.decode("ascii")
+    except UnicodeDecodeError:
+        raise ValueError("operator configuration must be ASCII: " + str(path)) from None
+    seen = set()
+    for number, line in enumerate(text.splitlines(), 1):
+        if not line.strip() or line.lstrip().startswith(("#", ";")):
+            continue
+        name, equals, value = line.partition("=")
+        where = "%s line %d" % (path, number)
+        if not equals or name not in ENV_SETTINGS:
+            raise ValueError("operator configuration has an unknown setting (expected NAME=value with one of "
+                             + ", ".join(ENV_SETTINGS) + "): " + where)
+        if name in seen:
+            raise ValueError("operator configuration sets " + name + " twice: " + where)
+        seen.add(name)
+        if not ENV_SETTINGS[name].fullmatch(value) or name.endswith("_UIDS") and value and any(
+                int(uid) >= 2**32 for uid in value.split(",")):
+            raise ValueError("operator configuration has an invalid " + name + " value: " + where)
 
 
 def unit_stopped(run=subprocess.run):

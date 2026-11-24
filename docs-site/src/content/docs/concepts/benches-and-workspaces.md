@@ -96,6 +96,8 @@ one.
 Recent hubs reclaim a card's workspace themselves once its checkpoint settles, so a settled card
 does not hold its quota until the daemon's own idle reclaim (Fresh workspaces only, and only when
 that is on; see [Operations](/api/operations/)). `reclaim` is an operator operation: the user the
-node runs as must be listed in benchd's `--operator-uids` (see [benchd](/reference/benchd/)).
+node runs as must be listed in benchd's `--operator-uids` (see [benchd](/reference/benchd/)); on an
+installed host that is `BENCHD_OPERATOR_UIDS` in `/etc/superbench/benchd.env`, for example `0,993`,
+which the installer keeps across upgrades.
 Otherwise every such reclaim is refused as forbidden, the hub only logs it, and the workspace keeps
 its quota until something else frees it.
