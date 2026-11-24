@@ -123,7 +123,7 @@ func TestArchitecture(t *testing.T) {
 				"internal/execution":                   {"internal/cachepolicy"},
 				"internal/model":                       {"internal/execution", "internal/payloadpolicy"},
 				"internal/creation":                    {"internal/operationcontrol", "internal/model", "internal/repository"},
-				"internal/client":                      {"internal/protocol", "internal/protocolv2"},
+				"internal/client":                      {"internal/protocol", "internal/protocolv2", "internal/remoteproto"},
 				"internal/history":                     {"internal/reap"},
 				"internal/retention":                   {"internal/history", "internal/reap"},
 				"internal/maintenance":                 {"internal/retention", "internal/reap"},
@@ -137,7 +137,7 @@ func TestArchitecture(t *testing.T) {
 				"internal/receiptlookup":               {"internal/operationbody", "internal/operationreceipts", "internal/protocolv2"}, // Read-only historical evidence.
 				"internal/service":                     {"internal/activation", "internal/failurelog", "internal/freshreadiness", "internal/scalarapi", "internal/operationbody", "internal/receiptlookup", "internal/registrationobserve", "internal/serviceidentity", "internal/operationreceipts", "internal/operationcontrol", "internal/protocolv2", "internal/workspaceops", "internal/workspaceapi", "internal/autoarchive", "internal/bench", "internal/protocol", "internal/maintenance", "internal/peercred"},
 				"internal/workspacetransfer":           {"internal/freshtree", "internal/history", "internal/reap", "internal/retention", "internal/hoststorage", "internal/bench", "internal/benchstate", "internal/execution", "internal/gitcontrol", "internal/model", "internal/quotapolicy", "internal/reftransfer", "internal/repository", "internal/workspace", "internal/workspacepolicy", "internal/workspacerepair", "internal/worktreetransfer"},
-				"cmd/bench":                            {"internal/workspacerenew", "internal/buildinfo", "internal/localprep", "internal/crosshostflow", "internal/crosshost", "internal/handoffjournal", "internal/mirroradmin", "internal/mirrorstage", "internal/workspacetransfer", "internal/workspacerepair", "internal/workspaceprep", "internal/protocolv2", "internal/workspaceops", "internal/workspaceapi", "internal/workspacearchive", "internal/autoarchive", "internal/bench", "internal/client", "internal/protocol", "internal/reap", "internal/retention", "internal/history", "internal/maintenance"},
+				"cmd/bench":                            {"internal/remotecli", "internal/workspacerenew", "internal/buildinfo", "internal/localprep", "internal/crosshostflow", "internal/crosshost", "internal/handoffjournal", "internal/mirroradmin", "internal/mirrorstage", "internal/workspacetransfer", "internal/workspacerepair", "internal/workspaceprep", "internal/protocolv2", "internal/workspaceops", "internal/workspaceapi", "internal/workspacearchive", "internal/autoarchive", "internal/bench", "internal/client", "internal/protocol", "internal/reap", "internal/retention", "internal/history", "internal/maintenance"},
 				"cmd/benchd":                           {"internal/activation", "internal/buildinfo", "internal/bench", "internal/service"},
 				"internal/activation":                  {}, // Root-owned switch file reader; no other authority.
 				"internal/freshreadiness":              {"internal/hoststorage", "internal/quotahelper", "internal/serviceidentity"},
@@ -155,6 +155,9 @@ func TestArchitecture(t *testing.T) {
 				"internal/remotestate":           {"internal/bench", "internal/benchstate", "internal/execution", "internal/model", "internal/operationcontrol", "internal/remoteca", "internal/remoteschema", "internal/workspaceprep"},
 				"internal/remotesftp":            {}, // SFTP confined to one os.Root; no other authority.
 				"cmd/bench-sftp":                 {"internal/remotesftp"},
+				"internal/remoteproto":           {}, // Wire types for /v2/remote/*; no authority.
+				"internal/remoteapi":             {"internal/bench", "internal/remoteca", "internal/remoteproto", "internal/remoteschema", "internal/remotestate"},
+				"internal/remotecli":             {"internal/client", "internal/remoteproto"},
 			}
 			allowed := !strings.Contains(strings.Split(p, "/")[0], ".")
 			for _, target := range edges[rel] {

@@ -34,6 +34,11 @@ type Config struct {
 	ArchiveInterval    time.Duration
 	ReclaimInterval    time.Duration       // idle reclaim sweep; 0 means five minutes
 	Activation         activation.Switches // only from the root-owned activation file
+	Remote             Remote              // optional remote-access adapter; nil unless activation enables it
+}
+type Remote interface {
+	Route(w http.ResponseWriter, r *http.Request, uid uint32, admit func(*http.Request) error)
+	Serve(ctx context.Context) error
 }
 type Server struct {
 	proposedCancellation            bool
