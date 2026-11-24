@@ -138,7 +138,7 @@ func TestArchitecture(t *testing.T) {
 				"internal/service":                     {"internal/activation", "internal/failurelog", "internal/freshreadiness", "internal/scalarapi", "internal/operationbody", "internal/receiptlookup", "internal/registrationobserve", "internal/serviceidentity", "internal/operationreceipts", "internal/operationcontrol", "internal/protocolv2", "internal/workspaceops", "internal/workspaceapi", "internal/autoarchive", "internal/bench", "internal/protocol", "internal/maintenance", "internal/peercred"},
 				"internal/workspacetransfer":           {"internal/freshtree", "internal/history", "internal/reap", "internal/retention", "internal/hoststorage", "internal/bench", "internal/benchstate", "internal/execution", "internal/gitcontrol", "internal/model", "internal/quotapolicy", "internal/reftransfer", "internal/repository", "internal/workspace", "internal/workspacepolicy", "internal/workspacerepair", "internal/worktreetransfer"},
 				"cmd/bench":                            {"internal/remotecli", "internal/workspacerenew", "internal/buildinfo", "internal/localprep", "internal/crosshostflow", "internal/crosshost", "internal/handoffjournal", "internal/mirroradmin", "internal/mirrorstage", "internal/workspacetransfer", "internal/workspacerepair", "internal/workspaceprep", "internal/protocolv2", "internal/workspaceops", "internal/workspaceapi", "internal/workspacearchive", "internal/autoarchive", "internal/bench", "internal/client", "internal/protocol", "internal/reap", "internal/retention", "internal/history", "internal/maintenance"},
-				"cmd/benchd":                           {"internal/activation", "internal/buildinfo", "internal/bench", "internal/service"},
+				"cmd/benchd":                           {"internal/activation", "internal/buildinfo", "internal/bench", "internal/remoteaccess", "internal/service"},
 				"internal/activation":                  {}, // Root-owned switch file reader; no other authority.
 				"internal/freshreadiness":              {"internal/hoststorage", "internal/quotahelper", "internal/serviceidentity"},
 				"internal/scalarapi":                   {"internal/bench"},
@@ -158,9 +158,10 @@ func TestArchitecture(t *testing.T) {
 				"internal/remoteproto":             {}, // Wire types for /v2/remote/*; no authority.
 				"internal/remoteapi":               {"internal/bench", "internal/remoteca", "internal/remoteproto", "internal/remoteschema", "internal/remotestate"},
 				"internal/remotecli":               {"internal/client", "internal/remoteproto"},
-				"internal/payloadsession":          {"internal/payloadconfine", "internal/payloadpolicy", "internal/payloadwire", "internal/registeredinspection"}, // Session-mode leaves of the fixed helper.
-				"internal/remotessh":               {"internal/remoteca", "internal/remoteschema", "internal/remotestate"},                                         // The SSH door; x/crypto/ssh below.
-				"internal/remotessh/remotesshtest": {"internal/remotesftp", "internal/remotessh", "internal/remotestate"},                                          // Test-only launcher.
+				"internal/payloadsession":          {"internal/payloadconfine", "internal/payloadpolicy", "internal/payloadwire", "internal/registeredinspection"},                                               // Session-mode leaves of the fixed helper.
+				"internal/remotessh":               {"internal/remoteca", "internal/remoteschema", "internal/remotestate"},                                                                                       // The SSH door; x/crypto/ssh below.
+				"internal/remotessh/remotesshtest": {"internal/remotesftp", "internal/remotessh", "internal/remotestate"},                                                                                        // Test-only launcher.
+				"internal/remoteaccess":            {"internal/activation", "internal/bench", "internal/remoteapi", "internal/remoteca", "internal/remotesession", "internal/remotessh", "internal/remotestate"}, // Composition: listener lifecycle and routes.
 				"internal/remotesession":           {"internal/execution", "internal/payloadexec", "internal/payloadwire", "internal/remotessh", "internal/remotestate", "internal/serviceidentity"},
 			}
 			allowed := !strings.Contains(strings.Split(p, "/")[0], ".")

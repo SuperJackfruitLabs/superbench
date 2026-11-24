@@ -16,8 +16,13 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/activation"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/bench"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/buildinfo"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/remoteaccess"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/service"
 )
+
+// newRemote builds remote access; it is called only when activation enables
+// remote_access. Tests replace it to prove it is never called otherwise.
+var newRemote = remoteaccess.New
 
 func main() {
 	if e := run(os.Args[1:], activation.Load, service.Serve); e != nil {
@@ -91,5 +96,13 @@ func run(args []string, load func() (activation.Switches, error), serve func(con
 	log.Printf("activation: %s", switches)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	return serve(ctx, service.Config{Socket: *socket, Store: bench.Store{State: *state, Data: *data, CgroupRoot: *cgroup, MirrorTimeout: *mirrorTimeout}, Operators: ops, Readers: read, MaxActive: *active, RetentionInterval: *retentionInterval, ArchiveInterval: *archiveInterval, Activation: switches})
+	c := service.Config{Socket: *socket, Store: bench.Store{State: *state, Data: *data, CgroupRoot: *cgroup, MirrorTimeout: *mirrorTimeout}, Operators: ops, Readers: read, MaxActive: *active, RetentionInterval: *retentionInterval, ArchiveInterval: *archiveInterval, Activation: switches}
+	if switches.RemoteAccess {
+		remote, e := newRemote(c.Store, switches, ops, read)
+		if e != nil {
+			return e
+		}
+		c.Remote = remote
+	}
+	return serve(ctx, c)
 }
