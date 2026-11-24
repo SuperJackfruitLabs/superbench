@@ -158,7 +158,7 @@ func TestArchitecture(t *testing.T) {
 				"internal/remoteproto":           {}, // Wire types for /v2/remote/*; no authority.
 				"internal/remoteapi":             {"internal/bench", "internal/remoteca", "internal/remoteproto", "internal/remoteschema", "internal/remotestate"},
 				"internal/remotecli":             {"internal/client", "internal/remoteproto"},
-				"internal/payloadsession":        {"internal/payloadpolicy", "internal/payloadwire", "internal/registeredinspection"}, // Session-mode leaves of the fixed helper.
+				"internal/payloadsession":        {"internal/payloadconfine", "internal/payloadpolicy", "internal/payloadwire", "internal/registeredinspection"}, // Session-mode leaves of the fixed helper.
 				"internal/remotessh":             {},
 				"internal/remotesession":         {"internal/execution", "internal/payloadexec", "internal/payloadwire", "internal/remotessh", "internal/remotestate", "internal/serviceidentity"},
 			}

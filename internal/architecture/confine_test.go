@@ -130,9 +130,15 @@ func TestSessionReachesPayloadUIDOnlyThroughDropCredentials(t *testing.T) {
 		t.Fatal("Session must enter the mount namespace, then fork PID 1, which mounts its /proc, drops, then starts the target")
 	}
 	pidns := read("internal/payloadsession/pidns_linux.go")
-	for _, pin := range []string{"Cloneflags: syscall.CLONE_NEWPID, Pdeathsig: syscall.SIGKILL", `syscall.Mount("proc", "/proc", "proc", syscall.MS_NOSUID|syscall.MS_NODEV|syscall.MS_NOEXEC, "hidepid=2")`, "syscall.PR_SET_PDEATHSIG"} {
+	for _, pin := range []string{"Cloneflags: syscall.CLONE_NEWPID | syscall.CLONE_NEWIPC, Pdeathsig: syscall.SIGKILL", "syscall.PR_SET_DUMPABLE, 0", "payloadconfine.InstallSession()", `syscall.Mount("proc", "/proc", "proc", syscall.MS_NOSUID|syscall.MS_NODEV|syscall.MS_NOEXEC, "hidepid=2")`, "syscall.PR_SET_PDEATHSIG"} {
 		if !strings.Contains(pidns, pin) {
 			t.Fatalf("the session's PID namespace lost %s", pin)
+		}
+	}
+	namespace := read("internal/payloadsession/namespace_linux.go")
+	for _, shared := range []string{`"/tmp":`, `"/var/tmp":`, `"/dev/shm":`, "for path, options := range sharedTmp {"} {
+		if !strings.Contains(namespace, shared) {
+			t.Fatalf("the session no longer gets its own %s", shared)
 		}
 	}
 	if strings.Count(pidns, "syscall.ForkExec(") != 2 || strings.Count(pidns, "syscall.Exec(") != 0 {

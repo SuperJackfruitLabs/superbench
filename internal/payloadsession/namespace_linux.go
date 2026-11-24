@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"slices"
 	"strconv"
+	"strings"
 	"syscall"
 	"unsafe"
 
@@ -24,11 +25,21 @@ const (
 	openTreeClone       = 1
 	atEmptyPath         = 0x1000
 	moveMountFEmptyPath = 0x4
+	sysMountSetattr     = 442
 	tmpfsMagic          = 0x01021994
 	stRdonly            = 1
 )
 
 var benchKey = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$`)
+
+// sharedTmp are the host's same-uid scratch directories (benchd's PrivateTmp
+// among them). Each session gets its own bounded tmpfs over every one, so no
+// session sees what another bench's process left there.
+var sharedTmp = map[string]string{
+	"/tmp":     "mode=1777,size=512m,nr_inodes=65536",
+	"/var/tmp": "mode=1777,size=512m,nr_inodes=65536",
+	"/dev/shm": "mode=1777,size=64m,nr_inodes=4096",
+}
 
 // Enter locks the calling goroutine to its thread for the rest of the process
 // and gives that thread a private mount namespace in which DataRoot and
@@ -38,6 +49,13 @@ var benchKey = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$`)
 func Enter(p payloadpolicy.Policy, key string, bench *os.File) error {
 	if runtime.GOARCH != "amd64" && runtime.GOARCH != "arm64" || p.Validate() != nil || !benchKey.MatchString(key) || bench == nil {
 		return ErrSession
+	}
+	for shared := range sharedTmp {
+		for _, root := range []string{p.DataRoot, p.StateRoot} {
+			if rel, err := filepath.Rel(shared, root); err != nil || rel != ".." && !strings.HasPrefix(rel, "../") {
+				return ErrSession // A root under shared scratch would vanish under its tmpfs.
+			}
+		}
 	}
 	var pinned syscall.Stat_t
 	if err := syscall.Fstat(int(bench.Fd()), &pinned); err != nil || pinned.Mode&syscall.S_IFMT != syscall.S_IFDIR {
@@ -52,6 +70,12 @@ func Enter(p payloadpolicy.Policy, key string, bench *os.File) error {
 		return errors.Join(ErrSession, errno)
 	}
 	defer syscall.Close(int(clone))
+	// The clone is a peer of the host mount it came from: make it private
+	// while still detached, so nothing propagates in either direction.
+	attr := [4]uint64{0, 0, syscall.MS_PRIVATE, 0} // struct mount_attr
+	if _, _, errno := syscall.Syscall6(sysMountSetattr, clone, uintptr(unsafe.Pointer(&empty[0])), atEmptyPath, uintptr(unsafe.Pointer(&attr)), unsafe.Sizeof(attr), 0); errno != 0 {
+		return errors.Join(ErrSession, errno)
+	}
 	if err := syscall.Unshare(syscall.CLONE_NEWNS); err != nil {
 		return errors.Join(ErrSession, err)
 	}
@@ -65,11 +89,18 @@ func Enter(p payloadpolicy.Policy, key string, bench *os.File) error {
 		}
 	}()
 	for _, path := range []string{p.DataRoot, p.StateRoot} {
-		root, err := tmpfs(path, p.DaemonUID)
+		root, err := tmpfs(path, p.DaemonUID, syscall.MS_NOEXEC, "mode=0755,size=64k,nr_inodes=64", 0755)
 		if err != nil {
 			return err
 		}
 		roots = append(roots, root)
+	}
+	for path, options := range sharedTmp {
+		root, err := tmpfs(path, 0, 0, options, 01777)
+		if err != nil {
+			return err
+		}
+		_ = root.Close()
 	}
 	data := int(roots[0].Fd())
 	if err := syscall.Mkdirat(data, "benches", 0755); err != nil {
@@ -95,10 +126,8 @@ func Enter(p payloadpolicy.Policy, key string, bench *os.File) error {
 	if !same(mounted, pinned) {
 		return ErrSession
 	}
-	// The clone is a peer of the host mount it came from; cut propagation.
-	if err := syscall.Mount("", fdPath(mounted), "", syscall.MS_PRIVATE, ""); err != nil {
-		return errors.Join(ErrSession, err)
-	}
+	// Exactly nosuid,nodev: a host noexec on the data filesystem is dropped,
+	// as for supervised runs, so the bench's own tools run.
 	if err := syscall.Mount("", fdPath(mounted), "", syscall.MS_REMOUNT|syscall.MS_BIND|syscall.MS_NOSUID|syscall.MS_NODEV, ""); err != nil {
 		return errors.Join(ErrSession, err)
 	}
@@ -112,7 +141,7 @@ func Enter(p payloadpolicy.Policy, key string, bench *os.File) error {
 
 // tmpfs mounts a fresh tmpfs over the verified physical directory at path,
 // through its descriptor, and returns the new tmpfs root found again by path.
-func tmpfs(path string, daemonUID uint32) (*os.File, error) {
+func tmpfs(path string, daemonUID uint32, flags uintptr, options string, mode uint32) (*os.File, error) {
 	under, err := registeredinspection.OpenPhysicalDirectory(path, daemonUID)
 	if err != nil {
 		return nil, errors.Join(ErrSession, err)
@@ -120,7 +149,7 @@ func tmpfs(path string, daemonUID uint32) (*os.File, error) {
 	var below syscall.Stat_t
 	err = syscall.Fstat(int(under.Fd()), &below)
 	if err == nil {
-		err = syscall.Mount("tmpfs", fdPath(under), "tmpfs", syscall.MS_NOSUID|syscall.MS_NODEV|syscall.MS_NOEXEC, "mode=0755,size=64k,nr_inodes=64")
+		err = syscall.Mount("tmpfs", fdPath(under), "tmpfs", syscall.MS_NOSUID|syscall.MS_NODEV|flags, options)
 	}
 	_ = under.Close()
 	if err != nil {
@@ -132,7 +161,7 @@ func tmpfs(path string, daemonUID uint32) (*os.File, error) {
 	}
 	var st syscall.Stat_t
 	var fs syscall.Statfs_t
-	if syscall.Fstat(int(root.Fd()), &st) != nil || syscall.Fstatfs(int(root.Fd()), &fs) != nil || fs.Type != tmpfsMagic || st.Dev == below.Dev || st.Uid != 0 || st.Mode&07777 != 0755 {
+	if syscall.Fstat(int(root.Fd()), &st) != nil || syscall.Fstatfs(int(root.Fd()), &fs) != nil || fs.Type != tmpfsMagic || st.Dev == below.Dev || st.Uid != 0 || st.Mode&07777 != mode {
 		_ = root.Close()
 		return nil, ErrSession
 	}

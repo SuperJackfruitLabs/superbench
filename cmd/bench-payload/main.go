@@ -21,7 +21,9 @@ func main() {
 	// kind falls back to the other. A session's PID 1 stage is this binary
 	// re-executed by Session itself, never reachable through sudo.
 	var err error
-	if payloadexec.SessionChild() {
+	if os.Getpid() == 1 {
+		// PID 1 is only ever a session's PID 1 stage; SessionInit refuses
+		// anything else. It never falls through to another mode.
 		err = payloadexec.SessionInit()
 	} else if payloadexec.SessionStdin() {
 		err = payloadexec.Session()

@@ -130,6 +130,11 @@ func (p *process) Wait() (int, string, error) {
 	return p.code, p.signal, p.err
 }
 
+// Terminate sends SIGTERM to sudo, which relays it to the helper's root stage
+// and on to the session (whose PID 1 ends the namespace 5 s later). The
+// SIGKILL five seconds after that reaches only sudo: it does not reach the
+// root stage or the session. The scope fence (cgroup.kill) is the hard stop;
+// callers that must end a session for certain fence its scope.
 func (p *process) Terminate() {
 	p.once.Do(func() {
 		_ = p.cmd.Process.Signal(syscall.SIGTERM)

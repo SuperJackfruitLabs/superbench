@@ -126,7 +126,15 @@ func TestInstalledRemoteSessionFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	base, err := os.MkdirTemp("/var/tmp", "superbench-session-fixture-")
+	// The roots may not live under shared scratch (/tmp, /var/tmp, /dev/shm),
+	// which every session covers with its own tmpfs: use a private tmpfs.
+	must(t, syscall.Mount("tmpfs", "/mnt", "tmpfs", syscall.MS_NOSUID|syscall.MS_NODEV, "mode=0755,size=64m"))
+	defer func() {
+		if err := syscall.Unmount("/mnt", syscall.MNT_DETACH); err != nil {
+			t.Error(err)
+		}
+	}()
+	base, err := os.MkdirTemp("/mnt", "superbench-session-fixture-")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +159,7 @@ func TestInstalledRemoteSessionFixture(t *testing.T) {
 			return
 		}
 		if t.Failed() {
-			t.Logf("failed session fixture preserved at %s", base)
+			t.Logf("failed session fixture was at %s (private tmpfs)", base)
 			return
 		}
 		// Exact, nonrecursive cleanup of what this fixture created.
@@ -254,7 +262,16 @@ func (f *fixture) proveNamespace() {
 	t.Logf("outside a session, the payload user reads /proc/%s/cwd/secret: %q", otherPID, leaked)
 	hostPIDNS, err := os.Readlink("/proc/self/ns/pid")
 	must(t, err)
+	shared := f.sharedOutside()
 	script := strings.Join([]string{
+		`for d in /tmp /var/tmp /dev/shm /dev/mqueue; do echo "SHARED $d=$(ls -A $d | tr '\n' ' ')"; done`,
+		`echo "IPC_OBJECTS=$(ipcs -q -m -s | grep -c '^0x')"`,
+		`echo own > /tmp/own && echo "OWN_TMP=$(cat /tmp/own)"`,
+		`echo own > /var/tmp/own && echo "OWN_VAR_TMP=$(cat /var/tmp/own)"`,
+		`echo own > /dev/shm/own && echo "OWN_SHM=$(cat /dev/shm/own)"`,
+		`echo "OWN_QUEUE=$(ipcmk -Q 2>&1 | grep -c 'Message queue id')"`,
+		`unshare -U true 2>&1 | sed 's/^/USERNS /'; echo "USERNS_EXIT=${PIPESTATUS[0]}"`,
+		`unshare -Ur true 2>&1 | sed 's/^/USERNS_ROOT /'`,
 		`echo "PIDS=$(ls /proc | grep -E '^[0-9]+$' | sort -n | tr '\n' ' ')"`,
 		`echo "PIDNS=$(readlink /proc/self/ns/pid)"`,
 		`test -e /proc/` + otherPID + ` && echo OTHER_PROC_VISIBLE`,
@@ -384,6 +401,20 @@ func (f *fixture) proveNamespace() {
 		t.Fatalf("the session's /proc shows more than the session:\n%s", observed)
 	}
 	t.Log("SESSION_PROC_SHOWS_ONLY_ITS_SESSION")
+	for _, d := range []string{"/tmp", "/var/tmp", "/dev/shm", "/dev/mqueue"} {
+		if !has("SHARED " + d + "=") {
+			t.Fatalf("the session's %s is not its own:\n%s", d, observed)
+		}
+	}
+	if !has("IPC_OBJECTS=0") || !has("OWN_TMP=own") || !has("OWN_VAR_TMP=own") || !has("OWN_SHM=own") || !has("OWN_QUEUE=1") {
+		t.Fatalf("shared tmp or IPC is not private, or the session's own does not work:\n%s", observed)
+	}
+	shared.stillThere()
+	t.Log("SESSION_SHARED_TMP_AND_IPC_ARE_PRIVATE")
+	if !has("USERNS unshare: unshare failed: Operation not permitted") || has("USERNS_EXIT=0") || !has("USERNS_ROOT unshare: unshare failed: Operation not permitted") {
+		t.Fatalf("the session can create a user namespace:\n%s", observed)
+	}
+	t.Log("SESSION_NO_USER_NAMESPACE")
 	// No descriptor beyond the session's three, and only the fixed environment.
 	if !slices.Equal(names, []string{"0", "1", "2"}) {
 		t.Fatalf("the shell inherited descriptors %v", names)
@@ -392,6 +423,67 @@ func (f *fixture) proveNamespace() {
 	want := []string{"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1", "HOME=" + home + "/home", "LANG=C.UTF-8", "PATH=/usr/local/bin:/usr/bin:/bin", "TMPDIR=" + home + "/tmp"}
 	if !slices.Equal(env, want) {
 		t.Fatalf("session environment %v, want %v", env, want)
+	}
+}
+
+// outsideObjects are same-uid objects another bench's process left in the
+// host's shared scratch and IPC namespace.
+type outsideObjects struct {
+	t     *testing.T
+	files []string
+	ipc   [][2]string // ipcrm flag, id
+}
+
+// sharedOutside writes payload-owned files in /tmp, /var/tmp and /dev/shm and
+// creates a payload-owned SysV queue and segment in the host IPC namespace,
+// all as another bench's run would, and removes them when the test ends.
+func (f *fixture) sharedOutside() *outsideObjects {
+	t, p := f.t, f.p
+	o := &outsideObjects{t: t}
+	name := "superbench-session-outside-" + randomID(t)
+	for _, d := range []string{"/tmp", "/var/tmp", "/dev/shm"} {
+		path := filepath.Join(d, name)
+		must(t, os.WriteFile(path, []byte("other bench\n"), 0600))
+		o.files = append(o.files, path)
+		must(t, os.Chown(path, int(p.PayloadUID), int(p.PayloadGID)))
+	}
+	asPayload := []string{"--reuid=" + strconv.Itoa(int(p.PayloadUID)), "--regid=" + strconv.Itoa(int(p.PayloadGID)), "--clear-groups", "/usr/bin/ipcmk"}
+	for flag, kind := range map[string]string{"-q": "-Q", "-m": "-M"} {
+		args := append(append([]string{}, asPayload...), kind)
+		if kind == "-M" {
+			args = append(args, "4096")
+		}
+		out, err := exec.Command("/usr/bin/setpriv", args...).CombinedOutput()
+		fields := strings.Fields(string(out))
+		if err != nil || len(fields) == 0 {
+			t.Fatalf("ipcmk %s: %v %s", kind, err, out)
+		}
+		o.ipc = append(o.ipc, [2]string{flag, fields[len(fields)-1]})
+	}
+	t.Cleanup(func() {
+		for _, path := range o.files {
+			_ = os.Remove(path)
+		}
+		for _, object := range o.ipc {
+			_ = exec.Command("/usr/bin/ipcrm", object[0], object[1]).Run()
+		}
+	})
+	t.Logf("outside the session: payload-owned %v and SysV objects %v", o.files, o.ipc)
+	return o
+}
+
+// stillThere proves the outside objects existed all along (so their absence
+// inside the session is the namespace's doing).
+func (o *outsideObjects) stillThere() {
+	for _, path := range o.files {
+		if raw, err := os.ReadFile(path); err != nil || string(raw) != "other bench\n" {
+			o.t.Fatalf("outside object %s vanished: %v", path, err)
+		}
+	}
+	for _, object := range o.ipc {
+		if out, err := exec.Command("/usr/bin/ipcs", object[0], "-i", object[1]).CombinedOutput(); err != nil {
+			o.t.Fatalf("outside SysV object %v vanished: %v %s", object, err, out)
+		}
 	}
 }
 

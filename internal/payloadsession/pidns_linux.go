@@ -10,9 +10,12 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
+	"strings"
 	"syscall"
 	"time"
 
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/payloadconfine"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/payloadwire"
 )
 
@@ -96,7 +99,7 @@ func spawn(fds []*os.File, control int, h Handoff) (int, *os.File, error) {
 	}
 	parent, child := os.NewFile(uintptr(pair[0]), "session handoff"), os.NewFile(uintptr(pair[1]), "session handoff child")
 	files := []uintptr{fds[0].Fd(), fds[min(1, len(fds)-1)].Fd(), fds[len(fds)-1].Fd(), child.Fd(), uintptr(control)}
-	pid, err := syscall.ForkExec("/proc/self/exe", []string{"bench-payload"}, &syscall.ProcAttr{Dir: "/", Env: []string{}, Files: files, Sys: &syscall.SysProcAttr{Cloneflags: syscall.CLONE_NEWPID, Pdeathsig: syscall.SIGKILL}})
+	pid, err := syscall.ForkExec("/proc/self/exe", []string{"bench-payload"}, &syscall.ProcAttr{Dir: "/", Env: []string{}, Files: files, Sys: &syscall.SysProcAttr{Cloneflags: syscall.CLONE_NEWPID | syscall.CLONE_NEWIPC, Pdeathsig: syscall.SIGKILL}})
 	_ = child.Close()
 	for _, f := range fds {
 		_ = f.Close()
@@ -153,13 +156,37 @@ func Begin() (Handoff, error) {
 	if _, err := io.ReadFull(reader, raw); err != nil || length > maxHandoff || json.Unmarshal(raw, &h) != nil {
 		return h, errors.Join(ErrSession, err)
 	}
-	if h.Path != "/usr/bin/bash" && h.Path != "/usr/local/libexec/bench-sftp" || len(h.Argv) == 0 || !filepath.IsAbs(h.Directory) {
+	if !fixedTarget(h) || !filepath.IsAbs(h.Directory) {
 		return Handoff{}, ErrSession
 	}
 	if err := syscall.Mount("proc", "/proc", "proc", syscall.MS_NOSUID|syscall.MS_NODEV|syscall.MS_NOEXEC, "hidepid=2"); err != nil {
 		return Handoff{}, errors.Join(ErrSession, err)
 	}
+	// PID 1 was born in a new IPC namespace (SysV IPC and POSIX queues): a
+	// fresh mqueue mount lists this namespace's queues, not the host's.
+	if _, err := os.Lstat("/dev/mqueue"); err == nil {
+		if err := syscall.Mount("mqueue", "/dev/mqueue", "mqueue", syscall.MS_NOSUID|syscall.MS_NODEV|syscall.MS_NOEXEC, ""); err != nil {
+			return Handoff{}, errors.Join(ErrSession, err)
+		}
+	}
 	return h, nil
+}
+
+// fixedTarget: one of the three fixed argvs, and only the environment the
+// root stage builds (payloadexec.Environment's names, once each).
+func fixedTarget(h Handoff) bool {
+	bash := h.Path == "/usr/bin/bash" && (slices.Equal(h.Argv, []string{"bash", "-l"}) || len(h.Argv) == 3 && h.Argv[0] == "bash" && h.Argv[1] == "-c")
+	sftp := h.Path == "/usr/local/libexec/bench-sftp" && slices.Equal(h.Argv, []string{"bench-sftp"})
+	allowed := map[string]bool{"PATH": true, "HOME": true, "TMPDIR": true, "GIT_CONFIG_GLOBAL": true, "GIT_CONFIG_NOSYSTEM": true, "LANG": true, "LC_ALL": true, "LC_CTYPE": true, "TZ": true, "TERM": true, "CI": true}
+	for _, item := range h.Env {
+		key, _, ok := strings.Cut(item, "=")
+		if !ok || !allowed[key] || key == "PATH" && item != "PATH=/usr/local/bin:/usr/bin:/bin" {
+			return false
+		}
+		delete(allowed, key)
+	}
+	// A PTY session, and only one, carries the requested TERM.
+	return (bash || sftp) && h.PTY == !allowed["TERM"]
 }
 
 // Init runs as the payload user after the credential drop. It never returns
@@ -167,11 +194,19 @@ func Begin() (Handoff, error) {
 // exits with the target's status. verify is the final credential and
 // descriptor proof, run immediately before the target starts.
 func Init(h Handoff, verify func() error) error {
-	// The drop changed credentials, which clears the parent-death signal: set
-	// it again, then make sure the root stage did not exit in between (it
-	// holds the handoff open until it exits).
+	// Never dumpable, whatever fs.suid_dumpable says: the target cannot
+	// ptrace PID 1 or read its descriptors. The drop changed credentials,
+	// which clears the parent-death signal: set it again, then make sure the
+	// root stage did not exit in between (it holds the handoff open until it
+	// exits). Then the session filter: no user namespace, no setns.
+	if _, _, errno := syscall.RawSyscall(syscall.SYS_PRCTL, syscall.PR_SET_DUMPABLE, 0, 0); errno != 0 {
+		return errors.Join(ErrSession, errno)
+	}
 	if _, _, errno := syscall.RawSyscall(syscall.SYS_PRCTL, syscall.PR_SET_PDEATHSIG, uintptr(syscall.SIGKILL), 0); errno != 0 {
 		return errors.Join(ErrSession, errno)
+	}
+	if err := payloadconfine.InstallSession(); err != nil {
+		return errors.Join(ErrSession, err)
 	}
 	var probe [1]byte
 	if n, _, err := syscall.Recvfrom(handoffFD, probe[:], syscall.MSG_PEEK|syscall.MSG_DONTWAIT); n == 0 && err == nil || n > 0 {
