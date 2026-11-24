@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/benchstate"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/deadlinetest"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/statestore"
 )
@@ -312,15 +313,20 @@ func TestStagePureNamespaceConflictRefusesBeforeAdmission(t *testing.T) {
 
 func TestStageSourceSelectionUsesWholeOperationDeadline(t *testing.T) {
 	f := newStaging(t)
-	f.manager.Timeout = 100 * time.Millisecond
+	f.manager.Timeout = time.Minute // enough for the real setup under load
+	caller, within, start, entered := deadlinetest.New(), f.manager.Within, time.Time{}, time.Time{}
+	f.manager.Within = func(fn func(Update) error) error {
+		entered = time.Now() // after Stage set its deadline, before any state or source work
+		return within(fn)
+	}
 	f.manager.Git = func(ctx context.Context, _ string, _ ...string) (string, error) {
-		if _, ok := ctx.Deadline(); !ok {
-			t.Fatal("source selection was unbounded")
-		}
+		deadlinetest.Bounded(t, ctx, start, entered, f.manager.Timeout) // the whole operation's bound, not a fresh one
+		caller.Expire()
 		<-ctx.Done()
 		return "", ctx.Err()
 	}
-	b, err := f.manager.Stage(context.Background(), "create1", f.spec)
+	start = time.Now()
+	b, err := f.manager.Stage(caller, "create1", f.spec)
 	if !errors.Is(err, context.DeadlineExceeded) || b != nil {
 		t.Fatal(b, err)
 	}
