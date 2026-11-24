@@ -189,6 +189,9 @@ func TestInstalledRemoteSessionFixture(t *testing.T) {
 	}
 	must(t, os.Mkdir(scopePath, 0755))
 
+	// superbench.service sets UMask=0077 and sudo keeps it: every session
+	// below starts with the umask the installed helper really gets.
+	syscall.Umask(0o077)
 	f.proveNamespace()
 	f.proveTerminal()
 	f.proveSFTP()

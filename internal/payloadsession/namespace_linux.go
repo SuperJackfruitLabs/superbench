@@ -111,6 +111,11 @@ func Enter(p payloadpolicy.Policy, key string, bench *os.File) error {
 		return err
 	}
 	defer benches.Close()
+	// The service's UMask=0077 reaches here through sudo: without this the
+	// payload account could not traverse benches to its own bench.
+	if err := syscall.Fchmod(int(benches.Fd()), 0755); err != nil {
+		return errors.Join(ErrSession, err)
+	}
 	if err := syscall.Mkdirat(int(benches.Fd()), key, 0755); err != nil {
 		return errors.Join(ErrSession, err)
 	}

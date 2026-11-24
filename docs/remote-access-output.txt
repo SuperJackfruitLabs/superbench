@@ -1,0 +1,41 @@
+drill: OpenSSH_10.2p1 Ubuntu-2ubuntu3.8, OpenSSL 3.5.5 27 Jan 2026
+drill: fleet address 127.0.0.1:2222; payload uid 996; daemon uid 997
+PASS: remote_access off on fresh state: benchd (pid 1001) has no TCP listener in `ss -ltnp`, /var/lib/superbench/state/remote is absent and /v2/remote/status answers 404
+drill: workspaces drill=653692bda1a8af3612eaef095e9c4207 other=1359aca4e148514a7cfd392367785490
+PASS: with the fleet address taken benchd exits and its socket is gone; systemd restarted it 2 times and it served once the address was free
+PASS: remote_access on: benchd listens only on 127.0.0.1:2222; /var/lib/superbench/state/remote is 0700 with 2 keys at 0600; host key SHA256:4UaEg98HTmfdBX0mDajqTSE/eMdEkUDnU1gDBraKPpk
+PASS: writer certificate for lease 533a4d5b6a229d6a50fcf8ca6feeba5d generation 1, user b-653692bda1a8af3612eaef095e9c4207, valid before 2026-11-24T19:19:03Z
+PASS: ssh b-653692bda1a8af3612eaef095e9c4207@127.0.0.1:2222 id -u prints the payload uid 996
+PASS: exec starts in the workspace root /srv/superbench-data/benches/drill, which holds its members api and web
+PASS: ls /srv/superbench-data/benches in the session shows only drill; the host has ['drill', 'other']
+PASS: /proc/self/cgroup is 0::/system.slice/superbench.service/6350b50b2464c0bc10a14a821ff3201d, the lease's remote scope 6350b50b2464c0bc10a14a821ff3201d
+PASS: PTY shell: tty is a /dev/pts terminal and the login shell starts in the workspace root
+drill: sftp transcript (stdout, then stderr):
+  sftp> pwd
+  Remote working directory: /
+  sftp> put /root/remote-drill-nzuye2lv/upload.txt uploaded.txt
+  sftp> get api/source.txt /root/remote-drill-nzuye2lv/downloaded.txt
+  sftp> ls
+  api             uploaded.txt    web             
+  sftp> -get /etc/passwd /root/remote-drill-nzuye2lv/passwd
+  sftp> -cd ..
+  sftp> pwd
+  Remote working directory: /
+  File "/etc/passwd" not found.
+PASS: sftp put and get in the workspace root (/srv/superbench-data/benches/drill/uploaded.txt is owned by the payload uid); the server's / is the workspace root: /etc/passwd is not there and cd .. stays at /
+drill: Remote protocol version 2.0, remote software version SuperBench
+PASS: after `systemctl restart superbench.service` the earlier certificate is refused (its scope went with the old daemon); a new certificate for the same lease is accepted
+PASS: wrong bench refused both ways: b-1359aca4...'s certificate as b-653692bd... and the reverse; each is accepted for its own bench
+PASS: checkpoint cut a live `sleep 60` session in 0.95s (ssh exit 255) and removed its scope; audit end_reason 'exit'; the certificate is refused afterwards
+PASS: release cut a live `sleep 60` session in 1.42s (ssh exit 255) and removed its scope; audit end_reason 'exit'; the certificate is refused afterwards
+PASS: stop cut a live `sleep 60` session in 0.05s (ssh exit 255) and removed its scope; audit end_reason 'exit'; the certificate is refused afterwards
+drill: a certificate for the stopped lease is refused: bench: conflict: lease is not usable for remote work
+PASS: stop_admin cut a live `sleep 60` session in 0.06s (ssh exit 255) and removed its scope; audit end_reason 'exit'; the certificate is refused afterwards
+PASS: renew_admin moved lease e94133303aa077a3f8754dc1160a05ef from generation 1 to 2: the old generation's certificate is refused while the new one is accepted
+PASS: abrupt disconnect (ssh client SIGKILLed): the detached `setsid nohup sleep` (host pid 17260) ended with its session's PID namespace; the session is audited closed
+PASS: a process placed in the lease's remote scope (pid 17261) outlived the disconnect and the sweep, and release's cgroup.kill fence killed it (SIGKILL, 1.35s) and removed a9a1c5f4ef0409b420e348f3260d750f
+drill: waiting for b-1359aca4...'s certificate to expire at 2026-11-24T19:19:12Z (1774s)
+PASS: expired certificate: its idle connection closed +0.0s from valid_before and a new connection with it is refused; a fresh certificate for the same lease is accepted
+PASS: remote_access off again: no benchd TCP listener and /v2/remote/status answers 404; the key directory stays
+PASS: none of the 5 lease tokens appears in 146 captured outputs (454451 bytes: credential CLI replies, every other socket reply including remote status and its audit rows, ssh -v, exec, PTY and sftp transcripts, refusals, this drill's own lines) or the unit's journal (3423 lines); only the lease, stop_admin and renew_admin grants carry them
+DONE: remote access drill passed
