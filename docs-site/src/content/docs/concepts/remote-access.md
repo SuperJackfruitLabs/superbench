@@ -119,6 +119,13 @@ These are documented follow-ups, not built:
 - Abstract Unix sockets and loopback networking are shared by processes of the same user.
 - There is no per-bench connection cap, no per-source limit before authentication and no rate
   limiting. The listener serves the fleet address only; these are needed before a public one.
+- Session limits are not configurable yet. A bench takes at most 8 sessions at once, a fixed
+  number, and a session has no wall-clock limit: only the certificate's 30 minutes bounds a
+  connection, and renewal extends it without bound.
+- The host key fingerprint is printed by `bench workspace remote-status` and returned with each
+  certificate, not by `bench host-status`.
+- Renewal is a request on the Unix socket only; there is no renew request on the open SSH
+  connection.
 
 ## Not built yet
 

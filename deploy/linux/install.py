@@ -9,8 +9,8 @@ from those accounts, --activation writes the all-false activation file, and
 Starting or enabling the service is a separate operator action after configuration.
 
 An installed file that differs is refused, except in --upgrade mode: then only the
-four executables may differ, only from the previous revision's reviewed
-SHA256SUMS, and only to the bytes the new build's --sums lists. Each is backed up first and replaced atomically while the unit is
+five executables (bench, benchd, bench-quota, bench-payload, bench-sftp) may
+differ, only from the previous revision's reviewed SHA256SUMS, and only to the bytes the new build's --sums lists. Each is backed up first and replaced atomically while the unit is
 stopped. Every other installed file must still be identical, except the
 operator's /etc/superbench/benchd.env: it is created once from the package and
 afterwards only validated, never compared or replaced, in every mode.
@@ -615,7 +615,8 @@ def main(argv=None):
                         help="live managed root with --identity only: write the indexed storage.json from "
                              "these reviewed budgets and initialize its empty ledger once")
     parser.add_argument("--upgrade", action="store_true",
-                        help="replace only the four executables, from the previous reviewed build, "
+                        help="replace only the five executables (bench-sftp is installed new if absent), "
+                             "from the previous reviewed build, "
                              "atomically and with a backup; the unit must be stopped")
     parser.add_argument("--previous", type=Path, metavar="SHA256SUMS",
                         help="with --upgrade: the previous revision's reviewed executable digests")
