@@ -110,3 +110,14 @@ func TestParseResponse(t *testing.T) {
 		}
 	}
 }
+
+func TestCredentialWireNamesWorkingDirectory(t *testing.T) {
+	raw, err := json.Marshal(Credential{WorkingDirectory: "/data/benches/card"})
+	if err != nil || !strings.Contains(string(raw), `"working_directory":"/data/benches/card"`) {
+		t.Fatalf("%s %v", raw, err)
+	}
+	var back Credential
+	if err := Decode(raw, &back); err != nil || back.WorkingDirectory != "/data/benches/card" {
+		t.Fatalf("%+v %v", back, err)
+	}
+}

@@ -6,6 +6,8 @@ stamps the section `## vX.Y.Z — YYYY-MM-DD`, and the release notes quote it.
 
 ## Unreleased
 
+- The remote credential reply carries `working_directory`, the absolute path a remote session
+  starts in, so a caller can open a terminal there.
 - Remote access to a bench, off by default: a certificate-only SSH door for the holder of a lease
   (exec, a shell with a PTY, and SFTP), with no forwarding of any kind. `remote_access` and
   `remote_fleet_address` in `/etc/superbench/activation.json` turn it on; it requires

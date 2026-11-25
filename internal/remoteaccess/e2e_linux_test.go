@@ -235,6 +235,21 @@ func TestRemoteAccessEndToEnd(t *testing.T) {
 	}
 }
 
+func TestExecPwdIsCredentialWorkingDirectory(t *testing.T) {
+	requireSSH(t)
+	f := newFixture(t, "card")
+	f.serve(t)
+	c := newClient(t)
+	cred, _ := f.credential(t, "card", c)
+	if !filepath.IsAbs(cred.WorkingDirectory) {
+		t.Fatalf("working_directory %q", cred.WorkingDirectory)
+	}
+	out, errOut, err := f.stock(t, c, cred).run(t, cred.User, nil, "pwd")
+	if err != nil || strings.TrimSpace(out) != cred.WorkingDirectory {
+		t.Fatalf("pwd %q, working_directory %q: %v %s", out, cred.WorkingDirectory, err, errOut)
+	}
+}
+
 // cut runs a session, then op, and requires the session cut within two
 // seconds of the fence, the audit row "fenced" and the certificate refused.
 func cut(t *testing.T, op string) {

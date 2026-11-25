@@ -54,6 +54,8 @@ type Credential struct {
 	LeaseID            string `json:"lease_id"`
 	Generation         uint64 `json:"generation"`
 	ValidBefore        string `json:"valid_before"`
+	// WorkingDirectory is the absolute path every session starts in.
+	WorkingDirectory string `json:"working_directory"`
 }
 
 // StatusRequest lists remote executions and audit rows for Key, or for every

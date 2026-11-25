@@ -143,6 +143,7 @@ func (h Handler) credential(w http.ResponseWriter, r *http.Request, uid uint32, 
 	out.Certificate, out.User, out.Address = issued.Line, remoteca.Principal(c.BenchID), h.Address
 	out.HostKey, out.HostKeyFingerprint = h.Authority.HostKeyLine(), h.Authority.HostFingerprint()
 	out.LeaseID, out.Generation, out.ValidBefore = c.LeaseID, c.Generation, stamp(issued.ValidBefore)
+	out.WorkingDirectory = g.WorkingDirectory
 	reply(w, op, 200, out, "", "")
 }
 

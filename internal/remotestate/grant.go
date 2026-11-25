@@ -17,6 +17,7 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/execution"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/operationcontrol"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/payloadpolicy"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/remoteca"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspaceprep"
 )
@@ -83,7 +84,10 @@ func owns(l *model.Lease, token string) bool {
 // Grant is a writer grant: Claims name the lease and its remote execution.
 type Grant struct {
 	Key, Holder string
-	Claims      remoteca.Claims
+	// WorkingDirectory is the bench path a session chdirs into: the same
+	// path bench-payload resolves from the policy data root and the key.
+	WorkingDirectory string
+	Claims           remoteca.Claims
 }
 
 // grantable admits a writer grant: the token owns an operational ready lease
@@ -180,7 +184,10 @@ func (m Manager) Grant(ctx context.Context, key, token string) (Grant, error) {
 			if created != nil {
 				b.Lease.Execution = clone(created)
 			}
-			g = Grant{Key: key, Holder: b.Lease.Holder, Claims: remoteca.Claims{BenchID: b.Workspace.ID, LeaseID: b.Lease.ID, Generation: b.Lease.Generation, ExecutionID: b.Lease.Execution.ID}}
+			if !payloadpolicy.Directory(b.Path) {
+				return ErrUnavailable
+			}
+			g = Grant{Key: key, Holder: b.Lease.Holder, WorkingDirectory: b.Path, Claims: remoteca.Claims{BenchID: b.Workspace.ID, LeaseID: b.Lease.ID, Generation: b.Lease.Generation, ExecutionID: b.Lease.Execution.ID}}
 			return nil
 		})
 		if err != nil && created != nil {

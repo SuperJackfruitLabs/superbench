@@ -253,6 +253,26 @@ func TestCredentialIssuesCertificate(t *testing.T) {
 	}
 }
 
+func TestCredentialCarriesWorkingDirectory(t *testing.T) {
+	f := newFixture(t)
+	status, body := f.credential(t, operator, ed25519Line(t))
+	if status != 200 {
+		t.Fatal(status, string(body))
+	}
+	result, err := remoteproto.ParseResponse(body, status, "writer_certificate")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var c remoteproto.Credential
+	if err := remoteproto.Decode(result, &c); err != nil {
+		t.Fatal(err)
+	}
+	root := f.record(t).Path
+	if root == "" || c.WorkingDirectory != root || !filepath.IsAbs(c.WorkingDirectory) || strings.HasSuffix(c.WorkingDirectory, "/") {
+		t.Fatalf("working_directory %q, workspace root %q", c.WorkingDirectory, root)
+	}
+}
+
 func TestCredentialRefusesBadKey(t *testing.T) {
 	f := newFixture(t)
 	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
