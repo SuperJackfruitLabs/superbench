@@ -50,7 +50,9 @@ before it is restored. The pilot installation guide has the steps.
   the lease ID and generation it was issued for.
 - Only an operator on the Unix socket can ask for one, with `POST /v2/remote/credentials` or
   `bench workspace remote-credential`, presenting the lease token and the public key to certify.
-  The caller keeps the private key.
+  The caller keeps the private key. The key must be a bare `ssh-ed25519` or `ecdsa-sha2-nistp256`
+  key, not one of `benchd`'s own; an ed25519 key that is not a valid point, or has small order
+  (signatures under it can be forged without a private key), is refused.
 - A **renewal** is the same request over the socket. It extends connections that are already open.
 - A certificate stops working when its lease generation changes, when the lease ends, and after a
   restart of `benchd`: certificates are refused after a restart and must be asked for again.

@@ -76,7 +76,8 @@ func Fingerprint(authorizedKey string) (string, error) {
 }
 
 // parseClientKey accepts exactly one bare ssh-ed25519 or ecdsa-sha2-nistp256
-// public key line, at most 8 KiB, with no options and no certificate.
+// public key line, at most 8 KiB, with no options and no certificate. An
+// ed25519 key must decode to a point outside the small-order subgroup.
 func parseClientKey(line string) (ssh.PublicKey, error) {
 	if len(line) > maxClientIn {
 		return nil, fmt.Errorf("%w: client key over 8 KiB", ErrKey)
@@ -93,6 +94,11 @@ func parseClientKey(line string) (ssh.PublicKey, error) {
 	}
 	if t := k.Type(); t != ssh.KeyAlgoED25519 && t != ssh.KeyAlgoECDSA256 {
 		return nil, fmt.Errorf("%w: client key type %q not accepted", ErrKey, t)
+	}
+	if c, ok := k.(ssh.CryptoPublicKey); ok {
+		if ed, ok := c.CryptoPublicKey().(ed25519.PublicKey); ok && smallOrderEd25519(ed) {
+			return nil, fmt.Errorf("%w: client key is not a valid ed25519 point or has small order", ErrKey)
+		}
 	}
 	return k, nil
 }
