@@ -55,6 +55,9 @@ TESTS = (
         'INSTALLED_RETIREMENT_INPUT_VALIDATED_BEFORE_CONTROL_OPEN')),
     ('quotaoperationcontrol', 'TestInstalledIndexedPolicyDescriptorContinuity', (
         'INDEXED_POLICY_FIXED_FD_LEAF_ANCESTOR_FIFO_REFUSALS_PASS',)),
+    ('remoteaccess', 'TestFleetListenerServesOnceTheAddressArrives', (
+        'FREEBIND_IPV4_SERVED_ONCE_THE_ADDRESS_ARRIVED',
+        'FREEBIND_IPV6_SERVED_ONCE_THE_ADDRESS_ARRIVED')),
 )
 LIMITS = {'cpu.max': '200000 100000', 'memory.max': str(2 << 30),
           'memory.swap.max': '0', 'pids.max': '512'}

@@ -94,7 +94,8 @@ const arrivesChild = "SUPERBENCH_FREEBIND_NETNS_CHILD"
 // Once the address arrives, the listener bound before it serves it. The
 // test re-runs itself in a fresh network namespace (a user namespace too
 // when not root), where it can add the address to loopback. Without the
-// namespace rights it skips unless it runs as root, where it must pass.
+// namespace rights it skips unless it runs as root, where it must pass: the
+// privileged CI lane runs it as root (scripts/check-identity-ci.py).
 func TestFleetListenerServesOnceTheAddressArrives(t *testing.T) {
 	if os.Getenv(arrivesChild) == "1" {
 		arrives(t)
@@ -135,11 +136,12 @@ func arrives(t *testing.T) {
 	}
 	requireNonlocalBindOff(t)
 	for _, x := range []struct {
-		addr netip.Addr
-		add  []string
+		addr   netip.Addr
+		add    []string
+		marker string // the privileged CI lane requires each one
 	}{
-		{absent4, []string{"addr", "add", "192.0.2.77/32", "dev", "lo"}},
-		{absent6, []string{"-6", "addr", "add", "2001:db8::77/128", "dev", "lo", "nodad"}},
+		{absent4, []string{"addr", "add", "192.0.2.77/32", "dev", "lo"}, "FREEBIND_IPV4_SERVED_ONCE_THE_ADDRESS_ARRIVED"},
+		{absent6, []string{"-6", "addr", "add", "2001:db8::77/128", "dev", "lo", "nodad"}, "FREEBIND_IPV6_SERVED_ONCE_THE_ADDRESS_ARRIVED"},
 	} {
 		l, err := listenFleet(context.Background(), netip.AddrPortFrom(x.addr, 0))
 		if err != nil {
@@ -175,5 +177,6 @@ func arrives(t *testing.T) {
 		}
 		l.Close()
 		t.Logf("%s: bound before the address existed, served once it arrived", at)
+		t.Log(x.marker)
 	}
 }
