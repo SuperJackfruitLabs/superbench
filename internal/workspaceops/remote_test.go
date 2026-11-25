@@ -6,8 +6,10 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/bench"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/execution"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/protocolv2"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/remoteca"
@@ -217,4 +219,68 @@ func TestRenewAdminInvalidatesRemoteClaims(t *testing.T) {
 	if _, err := r.Admit(sameIdentity); !errors.Is(err, remotestate.ErrRevoked) {
 		t.Fatal("old generation admitted with the live execution", err)
 	}
+}
+
+// countRemoteState counts every opening of the remote state manager, which
+// is what takes the extra host-lock sessions, gate and Git-control recovery.
+func countRemoteState(t *testing.T) *atomic.Int32 {
+	t.Helper()
+	var calls atomic.Int32
+	real := remoteFor
+	remoteFor = func(store bench.Store, scopes remotestate.Scopes) (remotestate.Manager, error) {
+		calls.Add(1)
+		return real(store, scopes)
+	}
+	t.Cleanup(func() { remoteFor = real })
+	return &calls
+}
+
+// Without a remote execution, checkpoint, release, stop and stop_admin never
+// open the remote state manager: remote access off costs them nothing.
+func TestNoRemoteExecutionOpensNoRemoteState(t *testing.T) {
+	m, r := fixture(t)
+	create(t, m, r)
+	s := &remoteScopes{}
+	m.RemoteScopes = s
+	calls := countRemoteState(t)
+	owned := func(op, token string) protocolv2.Request {
+		return protocolv2.Request{Version: protocolv2.Version, Operation: op, Key: "card", LeaseToken: token}
+	}
+	lease := func() string {
+		held, err := m.Execute(context.Background(), request("lease"), 42)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return held.GrantToken
+	}
+	token := lease()
+	for _, op := range []string{"checkpoint", "release"} {
+		if _, err := m.Execute(context.Background(), owned(op, token), 42); err != nil {
+			t.Fatal(op, err)
+		}
+	}
+	if _, err := m.Execute(context.Background(), owned("stop", lease()), 42); err != nil {
+		t.Fatal("stop", err)
+	}
+	if _, err := m.Execute(context.Background(), protocolv2.Request{Version: protocolv2.Version, Operation: "stop_admin", Key: "card"}, 42); err != nil {
+		t.Fatal("stop_admin", err)
+	}
+	if n := calls.Load(); n != 0 || len(s.fences()) != 0 {
+		t.Fatalf("remote state opened %d times, fences %v, with no remote execution", n, s.fences())
+	}
+}
+
+// A remote execution is fenced whatever the activation says: one recorded
+// before an operator turned remote access off is still fenced on release.
+// workspaceops has no switch to consult, so this is the lease row alone.
+func TestLeftoverRemoteExecutionIsStillFenced(t *testing.T) {
+	f := newRemote(t)
+	calls := countRemoteState(t)
+	if _, err := f.m.Execute(context.Background(), f.owned("release"), 42); err != nil {
+		t.Fatal("release", err)
+	}
+	if n := calls.Load(); n != 1 {
+		t.Fatalf("remote state opened %d times for one remote execution", n)
+	}
+	f.fencedOnce(t)
 }
