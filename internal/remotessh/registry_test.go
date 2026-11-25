@@ -32,7 +32,7 @@ func startSleep(t *testing.T, c *ssh.Client) {
 func TestDeadlineClosesConnection(t *testing.T) {
 	h := NewHarness(t, nil)
 	nearDeadline(h, 2*time.Second)
-	c, _ := h.Connect(t)
+	c, served := h.Connect(t)
 	startSleep(t, c)
 	if !ClosedWithin(c, 3*time.Second) {
 		t.Fatal("connection open past its certificate's ValidBefore")
@@ -43,7 +43,15 @@ func TestDeadlineClosesConnection(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("process not terminated")
 	}
-	if n := len(h.Reg.snapshot()); n != 0 {
+	// The server forgets the connection after its sessions ended, which is
+	// after the client saw it close: wait for HandleConn to return. A
+	// connection that stayed registered would keep it from returning.
+	select {
+	case <-served:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("connection still served; %d registered", h.Reg.Len())
+	}
+	if n := h.Reg.Len(); n != 0 {
 		t.Fatalf("%d connections still registered", n)
 	}
 }
@@ -58,6 +66,7 @@ func TestExtendKeepsConnection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	h.WaitRegistered(t, 2, 5*time.Second) // a renewal extends only registered connections
 	// The renewal names this key and these claims: the other key's
 	// connection, and claims of another generation, are not extended.
 	h.Reg.Extend(h.Issued.Fingerprint, remoteca.Claims{BenchID: TestBench, LeaseID: TestLease, Generation: 4, ExecutionID: TestExec}, h.Issued.ValidBefore.Add(time.Hour))
@@ -79,6 +88,7 @@ func TestExtendKeepsConnection(t *testing.T) {
 func TestExtendIsBounded(t *testing.T) {
 	h := NewHarness(t, nil)
 	h.Connect(t)
+	h.WaitRegistered(t, 1, 5*time.Second)
 	h.Reg.Extend(h.Issued.Fingerprint, WriterClaims(), time.Now().Add(24*time.Hour))
 	x := h.Reg.snapshot()[0]
 	x.mu.Lock()

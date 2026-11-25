@@ -425,6 +425,13 @@ func TestRenewalOverSocketKeepsConnection(t *testing.T) {
 	}
 	kept := f.stock(t, renewedKey, first).start(t, first.User, nil)
 	lapsed := f.stock(t, otherKey, other).start(t, other.User, nil)
+	// The client reports authentication before the server registers the
+	// connection, and a renewal extends only registered connections.
+	for deadline := time.Now().Add(5 * time.Second); f.access.registry.Len() != 2; time.Sleep(time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatalf("%d connections registered, want 2", f.access.registry.Len())
+		}
+	}
 	shift.Store(0)
 	if second, _ := f.credential(t, "card", renewedKey); second.LeaseID != first.LeaseID || second.Generation != first.Generation {
 		t.Fatalf("renewal %+v", second)

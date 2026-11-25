@@ -24,7 +24,7 @@ func TestCertificateAccepted(t *testing.T) {
 	if n := h.Lease.Count(); n != 1 {
 		t.Fatalf("Admit called %d times at authentication, want 1", n)
 	}
-	x := h.Reg.snapshot()
+	x := h.WaitRegistered(t, 1, 5*time.Second)
 	if len(x) != 1 || x[0].claims != WriterClaims() || x[0].fingerprint != h.Issued.Fingerprint || x[0].serial != h.Issued.Serial || !x[0].deadline.Equal(h.Issued.ValidBefore) {
 		t.Fatalf("registered %+v", x)
 	}

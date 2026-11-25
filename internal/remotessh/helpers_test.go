@@ -325,6 +325,24 @@ func (h *Harness) DialTCP(t *testing.T, addr string, signer ssh.Signer) *ssh.Cli
 	return c
 }
 
+// WaitRegistered waits until the registry holds n connections. The client
+// sees authentication succeed before the server registers the connection,
+// and the server forgets it only after its sessions ended, so neither
+// Connect nor a closed client says the registry has caught up.
+func (h *Harness) WaitRegistered(t testing.TB, n int, within time.Duration) []*conn {
+	t.Helper()
+	deadline := time.Now().Add(within)
+	for {
+		if x := h.Reg.snapshot(); len(x) == n {
+			return x
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("%d connections registered, want %d", h.Reg.Len(), n)
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
 // ClosedWithin reports whether the client's connection ended in time.
 func ClosedWithin(c *ssh.Client, d time.Duration) bool {
 	done := make(chan struct{})

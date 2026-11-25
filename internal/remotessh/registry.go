@@ -69,6 +69,15 @@ func (r *Registry) remove(c *conn) {
 	r.mu.Unlock()
 }
 
+// Len is the number of authenticated connections registered: a connection is
+// registered once it starts serving, which is after the client saw its
+// authentication succeed, and forgotten once every one of its sessions ended.
+func (r *Registry) Len() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.conns)
+}
+
 func (r *Registry) snapshot() []*conn {
 	r.mu.Lock()
 	defer r.mu.Unlock()
