@@ -430,11 +430,39 @@ copy, so on a host whose operator added a uid (`BENCHD_OPERATOR_UIDS=0,993`)
 /etc/superbench/benchd.env`, and the file had to be swapped out and restored by
 hand. Use the newer revision's `deploy/linux/install.py`, which reads the file
 instead of comparing it: leave the edited `benchd.env` in place, stop the unit
-and run the `--upgrade` command above. Nothing is migrated or moved, and the
-packaged defaults are not merged in (unset settings keep `superbench-start`'s
+and run the `--upgrade` command above. The installer moves no file and does not
+merge the packaged defaults in (unset settings keep `superbench-start`'s
 defaults). If you restored the file by hand after an earlier upgrade, check it
 holds the uids you expect before starting the service. If the installer refuses
 the file, the message names the line; correct it and rerun.
+
+**From v0.0.2: migrate the state before the first start.** This is required on
+every activated host, whether or not you will turn remote access on. This
+revision adds state schema 31, the first schema change since v0.0.1 (v0.0.1 and
+v0.0.2 are both at 30), and a daemon with any activation switch on never
+migrates: after the binaries are replaced it refuses to start with
+`activated paths need state migrated by a start without them: unsupported state
+schema 30 (expected 31)`. Every host on the registered launch has all its
+switches on, so every such host stops here until its state is migrated. With
+the unit still stopped after the `--upgrade` run, migrate as the service
+account, then start:
+
+```sh
+sudo -u superbench /usr/local/bin/bench migrate \
+  --state /var/lib/superbench/state --data /srv/superbench-data
+# {"migration":"complete"}
+systemctl start superbench.service
+```
+
+`bench migrate` runs the same migration as a start of benchd with every switch
+off, but it opens no socket, so nothing can reach the host while the state is
+migrated. Keep the unit stopped until it finishes, so no benchd reads the state
+while it changes. The step
+is additive (it gives each leased row a lease ID and generation and adds the
+remote-access tables); a host that was never activated also migrates on its own
+at its next start. Leave `activation.json` as it is: turning `remote_access` on
+is a separate choice ([Activation](#activation)). After this step the upgrade is
+one-way; see Rollback above.
 
 ### Indexed storage
 
@@ -740,10 +768,10 @@ The fleet address itself need not exist yet: benchd binds it with `IP_FREEBIND` 
 up, and serves it from the moment it arrives. The unit needs no ordering on the tailnet. A bind
 error for any other reason, such as the address already in use, still stops benchd.
 
-**Schema 31 upgrade step.** Remote access adds a state schema (31). An activated daemon never
-migrates state. On a host that is upgrading, start benchd **once with activation off** (no
-`activation.json`, or every switch false), let it migrate and stop it, then add `remote_access`
-and `remote_fleet_address` and start it again.
+**Schema 31.** Remote access comes with state schema 31, and the upgrade to it is required on
+every activated host, with remote access on or off: run `bench migrate` with the unit stopped
+before the first start, as [From v0.0.2](#upgrade-the-executables) describes. Once the state is
+current, adding `remote_access` and `remote_fleet_address` needs only a restart.
 
 While `fresh_payload` is on, benchd refuses a v1 `create` or `recover` before any
 bench effect (no creation intent, allocation or bench record), with `409 conflict`
@@ -794,10 +822,14 @@ the typed digest of the original request, so keep the exact original request
 dispatched still records the cancellation, so that ID cannot be used afterwards.
 
 An activated daemon never migrates its state. After installing or upgrading
-benchd, start it once with every switch off so it brings the state current, stop
-it, then edit the file and start it again. Otherwise benchd refuses with
-`activated paths need state migrated by a start without them` before it opens the
-socket. Restart the service to apply any change. Turning a switch off later stops
+benchd, and before starting it with any switch on, bring the state current with
+the unit stopped: `sudo -u superbench /usr/local/bin/bench migrate --state
+/var/lib/superbench/state --data /srv/superbench-data`. Otherwise benchd refuses
+with `activated paths need state migrated by a start without them` before it
+opens the socket. A start with every switch off also migrates, but it opens the
+socket with every switch off: while it runs, a connected AgentPod Node could have
+a v1 `create` admitted, which `fresh_payload` normally refuses. If you use it,
+stop the Node first. Restart the service to apply any change. Turning a switch off later stops
 new work on that path; it does not erase obligations already recorded.
 
 ## 2. Configure the AgentPod Node

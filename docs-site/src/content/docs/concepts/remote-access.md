@@ -34,9 +34,12 @@ before the tailnet brings it up, and accepts connections from the moment the add
 other remote-access failure at start, such as an address already in use, also **stops `benchd`**:
 it does not start without the door it was told to open.
 
-The first start after an upgrade that adds remote access migrates the state to a newer schema, and
-an activated daemon never migrates. Start once with activation off, then turn it on. The pilot
-installation guide has the steps.
+The release that adds remote access also adds state schema 31, and an activated `benchd` never
+migrates. So **every activated host must migrate on this upgrade, whether or not remote access will
+be turned on**: with the unit stopped, run `bench migrate --state <state> --data <data>` as the
+service account, then start it. Without that step an activated `benchd` refuses to start. The
+upgrade is one-way once the new `benchd` has started on schema 31, unless the state backup taken
+before it is restored. The pilot installation guide has the steps.
 
 ## Certificates
 

@@ -19,9 +19,18 @@ stamps the section `## vX.Y.Z — YYYY-MM-DD`, and the release notes quote it.
   its bench, but this is not isolation of untrusted code: supervised runs can still reach a live
   session through `/proc`, and there is no per-bench connection cap or rate limit yet. With the
   switch off benchd opens no TCP listener. A remote-access failure at start stops benchd.
-  **Upgrade step:** remote access adds state schema 31, and an activated daemon never migrates, so
-  start benchd once with activation off to migrate, then turn it on. `bench-sftp` is a new
-  installed executable (`/usr/local/libexec/bench-sftp`). See docs-site "Remote access".
+  `bench-sftp` is a new installed executable (`/usr/local/libexec/bench-sftp`). See docs-site
+  "Remote access".
+
+- **Upgrade step, required on every activated host, with remote access on or off.** This release
+  adds state schema 31, the first schema change since v0.0.1, and a daemon with any activation
+  switch on never migrates: after the binaries are upgraded it refuses to start with
+  `unsupported state schema 30 (expected 31)`. With the unit stopped, run
+  `sudo -u superbench /usr/local/bin/bench migrate --state /var/lib/superbench/state --data
+  /srv/superbench-data`, then start it (docs/pilot-installation.md, "From v0.0.2: migrate the
+  state before the first start"). It opens no socket. The upgrade is one-way once the new benchd
+  has started on schema 31: v0.0.2 refuses that state, so a rollback needs the state backup taken
+  before the migration.
 
 - `deploy/linux/install.py --upgrade` no longer refuses a host whose operator edited
   `/etc/superbench/benchd.env`. The file is operator configuration: the installer writes it only
