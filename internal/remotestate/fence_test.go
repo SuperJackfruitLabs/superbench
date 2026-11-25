@@ -145,3 +145,33 @@ func TestFenceKeepsAnExecutionReplacedDuringTheKill(t *testing.T) {
 		t.Fatal("fence cleared the replacement", e)
 	}
 }
+
+// The kill ends the session, whose own end ("exit", with its byte counts)
+// can be recorded before the fence writes: the audit still says "fenced",
+// keeps the counts, and a later end changes neither.
+func TestFenceWinsOverTheExitItCaused(t *testing.T) {
+	f := newFixture(t)
+	g := f.grant(t)
+	open := session(t, f, g)
+	f.scopes.onFence = func() {
+		if err := f.m.SessionEnded(open, 10, 20, "exit"); err != nil {
+			t.Error("session exit during the fence", err)
+		}
+	}
+	if err := f.m.Fence(context.Background(), "card", f.token, false); err != nil {
+		t.Fatal(err)
+	}
+	s, err := f.m.Status("card", 10)
+	if err != nil || len(s.Sessions) != 1 {
+		t.Fatal(s, err)
+	}
+	if got := s.Sessions[0]; got.ID != open || got.EndReason != "fenced" || got.BytesIn != 10 || got.BytesOut != 20 || got.EndedAt.IsZero() {
+		t.Fatal("a fenced session's racing exit won", got)
+	}
+	if err := f.m.SessionEnded(open, 4, 5, "closed"); err != nil {
+		t.Fatal("ending a fenced session failed", err)
+	}
+	if s, _ = f.m.Status("card", 10); s.Sessions[0].EndReason != "fenced" || s.Sessions[0].BytesIn != 10 || s.Sessions[0].BytesOut != 20 {
+		t.Fatal("a later end changed the fenced row", s.Sessions[0])
+	}
+}

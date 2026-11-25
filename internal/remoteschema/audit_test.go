@@ -188,3 +188,56 @@ func TestCommandName(t *testing.T) {
 		}
 	}
 }
+
+// FenceSessions relabels a session that ended after OpenSessions listed it,
+// keeps its end time and counts, ends the still-open one, and leaves a
+// session that ended before the listing and another bench's session alone.
+func TestFenceSessionsWinsOverARacingEnd(t *testing.T) {
+	db := audited(t)
+	bench := strings.Repeat("c", 32)
+	exited, at := time.Date(2026, 11, 24, 10, 0, 0, 0, time.UTC), time.Date(2026, 11, 24, 10, 0, 1, 0, time.UTC)
+	ids := make([]int64, 4)
+	if err := within(t, db, func(tx *sql.Tx) error {
+		for i := range ids {
+			s := session(uint64(10 + i))
+			if i == 3 {
+				s.BenchID = strings.Repeat("d", 32)
+			}
+			var err error
+			if ids[i], err = StartSession(tx, s); err != nil {
+				return err
+			}
+		}
+		return EndSession(tx, ids[0], exited, 1, 2, "closed") // before the listing
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var open []int64
+	if err := within(t, db, func(tx *sql.Tx) (err error) { open, err = OpenSessions(tx, bench); return }); err != nil || len(open) != 2 || open[0] != ids[1] || open[1] != ids[2] {
+		t.Fatal("open sessions", open, err)
+	}
+	if err := within(t, db, func(tx *sql.Tx) error {
+		if err := EndSession(tx, ids[1], exited, 10, 20, "exit"); err != nil { // the kill's own end
+			return err
+		}
+		return FenceSessions(tx, bench, open, at)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_, sessions, err := Recent(db, "", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[int64]SessionRecord{
+		ids[0]: {EndReason: "closed", EndedAt: exited, BytesIn: 1, BytesOut: 2},
+		ids[1]: {EndReason: "fenced", EndedAt: exited, BytesIn: 10, BytesOut: 20},
+		ids[2]: {EndReason: "fenced", EndedAt: at},
+		ids[3]: {},
+	}
+	for _, s := range sessions {
+		w := want[s.ID]
+		if s.EndReason != w.EndReason || !s.EndedAt.Equal(w.EndedAt) || s.BytesIn != w.BytesIn || s.BytesOut != w.BytesOut {
+			t.Fatalf("session %d: %+v, want %+v", s.ID, s, w)
+		}
+	}
+}

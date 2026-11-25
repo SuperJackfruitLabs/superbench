@@ -12,7 +12,8 @@ import (
 )
 
 // Fence kills the lease's remote scope, waits for it to empty, then in one
-// transaction clears the execution and ends its open sessions as "fenced".
+// transaction clears the execution and ends its sessions as "fenced": those
+// still open, and those the kill ended first, whose own "exit" raced it.
 // It clears a remote execution in any phase: workspaceprep's stop leaves one
 // stopped, and release would otherwise wait on history it never has. Without
 // a remote execution it touches nothing. A failed kill changes no state.
@@ -26,7 +27,10 @@ func (m Manager) Fence(ctx context.Context, key, token string, admin bool) error
 	}
 	return m.Prep.Gate(key, func() error {
 		var prior *execution.Execution
-		if err := m.Prep.Read(func(rows benchstate.Database) error {
+		var open []int64
+		// The body only reads: Prep.Read has no SQL handle for the audit
+		// tables, and the sessions open now are the ones the kill ends.
+		if err := m.Prep.Update(func(rows benchstate.Database, tx *sql.Tx) error {
 			b := rows[key]
 			if b == nil || b.Lease == nil || b.Lease.Execution == nil || b.Lease.Execution.Kind != execution.KindRemote {
 				return nil
@@ -35,7 +39,12 @@ func (m Manager) Fence(ctx context.Context, key, token string, admin bool) error
 				return bench.ErrLease
 			}
 			prior = clone(b.Lease.Execution)
-			return nil
+			if b.Workspace == nil {
+				return nil
+			}
+			var err error
+			open, err = remoteschema.OpenSessions(tx, b.Workspace.ID)
+			return err
 		}); err != nil || prior == nil {
 			return err
 		}
@@ -57,7 +66,7 @@ func (m Manager) Fence(ctx context.Context, key, token string, admin bool) error
 				return ErrConflict
 			}
 			b.Lease.Execution = nil
-			return remoteschema.EndOpenSessions(tx, b.Workspace.ID, m.now(), "fenced")
+			return remoteschema.FenceSessions(tx, b.Workspace.ID, open, m.now())
 		})
 	})
 }

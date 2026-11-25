@@ -131,6 +131,41 @@ func EndOpenSessions(tx *sql.Tx, benchID string, at time.Time, reason string) er
 	return err
 }
 
+// OpenSessions lists the ids of one bench's open sessions.
+func OpenSessions(r Reader, benchID string) ([]int64, error) {
+	rows, err := r.Query(`SELECT id FROM remote_sessions WHERE bench_id=? AND end_reason='' ORDER BY id`, benchID)
+	if err != nil {
+		return nil, err
+	}
+	var ids []int64
+	err = scan(rows, func() error {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return err
+		}
+		ids = append(ids, id)
+		return nil
+	})
+	return ids, err
+}
+
+// FenceSessions ends a fence: every open session on the bench ends "fenced",
+// and so does each session in open (the ones OpenSessions listed before the
+// kill) that has ended since. The kill makes a session's own end, "exit" or
+// "closed", race the fence's write; the fence's reason wins. A relabelled
+// session keeps its end time and byte counts.
+func FenceSessions(tx *sql.Tx, benchID string, open []int64, at time.Time) error {
+	if err := EndOpenSessions(tx, benchID, at, "fenced"); err != nil {
+		return err
+	}
+	for _, id := range open {
+		if _, err := tx.Exec(`UPDATE remote_sessions SET end_reason='fenced' WHERE id=? AND bench_id=?`, id, benchID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Recent returns the newest rows first, for one key or, when key is empty, all.
 func Recent(r Reader, key string, limit int) ([]CertificateRecord, []SessionRecord, error) {
 	limit = max(1, min(limit, MaxAuditRows))
