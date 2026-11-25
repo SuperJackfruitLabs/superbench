@@ -184,7 +184,7 @@ func TestArchitecture(t *testing.T) {
 			if p == "github.com/pelletier/go-toml/v2" && rel == "internal/setup" && filepath.Base(path) == "config.go" {
 				allowed = true
 			}
-			if p == "golang.org/x/sys/unix" && (rel == "internal/peercred" && filepath.Base(path) == "peer_darwin.go" || rel == "internal/retainedfile" && filepath.Base(path) == "publish_linux.go" || rel == "internal/freshretirement" && filepath.Base(path) == "retire_linux.go" || rel == "internal/cleanworker" && filepath.Base(path) == "purge_linux.go" || rel == "internal/freshliveness" && (filepath.Base(path) == "liveness_linux.go" || filepath.Base(path) == "adapter_unix.go") || rel == "internal/freshrecovery" && strings.HasSuffix(path, "_linux.go")) {
+			if p == "golang.org/x/sys/unix" && (rel == "internal/peercred" && filepath.Base(path) == "peer_darwin.go" || rel == "internal/retainedfile" && filepath.Base(path) == "publish_linux.go" || rel == "internal/freshretirement" && filepath.Base(path) == "retire_linux.go" || rel == "internal/cleanworker" && filepath.Base(path) == "purge_linux.go" || rel == "internal/freshliveness" && (filepath.Base(path) == "liveness_linux.go" || filepath.Base(path) == "adapter_unix.go") || rel == "internal/freshrecovery" && strings.HasSuffix(path, "_linux.go") || rel == "internal/remoteaccess" && filepath.Base(path) == "listen_linux.go") {
 				allowed = true
 			}
 			if !allowed {

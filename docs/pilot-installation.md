@@ -722,9 +722,11 @@ So the registered launch, which needs all five, sets every switch to `true`, and
 and state root must not sit under `/tmp`, `/var/tmp` or `/dev/shm`, because sessions mount private
 tmpfs over those. `bench-sftp` is a new installed executable, `/usr/local/libexec/bench-sftp`; the
 installer places it with the others. A remote-access failure at start (the address cannot be
-bound, a requirement above is missing) stops benchd rather than leaving it up without the door;
-see the unit's ordering for when the address exists, and keep the listener's interface up before
-the service starts.
+bound, a requirement above is missing) stops benchd rather than leaving it up without the door.
+The fleet address itself need not exist yet: benchd binds it with `IP_FREEBIND` /
+`IPV6_FREEBIND`, so it starts and listens on that exact address even before the tailnet brings it
+up, and serves it from the moment it arrives. The unit needs no ordering on the tailnet. A bind
+error for any other reason, such as the address already in use, still stops benchd.
 
 **Schema 31 upgrade step.** Remote access adds a state schema (31). An activated daemon never
 migrates state. On a host that is upgrading, start benchd **once with activation off** (no

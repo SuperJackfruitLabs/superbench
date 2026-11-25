@@ -21,9 +21,11 @@ file):
 
 Remote access needs a kernel of Linux 5.12 or later (`mount_setattr`), a `/var/tmp` that is not a
 symlink, a `/dev/shm` that exists, and a data root and state root that do not sit under `/tmp`,
-`/var/tmp` or `/dev/shm`. A remote-access failure at start, such as an address that cannot be
-bound, **stops `benchd`**: it does not start without the door it was told to open. See the unit's
-ordering for when the address is available.
+`/var/tmp` or `/dev/shm`. The fleet address does not have to exist when `benchd` starts: it
+starts and listens on that exact address even before the tailnet brings it up, and accepts
+connections from the moment the address arrives. Any other remote-access failure at start, such as
+an address already in use or a requirement above that is missing, **stops `benchd`**: it does not
+start without the door it was told to open.
 
 The first start after an upgrade that adds remote access migrates the state to a newer schema, and
 an activated daemon never migrates. Start once with activation off, then turn it on. The pilot

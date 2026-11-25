@@ -96,7 +96,7 @@ func (a *Access) Serve(ctx context.Context) error {
 		return err
 	}
 	if l == nil {
-		if l, err = net.Listen("tcp", a.address.String()); err != nil {
+		if l, err = listenFleet(ctx, a.address); err != nil {
 			return err
 		}
 	}
