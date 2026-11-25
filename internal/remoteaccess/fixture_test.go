@@ -160,7 +160,7 @@ func newFixture(t *testing.T, keys ...string) *fixture {
 	if f.access, err = New(f.ops.Store, on, map[uint32]bool{operator: true}, map[uint32]bool{reader: true}); err != nil {
 		t.Fatal(err)
 	}
-	f.access.launcher, f.access.scopes, f.access.listener = remotesshtest.Local{}, f.scopes, l
+	f.access.launcher, f.access.scopes, f.access.listener, f.access.host = remotesshtest.Local{}, f.scopes, l, meetsRequirements()
 	return f
 }
 
@@ -330,4 +330,10 @@ func (f *fixture) execution(t *testing.T, key string) string {
 		t.Fatal("remote execution", err, s.Remote)
 	}
 	return s.Remote[0].ExecutionID
+}
+
+// meetsRequirements is a host that has every deploy requirement, so tests
+// may keep their roots in the system temporary directory.
+func meetsRequirements() *host {
+	return &host{varTmp: "/", devShm: "/", mountSetattr: func() error { return nil }}
 }

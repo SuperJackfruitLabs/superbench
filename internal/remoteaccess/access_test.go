@@ -125,11 +125,11 @@ func TestServeRefusesUnmigratedState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a.listener = l
+	a.listener, a.host = l, meetsRequirements()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := a.Serve(ctx); err == nil || ctx.Err() != nil {
-		t.Fatal("Serve accepted unmigrated state")
+	if err := a.Serve(ctx); err == nil || errors.Is(err, ErrHost) || ctx.Err() != nil {
+		t.Fatal("Serve accepted unmigrated state", err)
 	}
 	if _, err := os.Lstat(filepath.Join(store.State, "remote")); !os.IsNotExist(err) {
 		t.Fatal("key directory created for refused state", err)

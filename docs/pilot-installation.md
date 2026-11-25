@@ -717,12 +717,24 @@ the socket, and refuses a file that breaks one:
 So the registered launch, which needs all five, sets every switch to `true`, and
 `receipt_lookup` or `cancellation` may run alone.
 
-**Remote access: deploy requirements.** `remote_access` needs Linux 5.12 or later
-(`mount_setattr`); `/var/tmp` must not be a symlink and `/dev/shm` must exist; and the data root
-and state root must not sit under `/tmp`, `/var/tmp` or `/dev/shm`, because sessions mount private
-tmpfs over those. `bench-sftp` is a new installed executable, `/usr/local/libexec/bench-sftp`; the
-installer places it with the others. A remote-access failure at start (the address cannot be
-bound, a requirement above is missing) stops benchd rather than leaving it up without the door.
+**Remote access: deploy requirements.** With `remote_access` on, benchd checks these at start,
+before it opens the CA, the host key or the listener, and exits if one is missing:
+
+- the kernel has `mount_setattr` (Linux 5.12 or later). benchd probes the call itself; only a
+  kernel that does not know it (`ENOSYS`) is refused;
+- `/var/tmp` is a directory, not a symlink;
+- `/dev/shm` exists as a directory;
+- the data root (`--data`) and the state root (`--state`) are not `/tmp`, `/var/tmp` or
+  `/dev/shm`, nor under one of them. The comparison is by path, as written in the unit.
+
+Sessions mount a private tmpfs over each of `/tmp`, `/var/tmp` and `/dev/shm`, so a root under one
+would vanish inside every session. The error names the requirement, for example
+`remote access deploy requirement not met: /var/tmp must be a directory, not a symlink`; benchd
+exits with it, and systemd's restart loop keeps refusing until the host is fixed or
+`remote_access` is turned off. With `remote_access` off nothing is checked. `bench-sftp` is a new
+installed executable, `/usr/local/libexec/bench-sftp`; the installer places it with the others.
+Any other remote-access failure at start, such as an address that cannot be bound, also stops
+benchd rather than leaving it up without the door.
 The fleet address itself need not exist yet: benchd binds it with `IP_FREEBIND` /
 `IPV6_FREEBIND`, so it starts and listens on that exact address even before the tailnet brings it
 up, and serves it from the moment it arrives. The unit needs no ordering on the tailnet. A bind

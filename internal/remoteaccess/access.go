@@ -42,6 +42,7 @@ type Access struct {
 	scopes             remotestate.Scopes // nil means the host's cgroups
 	listener           net.Listener       // tests only: a pre-bound listener
 	now                func() time.Time   // tests only: the certificate clock
+	host               *host              // tests only: nil means the installed host
 
 	mu        sync.Mutex
 	serving   bool
@@ -65,8 +66,10 @@ func New(store bench.Store, s activation.Switches, operators, readers map[uint32
 }
 
 // Serve opens the CA and host key under <state>/remote, listens on the fleet
-// address and serves SSH until ctx ends. It refuses state no earlier start
-// migrated. It returns only after every connection it served has closed.
+// address and serves SSH until ctx ends. It refuses, before it opens
+// anything, a host that misses a deploy requirement (ErrHost), and it
+// refuses state no earlier start migrated. It returns only after every
+// connection it served has closed.
 func (a *Access) Serve(ctx context.Context) error {
 	a.mu.Lock()
 	if a.serving {
@@ -80,6 +83,14 @@ func (a *Access) Serve(ctx context.Context) error {
 		if l != nil {
 			_ = l.Close()
 		}
+	}
+	h := installedHost
+	if a.host != nil {
+		h = *a.host
+	}
+	if err := h.check(a.store); err != nil {
+		closeListener()
+		return err
 	}
 	if err := a.store.RequireOperationState(); err != nil {
 		closeListener()

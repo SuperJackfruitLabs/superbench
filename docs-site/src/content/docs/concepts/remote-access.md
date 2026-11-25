@@ -19,13 +19,20 @@ file):
 | `remote_access` | `true` starts the fleet listener. It requires `fresh_payload`, and the file is refused without it. |
 | `remote_fleet_address` | The one address the listener binds, as an IP and port in the string form `"ADDRESS:PORT"`. A wildcard address, a zero port or a zone is refused. It is required with `remote_access` and refused without it. |
 
-Remote access needs a kernel of Linux 5.12 or later (`mount_setattr`), a `/var/tmp` that is not a
-symlink, a `/dev/shm` that exists, and a data root and state root that do not sit under `/tmp`,
-`/var/tmp` or `/dev/shm`. The fleet address does not have to exist when `benchd` starts: it
-starts and listens on that exact address even before the tailnet brings it up, and accepts
-connections from the moment the address arrives. Any other remote-access failure at start, such as
-an address already in use or a requirement above that is missing, **stops `benchd`**: it does not
-start without the door it was told to open.
+With remote access on, `benchd` checks four requirements at start, before it opens the CA, the
+host key or the listener, and **exits** if one is missing, naming it:
+
+- a kernel with `mount_setattr` (Linux 5.12 or later), which `benchd` probes;
+- a `/var/tmp` that is a directory, not a symlink;
+- a `/dev/shm` that exists as a directory;
+- a data root and a state root that are not `/tmp`, `/var/tmp` or `/dev/shm` and not under one of
+  them, compared by path.
+
+Each session mounts its own tmpfs over those three directories, which is why. The fleet address
+does not have to exist when `benchd` starts: it starts and listens on that exact address even
+before the tailnet brings it up, and accepts connections from the moment the address arrives. Any
+other remote-access failure at start, such as an address already in use, also **stops `benchd`**:
+it does not start without the door it was told to open.
 
 The first start after an upgrade that adds remote access migrates the state to a newer schema, and
 an activated daemon never migrates. Start once with activation off, then turn it on. The pilot

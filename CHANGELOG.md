@@ -9,8 +9,10 @@ stamps the section `## vX.Y.Z — YYYY-MM-DD`, and the release notes quote it.
 - Remote access to a bench, off by default: a certificate-only SSH door for the holder of a
   lease (exec, a shell with a PTY, and SFTP), with no forwarding of any kind. `remote_access` and
   `remote_fleet_address` in `/etc/superbench/activation.json` turn it on; it requires
-  `fresh_payload`, a kernel of Linux 5.12 or later, a `/var/tmp` that is not a symlink, a
-  `/dev/shm`, and data and state roots outside `/tmp`, `/var/tmp` and `/dev/shm`. benchd's own CA
+  `fresh_payload`, a kernel with `mount_setattr` (Linux 5.12 or later), a `/var/tmp` that is a
+  directory and not a symlink, a `/dev/shm` directory, and data and state roots outside `/tmp`,
+  `/var/tmp` and `/dev/shm`; with the switch on, benchd checks all four at start and exits naming
+  the one that is missing. benchd's own CA
   issues 30-minute writer certificates through `bench workspace remote-credential`; `bench
   workspace remote-status` shows sessions and the audit. Sessions are the lease's remote
   execution, so checkpoint, release, stop and stop_admin cut them first. Each session sees only
