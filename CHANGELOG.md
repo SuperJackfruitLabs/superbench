@@ -6,6 +6,36 @@ stamps the section `## vX.Y.Z — YYYY-MM-DD`, and the release notes quote it.
 
 ## Unreleased
 
+- Remote access to a bench, off by default: a certificate-only SSH door for the holder of a lease
+  (exec, a shell with a PTY, and SFTP), with no forwarding of any kind. `remote_access` and
+  `remote_fleet_address` in `/etc/superbench/activation.json` turn it on; it requires
+  `fresh_payload`, a kernel with `mount_setattr` (Linux 5.12 or later), a `/var/tmp` that is a
+  directory and not a symlink, a `/dev/shm` directory, and data and state roots outside `/tmp`,
+  `/var/tmp` and `/dev/shm`; with the switch on, benchd checks all four at start and exits naming
+  the one that is missing. benchd's own CA issues 30-minute writer certificates through `bench
+  workspace remote-credential`; `bench workspace remote-status` shows sessions and the audit.
+  Sessions are the lease's remote execution, so checkpoint, release, stop and stop_admin cut them
+  first. Each session sees only its bench, but this is not isolation of untrusted code: supervised
+  runs can still reach a live session through `/proc`, and there is no per-bench connection cap or
+  rate limit yet. Deferred: session limits are not configurable (a fixed 8 sessions per bench, no
+  wall-clock limit), and the host key fingerprint is in `remote-status` and the credential reply,
+  not `host-status`. With the switch off benchd opens no TCP listener. A remote-access failure at
+  start stops benchd. `bench-sftp` is a new installed executable
+  (`/usr/local/libexec/bench-sftp`). See docs-site "Remote access".
+
+- **Upgrade step, required on every activated host, with remote access on or off.** This release
+  adds state schema 31, the first schema change since v0.0.1, and a daemon with any activation
+  switch on never migrates: after the binaries are upgraded it refuses to start with
+  `unsupported state schema 30 (expected 31)`. With the unit stopped, run
+  `sudo -u superbench /usr/local/bin/bench migrate --state /var/lib/superbench/state --data
+  /srv/superbench-data`, then start it (docs/pilot-installation.md, "From v0.0.2: migrate the
+  state before the first start"). It opens no socket. The upgrade is one-way once the new benchd
+  has started on schema 31: v0.0.2 refuses that state, so a rollback needs the state backup taken
+  before the migration. The migration gives each leased row a lease ID and generation, which
+  changes the row's digest: a reviewed plan file pinned before the upgrade (history reconcile,
+  initialization repair, missing-source transfer) is refused afterwards with "workspace changed
+  after approval". Inspect again and review the new plan.
+
 - `deploy/linux/install.py --upgrade` no longer refuses a host whose operator edited
   `/etc/superbench/benchd.env`. The file is operator configuration: the installer writes it only
   when it is missing and afterwards validates it, never comparing or replacing it, so
@@ -14,7 +44,7 @@ stamps the section `## vX.Y.Z — YYYY-MM-DD`, and the release notes quote it.
   and the operator had to swap the packaged file in and restore theirs by hand. Validation refuses
   a symlink, a file that is not root-owned or is writable beyond 0644, an unknown or misspelt
   name, a setting given twice, and a value benchd would not accept, before anything is written.
-  The four executables keep their reviewed-digest checks, and every other installed file must
+  The executables keep their reviewed-digest checks, and every other installed file must
   still be byte-identical. On a v0.0.2 host, leave the edited file in place and run the new
   revision's installer with `--upgrade` (docs/pilot-installation.md, "From v0.0.2").
 

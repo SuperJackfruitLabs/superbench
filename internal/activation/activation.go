@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/netip"
 	"strconv"
 	"time"
 	"unicode/utf8"
@@ -39,12 +40,18 @@ type Switches struct {
 	// it (ReclaimIdleSet). It is a setting of fresh_payload, not a path of its own.
 	ReclaimIdleHours uint32
 	ReclaimIdleSet   bool
+	// RemoteAccess starts the fleet-facing remote bench listener; it needs
+	// fresh_payload and RemoteFleetAddress.
+	RemoteAccess bool
+	// RemoteFleetAddress is remote_fleet_address, the one fleet listener
+	// address. Zero (invalid) unless the file names it.
+	RemoteFleetAddress netip.AddrPort
 }
 
 // Any reports whether at least one default-off path is enabled. The idle
 // grace is not a path: Check refuses it without fresh_payload.
 func (s Switches) Any() bool {
-	return s.FreshPayload || s.FiniteIO || s.ReceiptLookup || s.Cancellation || s.RegistrationObservation
+	return s.FreshPayload || s.FiniteIO || s.ReceiptLookup || s.Cancellation || s.RegistrationObservation || s.RemoteAccess
 }
 
 // ReclaimIdle is the effective idle grace of a released Fresh bench before the
@@ -62,8 +69,9 @@ func (s Switches) ReclaimIdle() time.Duration {
 }
 
 func (s Switches) String() string {
-	return fmt.Sprintf("fresh_payload=%t finite_io=%t receipt_lookup=%t cancellation=%t registration_observation=%t fresh_reclaim_idle=%s",
-		s.FreshPayload, s.FiniteIO, s.ReceiptLookup, s.Cancellation, s.RegistrationObservation, s.ReclaimIdle())
+	return fmt.Sprintf("fresh_payload=%t finite_io=%t receipt_lookup=%t cancellation=%t registration_observation=%t fresh_reclaim_idle=%s remote_access=%t remote_fleet_address=%s",
+		s.FreshPayload, s.FiniteIO, s.ReceiptLookup, s.Cancellation, s.RegistrationObservation, s.ReclaimIdle(),
+		s.RemoteAccess, fleetAddressText(s.RemoteFleetAddress))
 }
 
 // validIdleHours is the accepted range of fresh_reclaim_idle_hours: 0 turns the
@@ -82,6 +90,8 @@ func (s *Switches) field(name string) *bool {
 		return &s.Cancellation
 	case "registration_observation":
 		return &s.RegistrationObservation
+	case "remote_access":
+		return &s.RemoteAccess
 	}
 	return nil
 }
@@ -96,6 +106,8 @@ func (s *Switches) field(name string) *bool {
 //   - fresh_payload needs the indexed quota operation journal, which storage
 //     checks: the payload helper's bootstrap refuses any other storage policy,
 //     so every Fresh create would strand a materializing workspace.
+//   - remote_access needs fresh_payload and remote_fleet_address, and the
+//     address is meaningless without remote_access.
 //   - finite_io and registration_observation act only on Fresh payload trees,
 //     so they need fresh_payload. So does fresh_reclaim_idle_hours, which only
 //     Fresh benches use, and it must be 0 or 1 to 8760 hours.
@@ -103,6 +115,12 @@ func (s *Switches) field(name string) *bool {
 // receipt_lookup and cancellation have no prerequisite.
 func (s Switches) Check(identity, storage func() error) error {
 	switch {
+	case s.RemoteAccess && !s.FreshPayload:
+		return refuse("remote_access requires fresh_payload")
+	case s.RemoteAccess && !s.RemoteFleetAddress.IsValid():
+		return refuse("remote_access requires remote_fleet_address")
+	case !s.RemoteAccess && s.RemoteFleetAddress.IsValid():
+		return refuse("remote_fleet_address requires remote_access")
 	case s.FiniteIO && !s.FreshPayload:
 		return refuse("finite_io requires fresh_payload")
 	case s.RegistrationObservation && !s.FreshPayload:
@@ -175,6 +193,14 @@ func Parse(raw []byte) (Switches, error) {
 			s.ReclaimIdleHours, s.ReclaimIdleSet = hours, true
 			continue
 		}
+		if key == "remote_fleet_address" {
+			addr, ok := fleetAddress(value)
+			if !ok {
+				return Switches{}, refuse("remote_fleet_address must be an ip:port string with a nonzero port, no zone and a specific address")
+			}
+			s.RemoteFleetAddress = addr
+			continue
+		}
 		target := s.field(key)
 		if target == nil {
 			return Switches{}, refuse("unknown key " + key)
@@ -210,4 +236,27 @@ func idleHours(value json.Token) (uint32, bool) {
 		return 0, false
 	}
 	return uint32(hours), true
+}
+
+// fleetAddress accepts only a JSON string that is a literal ip:port: not a host
+// name, no zone, port above 0 and not the unspecified address.
+func fleetAddress(value json.Token) (netip.AddrPort, bool) {
+	text, ok := value.(string)
+	if !ok {
+		return netip.AddrPort{}, false
+	}
+	addr, err := netip.ParseAddrPort(text)
+	if err != nil || addr.Port() == 0 || addr.Addr().Unmap().IsUnspecified() || addr.Addr().Zone() != "" {
+		return netip.AddrPort{}, false
+	}
+	return addr, true
+}
+
+// fleetAddressText prints "-" for an unset address instead of netip's
+// "invalid AddrPort".
+func fleetAddressText(a netip.AddrPort) string {
+	if !a.IsValid() {
+		return "-"
+	}
+	return a.String()
 }

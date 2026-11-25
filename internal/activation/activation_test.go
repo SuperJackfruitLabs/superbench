@@ -9,7 +9,7 @@ import (
 func TestParseAcceptsExplicitSwitchesAndDefaultsOmittedOnesToFalse(t *testing.T) {
 	all := `{"version":"superbench.activation.v1","fresh_payload":true,"finite_io":true,"receipt_lookup":true,"cancellation":true,"registration_observation":true}`
 	got, err := Parse([]byte(all))
-	if err != nil || got != (Switches{true, true, true, true, true, 0, false}) {
+	if err != nil || got != (Switches{FreshPayload: true, FiniteIO: true, ReceiptLookup: true, Cancellation: true, RegistrationObservation: true}) {
 		t.Fatal(got, err)
 	}
 	got, err = Parse([]byte("{\n  \"version\": \"superbench.activation.v1\",\n  \"finite_io\": true\n}\n"))
@@ -20,7 +20,7 @@ func TestParseAcceptsExplicitSwitchesAndDefaultsOmittedOnesToFalse(t *testing.T)
 	if err != nil || got != (Switches{}) || got.Any() {
 		t.Fatal(got, err)
 	}
-	if got.String() != "fresh_payload=false finite_io=false receipt_lookup=false cancellation=false registration_observation=false fresh_reclaim_idle=0s" {
+	if got.String() != "fresh_payload=false finite_io=false receipt_lookup=false cancellation=false registration_observation=false fresh_reclaim_idle=0s remote_access=false remote_fleet_address=-" {
 		t.Fatal(got.String())
 	}
 }
@@ -71,10 +71,10 @@ func TestCheckRefusesCombinationsThatStrandWorkspaces(t *testing.T) {
 		"fresh without cancellation":          {Switches{FreshPayload: true, FiniteIO: true, ReceiptLookup: true, RegistrationObservation: true}, ok, ok, "fresh_payload requires cancellation"},
 		"fresh without installed identity":    {Switches{FreshPayload: true, Cancellation: true}, missing, ok, "no installed identity"},
 		"fresh with no identity check":        {Switches{FreshPayload: true, Cancellation: true}, nil, ok, "requires the installed service identity"},
-		"all five without installed identity": {Switches{true, true, true, true, true, 0, false}, missing, ok, "no installed identity"},
+		"all five without installed identity": {Switches{FreshPayload: true, FiniteIO: true, ReceiptLookup: true, Cancellation: true, RegistrationObservation: true}, missing, ok, "no installed identity"},
 		// The pilot host's every Fresh create stranded at materializing for this.
 		"fresh on a legacy storage policy":    {Switches{FreshPayload: true, Cancellation: true}, ok, legacy, "indexed quota operation journal: storage.json does not select indexed-v2"},
-		"all five on a legacy storage policy": {Switches{true, true, true, true, true, 0, false}, ok, legacy, "requires the indexed quota operation journal"},
+		"all five on a legacy storage policy": {Switches{FreshPayload: true, FiniteIO: true, ReceiptLookup: true, Cancellation: true, RegistrationObservation: true}, ok, legacy, "requires the indexed quota operation journal"},
 		"fresh with no storage check":         {Switches{FreshPayload: true, Cancellation: true}, ok, nil, "requires the indexed quota operation journal"},
 	} {
 		if err := c.s.Check(c.identity, c.storage); !errors.Is(err, ErrActivation) || !strings.Contains(err.Error(), c.why) {
@@ -88,7 +88,7 @@ func TestCheckAcceptsEveryCompleteCombination(t *testing.T) {
 	identity := func() error { calls++; return nil }
 	storage := func() error { storageCalls++; return nil }
 	for _, s := range []Switches{{}, {ReceiptLookup: true}, {Cancellation: true}, {Cancellation: true, ReceiptLookup: true},
-		{FreshPayload: true, Cancellation: true}, {true, true, true, true, true, 0, false}} {
+		{FreshPayload: true, Cancellation: true}, {FreshPayload: true, FiniteIO: true, ReceiptLookup: true, Cancellation: true, RegistrationObservation: true}} {
 		if err := s.Check(identity, storage); err != nil {
 			t.Errorf("%v: %v", s, err)
 		}

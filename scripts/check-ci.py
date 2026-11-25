@@ -140,6 +140,9 @@ def main():
     print('root refusal binary SHA256:', hashlib.sha256(raw).hexdigest())
     print('PASS: explicit effective-root refusal; fixture retained:', fixture)
     if args.privileged_only:
+        # The fixture lanes compile offline (GOPROXY=off), and the root
+        # refusal above needs only some modules: fetch every one first.
+        subprocess.run([go, 'mod', 'download'], cwd=checkout, env=env, preexec_fn=drop, check=True)
         subprocess.run([sys.executable, str(source / 'scripts/check-identity-ci.py'),
                         '--source', str(checkout), '--user', args.user, '--go', go,
                         '--gocache', str(build_cache), '--gomodcache', str(module_cache)], check=True)

@@ -11,7 +11,7 @@ from install import EXECUTABLES, CGROUP_ROOT, Upgrade, apply, install, main, pay
 from install_test import binaries
 
 
-def sums(directory, names=("bench", "benchd", "bench-quota", "bench-payload")):
+def sums(directory, names=("bench", "benchd", "bench-quota", "bench-payload", "bench-sftp")):
     lines = "".join(hashlib.sha256((directory / n).read_bytes()).hexdigest() + "  " + n + "\n" for n in names)
     (directory / "SHA256SUMS").write_text(lines)
     return directory / "SHA256SUMS"
@@ -58,14 +58,15 @@ class UpgradeMode(unittest.TestCase):
         apply(self.args(self.new), run=no_commands)
         for name, relative in [("bench", "usr/local/bin/bench"), ("benchd", "usr/local/bin/benchd"),
                                ("bench-quota", "usr/local/libexec/bench-quota"),
-                               ("bench-payload", "usr/local/libexec/bench-payload")]:
+                               ("bench-payload", "usr/local/libexec/bench-payload"),
+                               ("bench-sftp", "usr/local/libexec/bench-sftp")]:
             self.assertEqual(self.installed(relative), (self.new / name).read_bytes(), name)
             self.assertEqual((self.root / relative).stat().st_mode & 0o7777, 0o755, name)
         self.assertNotEqual((self.root / "usr/local/bin/bench").stat().st_ino, inode, "replaced in place")
         backup = self.top / "backup"
         self.assertEqual(backup.stat().st_mode & 0o777, 0o700)
         self.assertEqual(sorted(p.name for p in backup.iterdir()), ["SHA256SUMS", "bench", "bench-quota", "benchd"])
-        self.assertEqual(read_previous(backup / "SHA256SUMS"), {k: v for k, v in read_previous(self.previous).items() if k != "bench-payload"})
+        self.assertEqual(read_previous(backup / "SHA256SUMS"), {k: v for k, v in read_previous(self.previous).items() if k not in ("bench-payload", "bench-sftp")})
         for name in ("bench", "benchd", "bench-quota"):
             self.assertEqual((backup / name).read_bytes(), (self.old / name).read_bytes())
             self.assertEqual((backup / name).stat().st_mode & 0o777, 0o600)
@@ -195,6 +196,45 @@ class UpgradeMode(unittest.TestCase):
         self.incoming = sums(self.new, names=("bench", "benchd", "bench-quota"))
         with self.assertRaisesRegex(ValueError, "incoming executable does not match"):
             apply(self.args(self.new), run=no_commands)
+
+    def test_upgrade_adds_the_sftp_server_to_a_host_without_one(self):
+        server = self.root / "usr/local/libexec/bench-sftp"
+        server.unlink()  # a host installed before the SFTP server shipped
+        (self.new / "bench-sftp").write_bytes((self.new / "bench-sftp").read_bytes() + b"tampered")
+        with self.assertRaisesRegex(ValueError, "incoming executable does not match the new build's SHA256SUMS: bench-sftp"):
+            apply(self.args(self.new), run=no_commands)
+        self.assertFalse(server.exists())
+        self.incoming = sums(self.new)
+        apply(self.args(self.new), run=no_commands)
+        self.assertEqual(server.read_bytes(), (self.new / "bench-sftp").read_bytes())
+        self.assertEqual(server.stat().st_mode & 0o7777, 0o755)
+
+    def test_rollback_keeps_the_sftp_server_the_previous_build_lacks(self):
+        """The documented rollback: backup executables plus the new build's for the rest."""
+        (self.root / "usr/local/libexec/bench-sftp").unlink()  # a host from before the SFTP server
+        self.previous = sums(self.old, names=("bench", "benchd", "bench-quota", "bench-payload"))
+        apply(self.args(self.new), run=no_commands)
+        backup = self.top / "backup"
+        self.assertNotIn("bench-sftp", [p.name for p in backup.iterdir()])
+        # The backup alone is not a --bin-dir: the installer needs bench-sftp.
+        with self.assertRaises(FileNotFoundError):
+            payload(backup, True)
+        rollback = self.top / "rollback"
+        rollback.mkdir()
+        kept = read_previous(backup / "SHA256SUMS")
+        new = read_previous(self.incoming)
+        lines = []
+        for name in ("bench", "benchd", "bench-quota", "bench-payload", "bench-sftp"):
+            source = backup if name in kept else self.new
+            (rollback / name).write_bytes((source / name).read_bytes())
+            lines.append((kept if name in kept else new)[name] + "  " + name + "\n")
+        (rollback / "SHA256SUMS").write_text("".join(lines))
+        self.previous, self.incoming = self.incoming, rollback / "SHA256SUMS"
+        apply(self.args(rollback, backup="rolled-back"), run=no_commands)
+        for name, relative in [("bench", "usr/local/bin/bench"), ("benchd", "usr/local/bin/benchd"),
+                               ("bench-quota", "usr/local/libexec/bench-quota")]:
+            self.assertEqual(self.installed(relative), (self.old / name).read_bytes(), name)
+        self.assertEqual(self.installed("usr/local/libexec/bench-sftp"), (self.new / "bench-sftp").read_bytes())
 
     def test_unit_must_be_stopped_with_no_main_process(self):
         def shown(text):

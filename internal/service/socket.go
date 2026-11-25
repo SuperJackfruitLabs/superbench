@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"sync"
 	"syscall"
+
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/peercred"
 )
 
 type uidKey struct{}
@@ -69,7 +71,7 @@ func (l peerListener) Accept() (net.Conn, error) {
 		}
 		var uid uint32
 		var peerErr error
-		if e = raw.Control(func(fd uintptr) { uid, peerErr = peerUID(int(fd)) }); e != nil {
+		if e = raw.Control(func(fd uintptr) { uid, peerErr = peercred.UID(int(fd)) }); e != nil {
 			c.Close()
 			release()
 			return nil, e

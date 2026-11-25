@@ -72,6 +72,7 @@ export default defineConfig({
             { label: 'Quotas, mirrors and stores', slug: 'concepts/quotas-and-stores' },
             { label: 'Archive and reap', slug: 'concepts/archive-and-reap' },
             { label: 'Payload identity and the fixed helpers', slug: 'concepts/payload-identity' },
+            { label: 'Remote access', slug: 'concepts/remote-access' },
             { label: 'Fresh allocations and recovery', slug: 'concepts/fresh-allocations' },
           ],
         },

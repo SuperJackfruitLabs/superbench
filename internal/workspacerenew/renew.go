@@ -90,7 +90,7 @@ func (m Manager) Renew(key string, uid uint32) (*model.Bench, error) {
 			} else if err != nil {
 				return err
 			}
-			next, err := model.NewLease(b.Lease.Holder)
+			next, err := b.Lease.Rotate()
 			if err != nil {
 				return err
 			}

@@ -8,6 +8,8 @@ import (
 
 type Execution = execution.Execution
 type Lease struct {
+	ID            string `json:",omitempty"` // Opaque, per acquisition; kept across rotations.
+	Generation    uint64 `json:",omitempty"` // 1 on acquisition, +1 on every token rotation.
 	Token         string
 	Holder        string
 	Execution     *Execution `json:",omitempty"`

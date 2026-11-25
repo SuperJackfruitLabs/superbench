@@ -20,11 +20,7 @@ import (
 // ordinary stdin. It does not create or convert any layout or change ownership.
 func Exec() (err error) {
 	phase := "caller"
-	defer func() {
-		if err != nil {
-			err = &refusalError{phase: phase, cause: err}
-		}
-	}()
+	defer refuse(&phase, &err)
 	if os.Getuid() != 0 || os.Geteuid() != 0 {
 		return ErrBoundary
 	}
@@ -105,15 +101,8 @@ func Exec() (err error) {
 		return err
 	}
 	phase = "scope"
-	currentScope, err := VerifyScope(p, r)
-	if err != nil {
+	if err := recheckScope(p, r, scope); err != nil {
 		return err
-	}
-	a, aErr := scope.Stat()
-	c, cErr := currentScope.Stat()
-	_ = currentScope.Close()
-	if aErr != nil || cErr != nil || !os.SameFile(a, c) {
-		return errors.Join(ErrBoundary, aErr, cErr)
 	}
 	phase = "policy"
 	if err := binding.recheck(); err != nil {
@@ -203,9 +192,10 @@ func enterPayload(phase *string, p Policy, r Request, input *os.File, path strin
 	}
 	return err
 }
-func writeStdout(marker string) error {
+func writeStdout(marker string) error { return writeFD(1, marker) }
+func writeFD(fd int, marker string) error {
 	for raw := []byte(marker); len(raw) > 0; {
-		n, err := syscall.Write(1, raw)
+		n, err := syscall.Write(fd, raw)
 		if err != nil {
 			return errors.Join(ErrBoundary, err)
 		}
@@ -240,17 +230,18 @@ func verifyCommandDirectories() error {
 	return nil
 }
 
-func verifyFixedGit() error {
-	parent, err := openPhysicalDirectory("/usr/bin", 0)
+func verifyFixedGit() error { return verifyFixedExecutable("/usr/bin/git") }
+func verifyFixedExecutable(path string) error {
+	parent, err := openPhysicalDirectory(filepath.Dir(path), 0)
 	if err != nil {
 		return errors.Join(ErrBoundary, err)
 	}
 	defer parent.Close()
-	fd, err := syscall.Openat(int(parent.Fd()), "git", syscall.O_RDONLY|syscall.O_NONBLOCK|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
+	fd, err := syscall.Openat(int(parent.Fd()), filepath.Base(path), syscall.O_RDONLY|syscall.O_NONBLOCK|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
 	if err != nil {
 		return errors.Join(ErrBoundary, err)
 	}
-	file := os.NewFile(uintptr(fd), "trusted Git")
+	file := os.NewFile(uintptr(fd), "trusted executable")
 	defer file.Close()
 	info, err := file.Stat()
 	if err != nil {

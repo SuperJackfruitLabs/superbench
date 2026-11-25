@@ -13,6 +13,7 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/operationcontrol"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/reftransfer"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/remoteschema"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/setup"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspacepolicy"
 )
@@ -34,6 +35,9 @@ func Migrate(tx *sql.Tx, state string, pinMigratedInodes func(*model.Bench) erro
 	}
 	if version == SchemaVersion {
 		return nil
+	}
+	if version == 30 {
+		return remoteschema.Upgrade31(tx)
 	}
 	if version < 29 {
 		if err := handoffjournal.RejectHistorical(tx); err != nil {
@@ -145,8 +149,7 @@ func Migrate(tx *sql.Tx, state string, pinMigratedInodes func(*model.Bench) erro
 		if err != nil {
 			return err
 		}
-		_, err = tx.Exec("PRAGMA user_version=30")
-		return err
+		return remoteschema.Upgrade31(tx)
 	}
 	if version != 0 {
 		return fmt.Errorf("unsupported state schema %d", version)
@@ -203,8 +206,7 @@ func Migrate(tx *sql.Tx, state string, pinMigratedInodes func(*model.Bench) erro
 	if err = operationcontrol.Schema(tx); err != nil {
 		return err
 	}
-	_, err = tx.Exec("PRAGMA user_version=30")
-	return err
+	return remoteschema.Upgrade31(tx)
 }
 
 func historicalTransfers(r Reader) error {

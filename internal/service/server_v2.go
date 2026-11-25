@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/bench"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/failurelog"
@@ -28,6 +29,10 @@ func (s *Server) serveV2(w http.ResponseWriter, r *http.Request) {
 	uid, ok := r.Context().Value(uidKey{}).(uint32)
 	if !ok || (!s.config.Operators[uid] && !s.config.Readers[uid]) {
 		s.replyV2(w, protocolv2.Request{}, nil, 403, "forbidden", "Unix peer is not authorized")
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/v2/remote/") && s.config.Remote != nil {
+		s.config.Remote.Route(w, r, uid, s.promoteNormal)
 		return
 	}
 	if r.URL.Path == "/v2/receipts/lookup" && s.proposedReceiptLookup {

@@ -37,7 +37,25 @@ func Install() error {
 	if errno != 0 || set != 1 {
 		return ErrConfine
 	}
-	prog := Program(arch)
+	return install(nr, Program(arch))
+}
+
+// InstallSession stacks the session filter (SessionProgram) on every thread.
+// Like Install it needs no_new_privs and never falls back to no filter.
+func InstallSession() error {
+	arch, nr, ok := native()
+	set, _, errno := syscall.RawSyscall(syscall.SYS_PRCTL, prGetNoNewPrivs, 0, 0)
+	if !ok || errno != 0 || set != 1 {
+		return ErrConfine
+	}
+	prog := SessionProgram(arch)
+	if len(prog) == 0 {
+		return ErrConfine
+	}
+	return install(nr, prog)
+}
+
+func install(nr uintptr, prog []Instruction) error {
 	fprog := sockFprog{Len: uint16(len(prog)), Filter: &prog[0]}
 	r, _, errno := syscall.Syscall(nr, seccompSetModeFilter, seccompFilterFlagTsync, uintptr(unsafe.Pointer(&fprog)))
 	if errno != 0 || r != 0 {

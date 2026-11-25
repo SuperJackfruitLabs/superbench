@@ -45,7 +45,7 @@ func TestSchema28PreservesSchema27ConclusionsAndDoesNotInventRepairOperations(t 
 	assertVersion(t, db, SchemaVersion)
 	var after, same string
 	var count int
-	if err := db.QueryRow(`SELECT record FROM benches`).Scan(&after); err != nil || after != before {
+	if err := db.QueryRow(`SELECT json_remove(record,'$.Lease.ID','$.Lease.Generation') FROM benches`).Scan(&after); err != nil || after != before {
 		t.Fatal("migration changed old row", err)
 	}
 	if err := db.QueryRow(`SELECT record FROM workspace_operation_cancellations`).Scan(&same); err != nil || same != conclusion {

@@ -21,6 +21,10 @@ def variants(credentials, execution):
     wrong = replace_once(credentials, 'func verifyDropped(p Policy) error {\n',
                          'func verifyDropped(p Policy) error {\n\tp.PayloadUID++ // PRIVATE QA: mismatched policy readback, not a kernel drop fault.\n')
     bypass = replace_once(wrong, '\treturn verifyDropped(p)\n', '\treturn nil // PRIVATE QA mutation: remove final readback.\n')
+    # enterPayload repeats the readback right before exec; the mutant removes
+    # both, so only the readback can be what refuses the verify-fault variant.
+    readback = '\t*phase = "credentials"\n\tif err := verifyDropped(p); err != nil {\n\t\treturn err\n\t}\n'
+    unchecked = replace_once(execution, readback, '\t// PRIVATE QA mutation: remove the pre-exec readback.\n')
     late = replace_once(execution, '\tphase = "credentials"\n',
                         '\t// PRIVATE QA: root-only canary opened after both initial sweeps.\n'
                         '\tif _, err := syscall.Open("/run/superbench-exec-fixture-canary", syscall.O_RDONLY, 0); err != nil { return err }\n'
@@ -36,7 +40,7 @@ def variants(credentials, execution):
     late_mutant = before_executable + boundary + replace_once(executable, final, '')
     return {'plain': (credentials, execution),
             'no-groups': (replace_once(credentials, groups, ''), execution),
-            'verify-fault': (wrong, execution), 'verify-mutant': (bypass, execution),
+            'verify-fault': (wrong, execution), 'verify-mutant': (bypass, unchecked),
             'late-fd': (credentials, late), 'late-fd-mutant': (credentials, late_mutant)}
 
 

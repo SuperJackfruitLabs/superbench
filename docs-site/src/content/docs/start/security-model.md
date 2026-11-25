@@ -38,9 +38,11 @@ sudo, and a sudo caller cannot select another policy. See
   from the kernel (`SO_PEERCRED` on Linux, `LOCAL_PEERCRED` on macOS). Identity headers cannot grant
   authority. Operators can mutate; readers can only query `status` and `host_status`. The socket is
   mode 0660 and its parent must not be group- or world-writable.
-- **No TCP listener.** The only listener in the non-test source is a Unix socket. This is read from
-  the source; no test asserts the absence of a TCP socket, so it holds only as long as the code
-  does.
+- **No TCP listener unless remote access is enabled.** Off, the only listener is a Unix socket.
+  Remote access is a default-off switch (`remote_access` in `activation.json`) that opens one
+  certificate-only SSH listener on a configured fleet address, never a wildcard. The off state is
+  tested (`TestRunBuildsRemoteAccessOnlyWhenOn` and the `remoteaccess` constructor test build and
+  bind nothing without the switch); the on state is covered by the disposable-host drill. See [Remote access](/concepts/remote-access/).
 - **Lease tokens are holder capabilities.** A token is returned only on acquisition, on an
   administrative stop (`stop --admin`) or on exact replay of a completed request's receipt. Status
   and checkpoint output redact it, and supervised commands do not receive it in their
@@ -64,6 +66,9 @@ sudo, and a sudo caller cannot select another policy. See
 - **Direct local commands bypass the socket's uid policy.** A `bench` command run without
   `--socket` on the daemon's state does not go through the socket's operator and reader checks. It
   is bounded only by the state directory being 0700 and owned by the daemon account.
+- **Remote sessions are not isolation of untrusted code.** A session sees only its bench, but a
+  supervised run on the same host can still reach a live session through `/proc` and ptrace, and
+  same-user abstract sockets and loopback are shared. There is no connection cap or rate limit yet.
 - **Cooperative leases do not fence anything.** A shell or editor opened after `bench lease` is
   outside SuperBench's control. Only `run` and `setup` create supervised scopes.
 - **No automatic lease expiry.** A crashed holder keeps its lease until someone inspects it.

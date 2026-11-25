@@ -19,7 +19,7 @@ func TestLatestPreservesLegitimate22AndCreatesEmptyOperationAuthority(t *testing
 	}
 	assertVersion(t, db, SchemaVersion)
 	var after string
-	if err := db.QueryRow(`SELECT record FROM benches`).Scan(&after); err != nil || before != after {
+	if err := db.QueryRow(`SELECT json_remove(record,'$.Lease.ID','$.Lease.Generation') FROM benches`).Scan(&after); err != nil || before != after {
 		t.Fatal("record changed", err)
 	}
 	var n int

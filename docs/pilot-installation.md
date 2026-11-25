@@ -171,13 +171,14 @@ GOMAXPROCS=8 go build -p 8 -o /absolute/build/bin/bench ./cmd/bench
 GOMAXPROCS=8 go build -p 8 -o /absolute/build/bin/benchd ./cmd/benchd
 GOMAXPROCS=8 go build -p 8 -o /absolute/build/bin/bench-quota ./cmd/bench-quota
 CGO_ENABLED=0 GOMAXPROCS=8 go build -p 8 -o /absolute/build/bin/bench-payload ./cmd/bench-payload
+CGO_ENABLED=0 GOMAXPROCS=8 go build -p 8 -o /absolute/build/bin/bench-sftp ./cmd/bench-sftp
 python3 deploy/linux/install.py --bin-dir /absolute/build/bin \
   --root /absolute/private/staging --managed
 ```
 
-These are the four binaries required by the managed installer. The payload
-helper must be a static Linux executable for the target architecture; do not
-omit it or substitute a dynamically linked build. Review the staged files,
+These are the five binaries required by the managed installer. The payload
+helper and `bench-sftp` must be static Linux executables for the target
+architecture; do not omit either or substitute a dynamically linked build. Review the staged files,
 owners, modes, systemd unit, wrapper and sudo rule before applying anything.
 Staging writes only below the supplied physical absolute root.
 
@@ -382,8 +383,8 @@ python3 deploy/linux/install.py --bin-dir /absolute/build/bin --root / --managed
   --backup /var/lib/superbench-upgrade/<previous-revision>
 ```
 
-- **What it replaces.** Only `bench`, `benchd`, `bench-quota` and
-  `bench-payload`. Every other installed file (the unit, sudo rule, wrapper,
+- **What it replaces.** Only `bench`, `benchd`, `bench-quota`, `bench-payload`
+  and `bench-sftp` (installed new when the previous revision lacked it). Every other installed file (the unit, sudo rule, wrapper,
   sysusers, tmpfiles and the configuration documents) must still be byte-identical,
   or the run refuses before it writes anything. A newer revision that changes one
   of those files needs its own reviewed procedure.
@@ -414,11 +415,54 @@ python3 deploy/linux/install.py --bin-dir /absolute/build/bin --root / --managed
   one. If the run stops partway, rerun the same command with a new `--backup`.
   Executables that already match are skipped, and the rest still match
   `--previous`.
-- **Rollback.** Stop the unit and run the same command with the backup's
-  binaries as `--bin-dir`, the backup's `SHA256SUMS` as `--sums`, and the new
-  build's `SHA256SUMS` as `--previous`. Once any bench has been reclaimed (or a
-  reclaim started), a build without reclaim refuses to start: it cannot read the
-  state's `reclaiming` and `reclaimed` records. Roll forward instead.
+- **Back up the state too.** `--backup` holds executables only. Before the new
+  build first starts (and before `bench migrate`), with the unit stopped, copy
+  the state: `cp -a /var/lib/superbench/state
+  /var/lib/superbench-upgrade/<previous-revision>-state`. A rollback across a
+  state schema change needs it.
+- **Rollback.** Only the executables roll back by themselves. An upgrade that
+  changes the state schema is **one-way once the new build has started**, or
+  once `bench migrate` has run: the older benchd refuses the newer state
+  (v0.0.2 on schema 31: `unsupported state schema 31 (expected 30)`). Rolling
+  such an upgrade back means restoring the state backup, which discards every
+  change since it was taken, while the data volume and quota ledger keep theirs.
+  So restore it only when nothing has run on the new build (no create, lease,
+  run, checkpoint, release, stop or reclaim); otherwise roll forward. To roll
+  back:
+  1. `systemctl stop superbench.service`.
+  2. If the schema changed, put the backup back:
+     `mv /var/lib/superbench/state /var/lib/superbench-upgrade/<new-revision>-state`
+     then `cp -a /var/lib/superbench-upgrade/<previous-revision>-state
+     /var/lib/superbench/state`.
+  3. Build a rollback `--bin-dir`. The new installer needs all five executables
+     in it, but `--backup` holds only those it replaced: from v0.0.2 it has no
+     `bench-sftp`, which was installed new, so the backup alone as `--bin-dir`
+     fails with `FileNotFoundError`. Take each executable from the backup when it
+     is there and from the new build otherwise (always `bench-sftp`, and any the
+     upgrade left unchanged), with each one's line from the matching
+     `SHA256SUMS`:
+
+     ```sh
+     B=/var/lib/superbench-upgrade/<previous-revision>
+     R=/var/lib/superbench-upgrade/<previous-revision>-rollback
+     install -d -m 0700 "$R"
+     for n in bench benchd bench-quota bench-payload bench-sftp; do
+       if [ -e "$B/$n" ]; then from=$B; else from=/absolute/build/bin; fi
+       cp "$from/$n" "$R/$n"
+       grep "  $n\$" "$from/SHA256SUMS" >> "$R/SHA256SUMS"
+     done
+     ```
+  4. Run the **new** revision's `install.py` with `--bin-dir "$R"`,
+     `--sums "$R/SHA256SUMS"`, `--previous /absolute/build/bin/SHA256SUMS` and a
+     new `--backup`. It puts the old executables back and keeps the installed
+     `bench-sftp`, which is identical; the older build never runs it, and a later
+     roll forward finds it already in place. Use the new installer: v0.0.2's
+     compares `benchd.env` and refuses an edited one (see From v0.0.2).
+  5. `systemctl start superbench.service`.
+
+  Once any bench has been reclaimed (or a reclaim started), a build without
+  reclaim refuses to start: it cannot read the state's `reclaiming` and
+  `reclaimed` records. Roll forward instead.
 - **Other flags.** `--upgrade` combines with the flags of the original install
   (`--prepare`, `--identity`, `--activation`, `--storage`). They keep their own
   rules, and only the executables get upgrade semantics.
@@ -429,11 +473,40 @@ copy, so on a host whose operator added a uid (`BENCHD_OPERATOR_UIDS=0,993`)
 /etc/superbench/benchd.env`, and the file had to be swapped out and restored by
 hand. Use the newer revision's `deploy/linux/install.py`, which reads the file
 instead of comparing it: leave the edited `benchd.env` in place, stop the unit
-and run the `--upgrade` command above. Nothing is migrated or moved, and the
-packaged defaults are not merged in (unset settings keep `superbench-start`'s
+and run the `--upgrade` command above. The installer moves no file and does not
+merge the packaged defaults in (unset settings keep `superbench-start`'s
 defaults). If you restored the file by hand after an earlier upgrade, check it
 holds the uids you expect before starting the service. If the installer refuses
 the file, the message names the line; correct it and rerun.
+
+**From v0.0.2: migrate the state before the first start.** This is required on
+every activated host, whether or not you will turn remote access on. This
+revision adds state schema 31, the first schema change since v0.0.1 (v0.0.1 and
+v0.0.2 are both at 30), and a daemon with any activation switch on never
+migrates: after the binaries are replaced it refuses to start with
+`activated paths need state migrated by a start without them: unsupported state
+schema 30 (expected 31)`. Every host on the registered launch has all its
+switches on, so every such host stops here until its state is migrated. With
+the unit still stopped after the `--upgrade` run, back up the state (see Back
+up the state too, above), migrate as the service account, then start:
+
+```sh
+cp -a /var/lib/superbench/state /var/lib/superbench-upgrade/<previous-revision>-state
+sudo -u superbench /usr/local/bin/bench migrate \
+  --state /var/lib/superbench/state --data /srv/superbench-data
+# {"migration":"complete"}
+systemctl start superbench.service
+```
+
+`bench migrate` runs the same migration as a start of benchd with every switch
+off, but it opens no socket, so nothing can reach the host while the state is
+migrated. Keep the unit stopped until it finishes, so no benchd reads the state
+while it changes. The step
+is additive (it gives each leased row a lease ID and generation and adds the
+remote-access tables); a host that was never activated also migrates on its own
+at its next start. Leave `activation.json` as it is: turning `remote_access` on
+is a separate choice ([Activation](#activation)). After this step the upgrade is
+one-way; see Rollback above.
 
 ### Indexed storage
 
@@ -662,8 +735,8 @@ managed readiness or proof that a previous execution has stopped.
 benchd reads the default-off v2 switches only from
 `/etc/superbench/activation.json`. No request, environment variable, `benchd.env`
 entry or command-line flag can set them. The file is a JSON object with the exact
-version, any of five switches, each a literal `true` or `false`, and one
-setting:
+version, any of six switches, each a literal `true` or `false`, and two
+settings:
 
 ```json
 {
@@ -672,7 +745,8 @@ setting:
   "finite_io": false,
   "receipt_lookup": false,
   "cancellation": false,
-  "registration_observation": false
+  "registration_observation": false,
+  "remote_access": false
 }
 ```
 
@@ -683,10 +757,12 @@ setting:
 | `receipt_lookup` | `POST /v2/receipts/lookup` ([receipt lookup](receipt-lookup.md)) |
 | `cancellation` | v2 `cancel` and the operation reconciler ([cancellation](operation-cancellation.md)) |
 | `registration_observation` | `POST /v2/registrations/observe` |
+| `remote_access` | The certificate-only SSH listener on `remote_fleet_address`, the `/v2/remote/*` socket routes and `bench-sftp` sessions (the "Remote access" docs page). Off, benchd opens no TCP listener. |
 
 | Setting | Means |
 | --- | --- |
 | `fresh_reclaim_idle_hours` | How long a released Fresh bench stays idle before benchd reclaims it: a whole number of hours, `0` (never: reclaim by hand) or `1` to `8760`, for example `"fresh_reclaim_idle_hours": 72`. Omitted, it is `24`. It applies only while `fresh_payload` is on, and is refused without it. |
+| `remote_fleet_address` | The one address the remote listener binds: an `ip:port` string such as `"100.64.0.7:2222"`, a specific address with a nonzero port, no zone, never a wildcard. Required with `remote_access` and refused without it. |
 
 An omitted switch is off. An unknown, duplicated or non-boolean key, a
 `fresh_reclaim_idle_hours` that is not a whole number from 0 to 8760, a missing or
@@ -707,10 +783,39 @@ the socket, and refuses a file that breaks one:
 | `finite_io` | `fresh_payload` | A finite run executes only on a Fresh payload tree. |
 | `registration_observation` | `fresh_payload` | Observation reads only a Fresh payload tree. |
 | `fresh_reclaim_idle_hours` | `fresh_payload` | Only Fresh benches are reclaimed. Present without it, the file is refused. |
+| `remote_access` | `fresh_payload` and `remote_fleet_address` | Sessions run in the Fresh payload layout. The address is refused without `remote_access`. |
 | `receipt_lookup`, `cancellation` | nothing | |
 
 So the registered launch, which needs all five, sets every switch to `true`, and
 `receipt_lookup` or `cancellation` may run alone.
+
+**Remote access: deploy requirements.** With `remote_access` on, benchd checks these at start,
+before it opens the CA, the host key or the listener, and exits if one is missing:
+
+- the kernel has `mount_setattr` (Linux 5.12 or later). benchd probes the call itself; only a
+  kernel that does not know it (`ENOSYS`) is refused;
+- `/var/tmp` is a directory, not a symlink;
+- `/dev/shm` exists as a directory;
+- the data root (`--data`) and the state root (`--state`) are not `/tmp`, `/var/tmp` or
+  `/dev/shm`, nor under one of them. The comparison is by path, as written in the unit.
+
+Sessions mount a private tmpfs over each of `/tmp`, `/var/tmp` and `/dev/shm`, so a root under one
+would vanish inside every session. The error names the requirement, for example
+`remote access deploy requirement not met: /var/tmp must be a directory, not a symlink`; benchd
+exits with it, and systemd's restart loop keeps refusing until the host is fixed or
+`remote_access` is turned off. With `remote_access` off nothing is checked. `bench-sftp` is a new
+installed executable, `/usr/local/libexec/bench-sftp`; the installer places it with the others.
+Any other remote-access failure at start, such as an address that cannot be bound, also stops
+benchd rather than leaving it up without the door.
+The fleet address itself need not exist yet: benchd binds it with `IP_FREEBIND` /
+`IPV6_FREEBIND`, so it starts and listens on that exact address even before the tailnet brings it
+up, and serves it from the moment it arrives. The unit needs no ordering on the tailnet. A bind
+error for any other reason, such as the address already in use, still stops benchd.
+
+**Schema 31.** Remote access comes with state schema 31, and the upgrade to it is required on
+every activated host, with remote access on or off: run `bench migrate` with the unit stopped
+before the first start, as [From v0.0.2](#upgrade-the-executables) describes. Once the state is
+current, adding `remote_access` and `remote_fleet_address` needs only a restart.
 
 While `fresh_payload` is on, benchd refuses a v1 `create` or `recover` before any
 bench effect (no creation intent, allocation or bench record), with `409 conflict`
@@ -734,7 +839,7 @@ and the daemon behaves exactly as without this feature. benchd runs as the
 installer creates it with mode 0755). If it cannot, benchd cannot tell whether
 the file exists and refuses to start. At start
 benchd logs one line with the effective switches, for example
-`activation: fresh_payload=false finite_io=false receipt_lookup=false cancellation=false registration_observation=false fresh_reclaim_idle=0s`
+`activation: fresh_payload=false finite_io=false receipt_lookup=false cancellation=false registration_observation=false fresh_reclaim_idle=0s remote_access=false remote_fleet_address=-`
 (with `fresh_payload` on and the setting omitted, `fresh_reclaim_idle=24h0m0s`).
 
 **Existing non-Fresh workspaces.** `fresh_payload` changes only new v2 `create`
@@ -761,10 +866,14 @@ the typed digest of the original request, so keep the exact original request
 dispatched still records the cancellation, so that ID cannot be used afterwards.
 
 An activated daemon never migrates its state. After installing or upgrading
-benchd, start it once with every switch off so it brings the state current, stop
-it, then edit the file and start it again. Otherwise benchd refuses with
-`activated paths need state migrated by a start without them` before it opens the
-socket. Restart the service to apply any change. Turning a switch off later stops
+benchd, and before starting it with any switch on, bring the state current with
+the unit stopped: `sudo -u superbench /usr/local/bin/bench migrate --state
+/var/lib/superbench/state --data /srv/superbench-data`. Otherwise benchd refuses
+with `activated paths need state migrated by a start without them` before it
+opens the socket. A start with every switch off also migrates, but it opens the
+socket with every switch off: while it runs, a connected AgentPod Node could have
+a v1 `create` admitted, which `fresh_payload` normally refuses. If you use it,
+stop the Node first. Restart the service to apply any change. Turning a switch off later stops
 new work on that path; it does not erase obligations already recorded.
 
 ## 2. Configure the AgentPod Node

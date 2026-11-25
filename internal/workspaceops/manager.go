@@ -21,6 +21,7 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/model"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/payloadstage"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/protocolv2"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/remotestate"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspace"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspaceidle"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspaceprep"
@@ -49,6 +50,8 @@ type Manager struct {
 	// Finite builds a profiled run's plan. Nil means the installed helper; a
 	// host without the complete installed binding refuses before any receipt.
 	Finite func(finiteio.Input) (workspaceprep.FiniteRun, error)
+	// RemoteScopes fences remote writer sessions. Nil means the host.
+	RemoteScopes remotestate.Scopes
 }
 
 func (m Manager) finite(r protocolv2.Request) (workspaceprep.FiniteRun, error) {
@@ -215,6 +218,9 @@ func (m Manager) Execute(ctx context.Context, r protocolv2.Request, uid uint32) 
 		if err := m.Store.CheckWorkspaceOwner(r.Key, r.LeaseToken, ""); err != nil {
 			return nil, err
 		}
+		if err := m.fenceRemote(ctx, r.Key, r.LeaseToken, false); err != nil {
+			return nil, err
+		}
 		var b *model.Bench
 		var err error
 		switch r.Operation {
@@ -227,6 +233,9 @@ func (m Manager) Execute(ctx context.Context, r protocolv2.Request, uid uint32) 
 		}
 		return result(b, "", false), err
 	case "stop_admin":
+		if err := m.fenceRemote(ctx, r.Key, "", true); err != nil {
+			return nil, err
+		}
 		b, err := m.Store.StopWorkspace(r.Key, "", true)
 		if err != nil {
 			return nil, err

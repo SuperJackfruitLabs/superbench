@@ -172,6 +172,9 @@ func phaseTransition(old string, b *model.Bench) bool {
 	return false
 }
 func executionTransition(old, next *model.Execution, retained []string) bool {
+	if ok, decided := workspacepolicy.RemoteExecutionTransition(old, next, retained); decided {
+		return ok
+	}
 	if old == nil {
 		return next == nil || next.Phase == "starting"
 	}

@@ -96,7 +96,7 @@ func TestArchitecture(t *testing.T) {
 				"internal/serviceidentity":             {"internal/payloadpolicy"},
 				"internal/payloadwire":                 {"internal/gitpolicy", "internal/registeredinspection"},
 				"internal/payloadinput":                {"internal/finiteio"}, // Sealed memfd stdin leaf; no authority.
-				"internal/payloadexec":                 {"internal/payloadconfine", "internal/payloadinput", "internal/payloadwire", "internal/registeredinspection", "internal/registeredinspection/layout", "internal/payloadpolicy", "internal/serviceidentity", "internal/gitpolicy"},
+				"internal/payloadexec":                 {"internal/payloadconfine", "internal/payloadinput", "internal/payloadsession", "internal/payloadwire", "internal/registeredinspection", "internal/registeredinspection/layout", "internal/payloadpolicy", "internal/serviceidentity", "internal/gitpolicy"},
 				"internal/payloadlaunch":               {"internal/payloadexec", "internal/execution"},
 				"internal/registrationobserve":         {"internal/bench", "internal/gitcontrol", "internal/execution", "internal/localprep", "internal/model", "internal/payloadexec", "internal/payloadpolicy", "internal/serviceidentity", "internal/protocolv2"},
 				"internal/stageexec":                   {"internal/execution", "internal/output"},
@@ -105,7 +105,7 @@ func TestArchitecture(t *testing.T) {
 				"internal/quotahelper":                 {"internal/quotapolicy", "internal/quotaoperation", "internal/operationcontrol"},
 				"internal/operationcancel":             {"internal/statepath", "internal/statestore", "internal/gitcontrol", "internal/quotahelper", "internal/benchstate", "internal/history", "internal/model", "internal/operationcontrol", "internal/reap", "internal/retention"},
 				"internal/operationcontrol":            {"internal/quotaoperation", "internal/history", "internal/model"},
-				"internal/benchstate":                  {"internal/handoffguard", "internal/handoffjournal", "internal/operationcontrol", "internal/reftransfer", "internal/initrepair", "internal/workspacepolicy", "internal/model", "internal/archivepolicy", "internal/history", "internal/quotapolicy", "internal/setup"},
+				"internal/benchstate":                  {"internal/handoffguard", "internal/handoffjournal", "internal/operationcontrol", "internal/reftransfer", "internal/initrepair", "internal/workspacepolicy", "internal/model", "internal/archivepolicy", "internal/history", "internal/quotapolicy", "internal/setup", "internal/remoteschema"},
 				"internal/gitcontrol":                  {"internal/operationcontrol", "internal/execution", "internal/gitpolicy"},
 				"internal/archivepolicy":               {"internal/gitcontrol", "internal/model", "internal/reap", "internal/repository", "internal/setup"},
 				"internal/setup":                       {"internal/gitcontrol", "internal/cachepolicy", "internal/quotapolicy"},
@@ -117,28 +117,28 @@ func TestArchitecture(t *testing.T) {
 				"internal/buildinfo":                   {}, // Release version stamp; no dependencies.
 				"internal/finiteio":                    {},
 				"internal/protocolv2":                  {"internal/checkpointset", "internal/model", "internal/finiteio"},
-				"internal/workspacepolicy":             {"internal/freshgeneration", "internal/checkpointset", "internal/model", "internal/quotapolicy", "internal/repository"},
+				"internal/workspacepolicy":             {"internal/execution", "internal/freshgeneration", "internal/checkpointset", "internal/model", "internal/quotapolicy", "internal/repository"},
 				"internal/workspace":                   {"internal/freshtree", "internal/memberinspect", "internal/hostidentity", "internal/handoffjournal", "internal/crosshost", "internal/workspacematerialize", "internal/operationcontrol", "internal/workspacecopy", "internal/transferguard", "internal/workspaceplan", "internal/worktreetransfer", "internal/reftransfer", "internal/workspacepolicy", "internal/benchstate", "internal/statepath", "internal/creation", "internal/checkpointset", "internal/model", "internal/quotapolicy", "internal/repository", "internal/setup"},
 				"internal/workspaceplan":               {"internal/checkpointset", "internal/model", "internal/quotapolicy", "internal/repository", "internal/setup"},
 				"internal/execution":                   {"internal/cachepolicy"},
 				"internal/model":                       {"internal/execution", "internal/payloadpolicy"},
 				"internal/creation":                    {"internal/operationcontrol", "internal/model", "internal/repository"},
-				"internal/client":                      {"internal/protocol", "internal/protocolv2"},
+				"internal/client":                      {"internal/protocol", "internal/protocolv2", "internal/remoteproto"},
 				"internal/history":                     {"internal/reap"},
 				"internal/retention":                   {"internal/history", "internal/reap"},
 				"internal/maintenance":                 {"internal/retention", "internal/reap"},
 				"internal/workspacereclaim":            {"internal/benchstate", "internal/freshtree", "internal/hoststorage", "internal/model", "internal/operationcontrol", "internal/payloadbootstrap", "internal/quotahelper", "internal/serviceidentity", "internal/workspace", "internal/workspacepolicy"},
 				"internal/workspaceidle":               {"internal/benchstate", "internal/freshtree", "internal/model", "internal/workspace", "internal/workspacepolicy"},
-				"internal/workspaceops":                {"internal/workspaceidle", "internal/workspacereclaim", "internal/finiteio", "internal/payloadstage", "internal/workspaceprep", "internal/bench", "internal/execution", "internal/model", "internal/protocolv2", "internal/workspace", "internal/archivepolicy"},
+				"internal/workspaceops":                {"internal/remotestate", "internal/workspaceidle", "internal/workspacereclaim", "internal/finiteio", "internal/payloadstage", "internal/workspaceprep", "internal/bench", "internal/execution", "internal/model", "internal/protocolv2", "internal/workspace", "internal/archivepolicy"},
 				"internal/workspaceapi":                {"internal/bench", "internal/model", "internal/protocolv2", "internal/workspaceops"},
 				"internal/workspacerenew":              {"internal/bench", "internal/benchstate", "internal/model", "internal/operationcontrol", "internal/workspace", "internal/workspaceprep"}, // Root's successor owner for a stopped workspace.
 				"internal/operationreceipts":           {"internal/operationcontrol", "internal/finiteio"},
 				"internal/operationbody":               {"internal/protocolv2"},                                                         // Body bound and profile classification only.
 				"internal/receiptlookup":               {"internal/operationbody", "internal/operationreceipts", "internal/protocolv2"}, // Read-only historical evidence.
-				"internal/service":                     {"internal/activation", "internal/failurelog", "internal/freshreadiness", "internal/scalarapi", "internal/operationbody", "internal/receiptlookup", "internal/registrationobserve", "internal/serviceidentity", "internal/operationreceipts", "internal/operationcontrol", "internal/protocolv2", "internal/workspaceops", "internal/workspaceapi", "internal/autoarchive", "internal/bench", "internal/protocol", "internal/maintenance"},
+				"internal/service":                     {"internal/activation", "internal/failurelog", "internal/freshreadiness", "internal/scalarapi", "internal/operationbody", "internal/receiptlookup", "internal/registrationobserve", "internal/serviceidentity", "internal/operationreceipts", "internal/operationcontrol", "internal/protocolv2", "internal/workspaceops", "internal/workspaceapi", "internal/autoarchive", "internal/bench", "internal/protocol", "internal/maintenance", "internal/peercred"},
 				"internal/workspacetransfer":           {"internal/freshtree", "internal/history", "internal/reap", "internal/retention", "internal/hoststorage", "internal/bench", "internal/benchstate", "internal/execution", "internal/gitcontrol", "internal/model", "internal/quotapolicy", "internal/reftransfer", "internal/repository", "internal/workspace", "internal/workspacepolicy", "internal/workspacerepair", "internal/worktreetransfer"},
-				"cmd/bench":                            {"internal/workspacerenew", "internal/buildinfo", "internal/localprep", "internal/crosshostflow", "internal/crosshost", "internal/handoffjournal", "internal/mirroradmin", "internal/mirrorstage", "internal/workspacetransfer", "internal/workspacerepair", "internal/workspaceprep", "internal/protocolv2", "internal/workspaceops", "internal/workspaceapi", "internal/workspacearchive", "internal/autoarchive", "internal/bench", "internal/client", "internal/protocol", "internal/reap", "internal/retention", "internal/history", "internal/maintenance"},
-				"cmd/benchd":                           {"internal/activation", "internal/buildinfo", "internal/bench", "internal/service"},
+				"cmd/bench":                            {"internal/remotecli", "internal/workspacerenew", "internal/buildinfo", "internal/localprep", "internal/crosshostflow", "internal/crosshost", "internal/handoffjournal", "internal/mirroradmin", "internal/mirrorstage", "internal/workspacetransfer", "internal/workspacerepair", "internal/workspaceprep", "internal/protocolv2", "internal/workspaceops", "internal/workspaceapi", "internal/workspacearchive", "internal/autoarchive", "internal/bench", "internal/client", "internal/protocol", "internal/reap", "internal/retention", "internal/history", "internal/maintenance"},
+				"cmd/benchd":                           {"internal/activation", "internal/buildinfo", "internal/bench", "internal/remoteaccess", "internal/service"},
 				"internal/activation":                  {}, // Root-owned switch file reader; no other authority.
 				"internal/freshreadiness":              {"internal/hoststorage", "internal/quotahelper", "internal/serviceidentity"},
 				"internal/scalarapi":                   {"internal/bench"},
@@ -146,9 +146,23 @@ func TestArchitecture(t *testing.T) {
 				"cmd/bench-payload":                    {"internal/payloadexec"},
 				"cmd/bench-quota":                      {"internal/projectscan", "internal/cleanworker", "internal/freshrecovery", "internal/payloadbootstrap", "internal/hoststorage", "internal/quotahelper", "internal/quotaoperation", "internal/quotaoperationcontrol"},
 
-				"internal/quotaoperationjournal": {"internal/quotaoperation"},
-				"internal/quotaoperationcontrol": {"internal/hoststorage", "internal/quotaoperationjournal", "internal/payloadexec", "internal/serviceidentity", "internal/storagebootstrap", "internal/storagecustody"},
-				"internal/storagebootstrap":      {"internal/hoststorage", "internal/quotaoperationjournal", "internal/storagecustody"},
+				"internal/quotaoperationjournal":   {"internal/quotaoperation"},
+				"internal/quotaoperationcontrol":   {"internal/hoststorage", "internal/quotaoperationjournal", "internal/payloadexec", "internal/serviceidentity", "internal/storagebootstrap", "internal/storagecustody"},
+				"internal/storagebootstrap":        {"internal/hoststorage", "internal/quotaoperationjournal", "internal/storagecustody"},
+				"internal/peercred":                {}, // Kernel peer credential lookup; no other authority.
+				"internal/remoteschema":            {"internal/model"},
+				"internal/remoteca":                {}, // benchd's SSH CA and host key; with remotessh, the only x/crypto/ssh users.
+				"internal/remotestate":             {"internal/bench", "internal/benchstate", "internal/execution", "internal/model", "internal/operationcontrol", "internal/remoteca", "internal/remoteschema", "internal/workspaceprep"},
+				"internal/remotesftp":              {}, // SFTP confined to one os.Root; no other authority.
+				"cmd/bench-sftp":                   {"internal/remotesftp"},
+				"internal/remoteproto":             {}, // Wire types for /v2/remote/*; no authority.
+				"internal/remoteapi":               {"internal/bench", "internal/remoteca", "internal/remoteproto", "internal/remoteschema", "internal/remotestate"},
+				"internal/remotecli":               {"internal/client", "internal/remoteproto"},
+				"internal/payloadsession":          {"internal/payloadconfine", "internal/payloadpolicy", "internal/payloadwire", "internal/registeredinspection"},                                               // Session-mode leaves of the fixed helper.
+				"internal/remotessh":               {"internal/remoteca", "internal/remoteschema", "internal/remotestate"},                                                                                       // The SSH door; x/crypto/ssh below.
+				"internal/remotessh/remotesshtest": {"internal/remotesftp", "internal/remotessh", "internal/remotestate"},                                                                                        // Test-only launcher.
+				"internal/remoteaccess":            {"internal/activation", "internal/bench", "internal/remoteapi", "internal/remoteca", "internal/remotesession", "internal/remotessh", "internal/remotestate"}, // Composition: listener lifecycle and routes.
+				"internal/remotesession":           {"internal/execution", "internal/payloadexec", "internal/payloadwire", "internal/remotessh", "internal/remotestate", "internal/serviceidentity"},
 			}
 			allowed := !strings.Contains(strings.Split(p, "/")[0], ".")
 			for _, target := range edges[rel] {
@@ -159,10 +173,18 @@ func TestArchitecture(t *testing.T) {
 			if p == "modernc.org/sqlite" && (rel == "internal/statestore" && filepath.Base(path) == "sqlite.go" || rel == "internal/operationreceipts" && filepath.Base(path) == "receipts.go" || rel == "internal/quotaoperationjournal" && filepath.Base(path) == "store.go") {
 				allowed = true
 			}
+			if p == "golang.org/x/crypto/ssh" && (rel == "internal/remoteca" || rel == "internal/remotessh") {
+				allowed = true
+			}
+			// pkg/sftp stays out of the privileged helper: it runs only in
+			// bench-sftp, after the drop to the payload account.
+			if p == "github.com/pkg/sftp" && rel == "internal/remotesftp" {
+				allowed = true
+			}
 			if p == "github.com/pelletier/go-toml/v2" && rel == "internal/setup" && filepath.Base(path) == "config.go" {
 				allowed = true
 			}
-			if p == "golang.org/x/sys/unix" && (rel == "internal/service" && filepath.Base(path) == "peer_darwin.go" || rel == "internal/retainedfile" && filepath.Base(path) == "publish_linux.go" || rel == "internal/freshretirement" && filepath.Base(path) == "retire_linux.go" || rel == "internal/cleanworker" && filepath.Base(path) == "purge_linux.go" || rel == "internal/freshliveness" && (filepath.Base(path) == "liveness_linux.go" || filepath.Base(path) == "adapter_unix.go") || rel == "internal/freshrecovery" && strings.HasSuffix(path, "_linux.go")) {
+			if p == "golang.org/x/sys/unix" && (rel == "internal/peercred" && filepath.Base(path) == "peer_darwin.go" || rel == "internal/retainedfile" && filepath.Base(path) == "publish_linux.go" || rel == "internal/freshretirement" && filepath.Base(path) == "retire_linux.go" || rel == "internal/cleanworker" && filepath.Base(path) == "purge_linux.go" || rel == "internal/freshliveness" && (filepath.Base(path) == "liveness_linux.go" || filepath.Base(path) == "adapter_unix.go") || rel == "internal/freshrecovery" && strings.HasSuffix(path, "_linux.go") || rel == "internal/remoteaccess" && filepath.Base(path) == "listen_linux.go") {
 				allowed = true
 			}
 			if !allowed {

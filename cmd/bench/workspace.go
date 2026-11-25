@@ -18,6 +18,7 @@ import (
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/bench"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/client"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/protocolv2"
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/remotecli"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspaceapi"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspaceops"
 	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/workspacerenew"
@@ -31,7 +32,7 @@ func workspaceCLI(args []string, stdout, stderr io.Writer) error {
 
 func workspaceCLIContext(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	if len(args) == 0 {
-		return errors.New("usage: bench workspace <create|recover|lease|setup|run|checkpoint|release|stop|stop_admin|renew_admin|archive|reclaim|status|host_status|plan-reap|reap|inspect-history|reconcile-history|inspect-initialization|claim-initialization|continue-initialization|inspect-transfer|begin-transfer|continue-transfer|inspect-missing-transfer|begin-missing-transfer|continue-missing-transfer|inspect-root-removal|reconcile-root-removal> [flags] [key]; flags precede key")
+		return errors.New("usage: bench workspace <create|recover|lease|setup|run|checkpoint|release|stop|stop_admin|renew_admin|archive|reclaim|status|host_status|plan-reap|reap|inspect-history|reconcile-history|inspect-initialization|claim-initialization|continue-initialization|inspect-transfer|begin-transfer|continue-transfer|inspect-missing-transfer|begin-missing-transfer|continue-missing-transfer|inspect-root-removal|reconcile-root-removal|remote-credential|remote-status> [flags] [key]; flags precede key")
 	}
 	op := args[0]
 	if op == "host-status" {
@@ -39,6 +40,9 @@ func workspaceCLIContext(ctx context.Context, args []string, stdout, stderr io.W
 	}
 	if op == "stop-admin" || op == "renew-admin" {
 		op = op[:len(op)-6] + "_admin"
+	}
+	if op == "remote-credential" || op == "remote-status" {
+		return remotecli.Run(ctx, op, args[1:], stdout, stderr)
 	}
 	repair := op == "inspect-initialization" || op == "claim-initialization" || op == "continue-initialization"
 	missingTransfer := op == "inspect-missing-transfer" || op == "begin-missing-transfer" || op == "continue-missing-transfer"

@@ -34,6 +34,11 @@ type Config struct {
 	ArchiveInterval    time.Duration
 	ReclaimInterval    time.Duration       // idle reclaim sweep; 0 means five minutes
 	Activation         activation.Switches // only from the root-owned activation file
+	Remote             Remote              // optional remote-access adapter; nil unless activation enables it
+}
+type Remote interface {
+	Route(w http.ResponseWriter, r *http.Request, uid uint32, admit func(*http.Request) error)
+	Serve(ctx context.Context) error
 }
 type Server struct {
 	proposedCancellation            bool
@@ -143,6 +148,10 @@ func serve(ctx context.Context, c Config, proposed bool) error {
 		defer close(reclaimDone)
 		workspaceops.Manager{Store: s.config.Store}.IdleSweep(a.ReclaimIdle()).Run(lifetime, cmp.Or(c.ReclaimInterval, 5*time.Minute), func(e error) { log.Printf("automatic reclaim blocked: %v", e) })
 	}()
+	var remoteErr error // remote access runs only when activation built it; its end ends benchd
+	if c.Remote != nil {
+		s.handlers.Go(func() { remoteErr = c.Remote.Serve(lifetime); cancel() })
+	}
 	httpServer := &http.Server{Handler: s, ConnContext: connContext, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 << 10}
 	shutdownDone := make(chan error, 1)
 	go func() {
@@ -168,7 +177,7 @@ func serve(ctx context.Context, c Config, proposed bool) error {
 	<-archiveDone
 	<-reclaimDone
 	if e == http.ErrServerClosed {
-		return shutdownErr
+		return cmp.Or(remoteErr, shutdownErr)
 	}
 	return e
 }

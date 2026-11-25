@@ -95,3 +95,18 @@ func VerifyScope(p Policy, r Request) (*os.File, error) {
 	}
 	return scope, nil
 }
+
+// recheckScope reopens the recorded scope and requires the very same cgroup.
+func recheckScope(p Policy, r Request, scope *os.File) error {
+	current, err := VerifyScope(p, r)
+	if err != nil {
+		return err
+	}
+	a, aErr := scope.Stat()
+	c, cErr := current.Stat()
+	_ = current.Close()
+	if aErr != nil || cErr != nil || !os.SameFile(a, c) {
+		return errors.Join(ErrBoundary, aErr, cErr)
+	}
+	return nil
+}

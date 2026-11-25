@@ -182,7 +182,11 @@ func validateLease(b *model.Bench) error {
 	if w.Phase == "materializing" && (l.Execution != nil || len(l.RetainedRuns) != 0 || l.StopRequested && l.Continuation != "") {
 		return invalid
 	}
-	if e := l.Execution; e != nil {
+	if e := l.Execution; e != nil && e.Kind != "" {
+		if !validRemote(b, e) {
+			return invalid
+		}
+	} else if e != nil {
 		if !identity.MatchString(e.ID) || !physicalPath(e.Root) || !physicalPath(e.Log) || !boundedText(e.BootID, 128) || !boundedText(e.HostID, 128) || e.PID < 0 || e.LogLimitBytes < 1024 || e.LogLimitBytes > 1<<30 {
 			return invalid
 		}

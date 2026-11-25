@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 #
-# Build release archives and SHA256SUMS for the four SuperBench commands:
-# bench, benchd, bench-quota and bench-payload, for Linux amd64.
+# Build release archives and SHA256SUMS for the five SuperBench commands:
+# bench, benchd, bench-quota, bench-payload and bench-sftp, for Linux amd64.
 # arm64 waits until the payload helper builds on arm64, which needs a reviewed Dup2
 # replacement with its privileged fixture.
 #
 # The builds are reproducible, binary and archive both. CGO is off, so every
-# binary is static (the managed installer requires bench-payload to be), and
+# binary is static (the managed installer requires bench-payload and bench-sftp to be), and
 # -trimpath removes local paths. The tag's version is the only thing stamped in.
 # tar records each entry's mtime, uid, gid and names, and gzip writes a
 # timestamp of its own; both are normalised so two runs give the same bytes.
@@ -34,7 +34,7 @@ case "$VERSION" in
 esac
 
 readonly EPOCH="202601010000"
-readonly COMMANDS="bench benchd bench-quota bench-payload"
+readonly COMMANDS="bench benchd bench-quota bench-payload bench-sftp"
 readonly PKG="forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/buildinfo"
 
 # GNU tar (Linux, CI) and bsdtar (macOS) spell "pretend the owner is root" differently.
