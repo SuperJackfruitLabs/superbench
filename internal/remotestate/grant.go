@@ -84,8 +84,8 @@ func owns(l *model.Lease, token string) bool {
 // Grant is a writer grant: Claims name the lease and its remote execution.
 type Grant struct {
 	Key, Holder string
-	// WorkingDirectory is the bench path a session chdirs into: the same
-	// path bench-payload resolves from the policy data root and the key.
+	// WorkingDirectory is the bench record's Path, which is the directory a
+	// session chdirs into (the policy data root, "benches", the key).
 	WorkingDirectory string
 	Claims           remoteca.Claims
 }

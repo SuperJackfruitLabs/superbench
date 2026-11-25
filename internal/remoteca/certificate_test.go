@@ -8,12 +8,15 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"errors"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"golang.org/x/crypto/ssh"
+
+	"forge.superjackfruit.com/SuperJackfruitLabs/superbench/internal/remoteproto"
 )
 
 const (
@@ -299,5 +302,25 @@ func TestVerifyRefuses(t *testing.T) {
 	}
 	if _, _, err := a.Verify(user, base, testNow); err != nil {
 		t.Fatalf("base certificate refused: %v", err)
+	}
+}
+
+func TestIssuedCertificateLinesAreTheProtocolAlgorithms(t *testing.T) {
+	want := []string{ssh.CertAlgoED25519v01, ssh.CertAlgoECDSA256v01}
+	if !slices.Equal(remoteproto.CertificateAlgorithms, want) {
+		t.Fatalf("remoteproto.CertificateAlgorithms %v, remoteca issues %v", remoteproto.CertificateAlgorithms, want)
+	}
+	a, _ := openTemp(t)
+	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ecdsaKey, _ := ssh.NewPublicKey(&k.PublicKey)
+	_, edLine := clientKey(t)
+	for algorithm, line := range map[string]string{ssh.CertAlgoED25519v01: edLine, ssh.CertAlgoECDSA256v01: string(ssh.MarshalAuthorizedKey(ecdsaKey))} {
+		issued, err := a.IssueWriter(line, testClaims(), testNow)
+		if err != nil || !remoteproto.IsCertificateLine(issued.Line) || !strings.HasPrefix(issued.Line, algorithm+" ") {
+			t.Fatalf("%s: %q %v", algorithm, issued.Line, err)
+		}
 	}
 }

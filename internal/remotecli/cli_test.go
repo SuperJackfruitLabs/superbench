@@ -20,7 +20,7 @@ const token = "0123456789abcdef0123456789abcdef"
 
 var credential = remoteproto.Credential{
 	Certificate: "ssh-ed25519-cert-v01@openssh.com AAAAcert", User: "b-" + strings.Repeat("b", 32), Address: "100.64.0.1:2222",
-	HostKey: "ssh-ed25519 AAAAhost", HostKeyFingerprint: "SHA256:host", LeaseID: strings.Repeat("5", 32), Generation: 2, ValidBefore: "2026-11-24T12:30:00Z",
+	WorkingDirectory: "/data/benches/card", HostKey: "ssh-ed25519 AAAAhost", HostKeyFingerprint: "SHA256:host", LeaseID: strings.Repeat("5", 32), Generation: 2, ValidBefore: "2026-11-24T12:30:00Z",
 }
 
 // serve runs a fake benchd socket that records each request body.
@@ -83,6 +83,9 @@ func TestRemoteCredentialCLI(t *testing.T) {
 	var printed remoteproto.Credential
 	if err := json.Unmarshal(stdout.Bytes(), &printed); err != nil || printed != credential {
 		t.Fatal("printed", stdout.String(), err)
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"working_directory":"/data/benches/card"`)) {
+		t.Fatal("working_directory not printed", stdout.String())
 	}
 	if bytes.Contains(stdout.Bytes(), []byte(token)) || bytes.Contains(stderr.Bytes(), []byte(token)) {
 		t.Fatal("output shows the lease token")
