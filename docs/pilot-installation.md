@@ -415,11 +415,54 @@ python3 deploy/linux/install.py --bin-dir /absolute/build/bin --root / --managed
   one. If the run stops partway, rerun the same command with a new `--backup`.
   Executables that already match are skipped, and the rest still match
   `--previous`.
-- **Rollback.** Stop the unit and run the same command with the backup's
-  binaries as `--bin-dir`, the backup's `SHA256SUMS` as `--sums`, and the new
-  build's `SHA256SUMS` as `--previous`. Once any bench has been reclaimed (or a
-  reclaim started), a build without reclaim refuses to start: it cannot read the
-  state's `reclaiming` and `reclaimed` records. Roll forward instead.
+- **Back up the state too.** `--backup` holds executables only. Before the new
+  build first starts (and before `bench migrate`), with the unit stopped, copy
+  the state: `cp -a /var/lib/superbench/state
+  /var/lib/superbench-upgrade/<previous-revision>-state`. A rollback across a
+  state schema change needs it.
+- **Rollback.** Only the executables roll back by themselves. An upgrade that
+  changes the state schema is **one-way once the new build has started**, or
+  once `bench migrate` has run: the older benchd refuses the newer state
+  (v0.0.2 on schema 31: `unsupported state schema 31 (expected 30)`). Rolling
+  such an upgrade back means restoring the state backup, which discards every
+  change since it was taken, while the data volume and quota ledger keep theirs.
+  So restore it only when nothing has run on the new build (no create, lease,
+  run, checkpoint, release, stop or reclaim); otherwise roll forward. To roll
+  back:
+  1. `systemctl stop superbench.service`.
+  2. If the schema changed, put the backup back:
+     `mv /var/lib/superbench/state /var/lib/superbench-upgrade/<new-revision>-state`
+     then `cp -a /var/lib/superbench-upgrade/<previous-revision>-state
+     /var/lib/superbench/state`.
+  3. Build a rollback `--bin-dir`. The new installer needs all five executables
+     in it, but `--backup` holds only those it replaced: from v0.0.2 it has no
+     `bench-sftp`, which was installed new, so the backup alone as `--bin-dir`
+     fails with `FileNotFoundError`. Take each executable from the backup when it
+     is there and from the new build otherwise (always `bench-sftp`, and any the
+     upgrade left unchanged), with each one's line from the matching
+     `SHA256SUMS`:
+
+     ```sh
+     B=/var/lib/superbench-upgrade/<previous-revision>
+     R=/var/lib/superbench-upgrade/<previous-revision>-rollback
+     install -d -m 0700 "$R"
+     for n in bench benchd bench-quota bench-payload bench-sftp; do
+       if [ -e "$B/$n" ]; then from=$B; else from=/absolute/build/bin; fi
+       cp "$from/$n" "$R/$n"
+       grep "  $n\$" "$from/SHA256SUMS" >> "$R/SHA256SUMS"
+     done
+     ```
+  4. Run the **new** revision's `install.py` with `--bin-dir "$R"`,
+     `--sums "$R/SHA256SUMS"`, `--previous /absolute/build/bin/SHA256SUMS` and a
+     new `--backup`. It puts the old executables back and keeps the installed
+     `bench-sftp`, which is identical; the older build never runs it, and a later
+     roll forward finds it already in place. Use the new installer: v0.0.2's
+     compares `benchd.env` and refuses an edited one (see From v0.0.2).
+  5. `systemctl start superbench.service`.
+
+  Once any bench has been reclaimed (or a reclaim started), a build without
+  reclaim refuses to start: it cannot read the state's `reclaiming` and
+  `reclaimed` records. Roll forward instead.
 - **Other flags.** `--upgrade` combines with the flags of the original install
   (`--prepare`, `--identity`, `--activation`, `--storage`). They keep their own
   rules, and only the executables get upgrade semantics.
@@ -444,10 +487,11 @@ migrates: after the binaries are replaced it refuses to start with
 `activated paths need state migrated by a start without them: unsupported state
 schema 30 (expected 31)`. Every host on the registered launch has all its
 switches on, so every such host stops here until its state is migrated. With
-the unit still stopped after the `--upgrade` run, migrate as the service
-account, then start:
+the unit still stopped after the `--upgrade` run, back up the state (see Back
+up the state too, above), migrate as the service account, then start:
 
 ```sh
+cp -a /var/lib/superbench/state /var/lib/superbench-upgrade/<previous-revision>-state
 sudo -u superbench /usr/local/bin/bench migrate \
   --state /var/lib/superbench/state --data /srv/superbench-data
 # {"migration":"complete"}

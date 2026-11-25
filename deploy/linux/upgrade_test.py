@@ -209,6 +209,33 @@ class UpgradeMode(unittest.TestCase):
         self.assertEqual(server.read_bytes(), (self.new / "bench-sftp").read_bytes())
         self.assertEqual(server.stat().st_mode & 0o7777, 0o755)
 
+    def test_rollback_keeps_the_sftp_server_the_previous_build_lacks(self):
+        """The documented rollback: backup executables plus the new build's for the rest."""
+        (self.root / "usr/local/libexec/bench-sftp").unlink()  # a host from before the SFTP server
+        self.previous = sums(self.old, names=("bench", "benchd", "bench-quota", "bench-payload"))
+        apply(self.args(self.new), run=no_commands)
+        backup = self.top / "backup"
+        self.assertNotIn("bench-sftp", [p.name for p in backup.iterdir()])
+        # The backup alone is not a --bin-dir: the installer needs bench-sftp.
+        with self.assertRaises(FileNotFoundError):
+            payload(backup, True)
+        rollback = self.top / "rollback"
+        rollback.mkdir()
+        kept = read_previous(backup / "SHA256SUMS")
+        new = read_previous(self.incoming)
+        lines = []
+        for name in ("bench", "benchd", "bench-quota", "bench-payload", "bench-sftp"):
+            source = backup if name in kept else self.new
+            (rollback / name).write_bytes((source / name).read_bytes())
+            lines.append((kept if name in kept else new)[name] + "  " + name + "\n")
+        (rollback / "SHA256SUMS").write_text("".join(lines))
+        self.previous, self.incoming = self.incoming, rollback / "SHA256SUMS"
+        apply(self.args(rollback, backup="rolled-back"), run=no_commands)
+        for name, relative in [("bench", "usr/local/bin/bench"), ("benchd", "usr/local/bin/benchd"),
+                               ("bench-quota", "usr/local/libexec/bench-quota")]:
+            self.assertEqual(self.installed(relative), (self.old / name).read_bytes(), name)
+        self.assertEqual(self.installed("usr/local/libexec/bench-sftp"), (self.new / "bench-sftp").read_bytes())
+
     def test_unit_must_be_stopped_with_no_main_process(self):
         def shown(text):
             return lambda command, **kw: SimpleNamespace(stdout=text)
