@@ -6,6 +6,8 @@ stamps the section `## vX.Y.Z — YYYY-MM-DD`, and the release notes quote it.
 
 ## Unreleased
 
+## v0.0.3 — 2026-11-26
+
 - The remote credential reply carries `working_directory`, the absolute path a remote session
   starts in, so a caller can open a terminal there. The reply decoder is strict, so upgrade the
   `bench` CLI and `benchd` together.
