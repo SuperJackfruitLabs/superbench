@@ -37,7 +37,7 @@ func WriterCertificate(ctx context.Context, socket string, r remoteproto.Credent
 	if err := remoteCall(ctx, socket, "/v2/remote/credentials", r.Operation, raw, &c); err != nil {
 		return zero, err
 	}
-	if _, err := time.Parse(time.RFC3339, c.ValidBefore); err != nil || !strings.HasPrefix(c.Certificate, "ssh-") || !strings.HasPrefix(c.User, "b-") ||
+	if _, err := time.Parse(time.RFC3339, c.ValidBefore); err != nil || !remoteproto.IsCertificateLine(c.Certificate) || !strings.HasPrefix(c.User, "b-") ||
 		!strings.HasPrefix(c.HostKeyFingerprint, "SHA256:") || c.HostKey == "" || c.Address == "" || !hex32.MatchString(c.LeaseID) || c.Generation < 1 {
 		return zero, remoteproto.ErrResponse
 	}

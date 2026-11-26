@@ -62,8 +62,8 @@ bench workspace remote-credential --socket /run/superbench/benchd.sock \
   --public-key ./agent_ed25519.pub --certificate-out ./agent_ed25519-cert.pub fix-login
 ```
 
-The reply also carries the address, the host key and its fingerprint. Pin the host key; do not
-accept it on first use.
+The reply also carries the address, the host key and its fingerprint, and `working_directory`, the
+absolute path every session starts in. Pin the host key; do not accept it on first use.
 
 ## What a session can do
 
@@ -132,5 +132,6 @@ These are documented follow-ups, not built:
 ## Not built yet
 
 Watchers with read-only access, the operator key list, OIDC authentication, the public listener, and
-the hub and harness wiring that asks for certificates automatically. Until then a caller needs
-socket access and the lease token to obtain a certificate.
+the harness wiring that asks for certificates automatically. A suite coordinator can now ask
+through its node; the harness wiring ships in its own release. A caller needs socket access and
+the lease token to obtain a certificate.

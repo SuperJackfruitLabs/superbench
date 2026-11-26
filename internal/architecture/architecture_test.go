@@ -152,7 +152,7 @@ func TestArchitecture(t *testing.T) {
 				"internal/peercred":                {}, // Kernel peer credential lookup; no other authority.
 				"internal/remoteschema":            {"internal/model"},
 				"internal/remoteca":                {}, // benchd's SSH CA and host key; with remotessh, the only x/crypto/ssh users.
-				"internal/remotestate":             {"internal/bench", "internal/benchstate", "internal/execution", "internal/model", "internal/operationcontrol", "internal/remoteca", "internal/remoteschema", "internal/workspaceprep"},
+				"internal/remotestate":             {"internal/bench", "internal/benchstate", "internal/execution", "internal/model", "internal/operationcontrol", "internal/payloadpolicy", "internal/remoteca", "internal/remoteschema", "internal/workspaceprep"},
 				"internal/remotesftp":              {}, // SFTP confined to one os.Root; no other authority.
 				"cmd/bench-sftp":                   {"internal/remotesftp"},
 				"internal/remoteproto":             {}, // Wire types for /v2/remote/*; no authority.

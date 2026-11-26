@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -21,6 +22,19 @@ const (
 	OperationStatus     = "remote_status"
 	maxPublicKey        = 8 << 10
 )
+
+// CertificateAlgorithms are the OpenSSH certificate types a reply's
+// certificate line may start with: one for each client key type remoteca
+// accepts (ssh-ed25519 and ecdsa-sha2-nistp256). remoteca's tests pin this
+// list to what it issues.
+var CertificateAlgorithms = []string{"ssh-ed25519-cert-v01@openssh.com", "ecdsa-sha2-nistp256-cert-v01@openssh.com"}
+
+// IsCertificateLine reports whether line starts with one of CertificateAlgorithms
+// followed by a space.
+func IsCertificateLine(line string) bool {
+	algorithm, _, found := strings.Cut(line, " ")
+	return found && slices.Contains(CertificateAlgorithms, algorithm)
+}
 
 var (
 	ErrInvalid  = errors.New("invalid remote request")
@@ -54,6 +68,8 @@ type Credential struct {
 	LeaseID            string `json:"lease_id"`
 	Generation         uint64 `json:"generation"`
 	ValidBefore        string `json:"valid_before"`
+	// WorkingDirectory is the absolute path every session starts in.
+	WorkingDirectory string `json:"working_directory"`
 }
 
 // StatusRequest lists remote executions and audit rows for Key, or for every
